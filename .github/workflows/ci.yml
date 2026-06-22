@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  license:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: LICENSE is Apache 2.0
+        run: |
+          if [ ! -f LICENSE ]; then
+            echo "LICENSE file is missing"
+            exit 1
+          fi
+          if ! grep -q "Apache License" LICENSE || ! grep -q "Version 2.0" LICENSE; then
+            echo "LICENSE is not Apache License 2.0"
+            exit 1
+          fi
+          echo "LICENSE is Apache 2.0"
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run smoke

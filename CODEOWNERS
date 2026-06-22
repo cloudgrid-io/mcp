@@ -1,0 +1,4 @@
+# Default owners for everything in this repo.
+# A PR requires at least one approval from a code owner.
+
+* @cloudgrid-io/maintainers
