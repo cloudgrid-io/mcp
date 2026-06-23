@@ -20,6 +20,23 @@ const EXPECTED = [
   "cloudgrid_share",
   "cloudgrid_feedback",
   "cloudgrid_brain",
+  "cloudgrid_whoami",
+  "cloudgrid_use",
+  "cloudgrid_logout",
+  "cloudgrid_status",
+  "cloudgrid_info",
+  "cloudgrid_builds",
+  "cloudgrid_grid",
+  "cloudgrid_rename",
+  "cloudgrid_unplug",
+  "cloudgrid_delete",
+  "cloudgrid_rollback",
+  "cloudgrid_versions",
+  "cloudgrid_env",
+  "cloudgrid_secrets",
+  "cloudgrid_scaffold",
+  "cloudgrid_doctor",
+  "cloudgrid_open",
 ];
 
 const transport = new StdioClientTransport({ command: "node", args: ["src/index.js"] });
@@ -41,14 +58,14 @@ for (const name of EXPECTED) check(`exposes ${name}`, names.includes(name));
 // The end-to-end CLI call requires a logged-in cloudgrid CLI on $PATH.
 // In CI the CLI is not installed, so skip this part.
 if (!process.env.CI) {
-  const res = await client.callTool({ name: "cloudgrid_feedback", arguments: { limit: 3 } });
+  const res = await client.callTool({ name: "cloudgrid_whoami", arguments: {} });
   const text = res.content?.[0]?.text ?? "";
-  check("cloudgrid_feedback returned without error", res.isError !== true);
-  check("cloudgrid_feedback returned text", text.length > 0);
-  console.log("--- feedback (first 200 chars) ---");
+  check("cloudgrid_whoami returned without error", res.isError !== true);
+  check("cloudgrid_whoami returned text", text.length > 0);
+  console.log("--- whoami ---");
   console.log(text.slice(0, 200));
 } else {
-  console.log("skip cloudgrid_feedback (CI, no CLI)");
+  console.log("skip end-to-end CLI call (CI, no CLI)");
 }
 
 await client.close();
