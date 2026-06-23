@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.2
+
+- Added `outputSchema` to the 5 web-edition tools (`cloudgrid_drop`,
+  `cloudgrid_claim`, `cloudgrid_login`, `cloudgrid_login_status`,
+  `cloudgrid_visibility`). Handlers now return `structuredContent`
+  alongside the human-readable text `content`, so clients that support
+  structured tool results (e.g. ChatGPT Apps SDK connectors) can consume
+  typed JSON directly. Clients that ignore `structuredContent` continue
+  to work unchanged.
+- Migrated the 5 web-edition tool registrations from the deprecated
+  `server.tool()` to `server.registerTool()`, which supports
+  `outputSchema`.
+- No changes to the local-only CLI-wrapping tools or to tool behavior.
+
 ## 0.3.1
 
 - Fixed stale hardcoded version in MCP `serverInfo`. Both editions (local
