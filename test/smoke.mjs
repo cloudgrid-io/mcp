@@ -1,8 +1,9 @@
 // Smoke test: spawn the server over stdio with a real MCP client, list the tools,
-// and call one read-only tool (cloudgrid_feedback) end to end through the CLI.
-// Run from the mcp-server directory: node test/smoke.mjs
+// and (locally) call one read-only tool (cloudgrid_feedback) end to end through the CLI.
+// Run: node test/smoke.mjs
 //
-// Requires a logged-in cloudgrid CLI on $PATH. Exits non-zero on any failure.
+// The tool-list check always runs. The end-to-end CLI call is skipped when CI=true
+// (the cloudgrid CLI is not available in CI runners).
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -37,12 +38,18 @@ const names = tools.map((t) => t.name).sort();
 check(`lists ${EXPECTED.length} tools`, names.length === EXPECTED.length);
 for (const name of EXPECTED) check(`exposes ${name}`, names.includes(name));
 
-const res = await client.callTool({ name: "cloudgrid_feedback", arguments: { limit: 3 } });
-const text = res.content?.[0]?.text ?? "";
-check("cloudgrid_feedback returned without error", res.isError !== true);
-check("cloudgrid_feedback returned text", text.length > 0);
-console.log("--- feedback (first 200 chars) ---");
-console.log(text.slice(0, 200));
+// The end-to-end CLI call requires a logged-in cloudgrid CLI on $PATH.
+// In CI the CLI is not installed, so skip this part.
+if (!process.env.CI) {
+  const res = await client.callTool({ name: "cloudgrid_feedback", arguments: { limit: 3 } });
+  const text = res.content?.[0]?.text ?? "";
+  check("cloudgrid_feedback returned without error", res.isError !== true);
+  check("cloudgrid_feedback returned text", text.length > 0);
+  console.log("--- feedback (first 200 chars) ---");
+  console.log(text.slice(0, 200));
+} else {
+  console.log("skip cloudgrid_feedback (CI, no CLI)");
+}
 
 await client.close();
 
