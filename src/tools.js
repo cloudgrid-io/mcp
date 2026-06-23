@@ -30,6 +30,9 @@ function ok(text) {
 function fail(text) {
   return { content: [{ type: "text", text }], isError: true };
 }
+function okResult({ text, structured }) {
+  return { content: [{ type: "text", text }], structuredContent: structured };
+}
 
 // ── CLI wrapping (local edition only) ──────────────────────────────────────────
 async function runCloudgrid(args) {
@@ -185,15 +188,28 @@ async function runDrop(ctx, { html, path: filePath, filename, anonymous, org, fr
 
   if (res.status === 202) {
     // Idempotent no-op — the bytes matched the live version exactly.
-    return `No change — this exact content is already live: ${data.url ?? ctx.state.lastDrop?.url ?? ""}`.trim();
+    const url = (data.url ?? ctx.state.lastDrop?.url ?? "").trim();
+    return {
+      text: `No change — this exact content is already live: ${url}`,
+      structured: { url, status: "unchanged" },
+    };
   }
 
   if (res.status === 200) {
     // Updated in place: same URL, new version, views/reactions intact.
-    const lines = [`Updated in place — same link: ${data.url ?? ctx.state.lastDrop?.url ?? ""}`.trim()];
+    const url = (data.url ?? ctx.state.lastDrop?.url ?? "").trim();
+    const lines = [`Updated in place — same link: ${url}`];
     if (data.owned_by === "authenticated") lines.push("Owned by you.");
     if (data.expires_at) lines.push(`Expires ${data.expires_at}.`);
-    return lines.join("\n");
+    return {
+      text: lines.join("\n"),
+      structured: {
+        url,
+        status: "updated",
+        ...(data.owned_by ? { owned_by: data.owned_by } : {}),
+        ...(data.expires_at ? { expires_at: data.expires_at } : {}),
+      },
+    };
   }
 
   if (data.owned_by === "authenticated") {
@@ -201,7 +217,15 @@ async function runDrop(ctx, { html, path: filePath, filename, anonymous, org, fr
     const lines = [`Published to your org: ${data.url}`, "Owned by you."];
     if (data.expires_at) lines.push(`Expires ${data.expires_at}.`);
     lines.push("Drop again in this session to update it in place (same link); pass fresh to start a new one.");
-    return lines.join("\n");
+    return {
+      text: lines.join("\n"),
+      structured: {
+        url: data.url,
+        status: "created",
+        owned_by: "authenticated",
+        ...(data.expires_at ? { expires_at: data.expires_at } : {}),
+      },
+    };
   }
 
   // 201 — created new (first drop, fresh: true, or the server fell back to create).
@@ -220,7 +244,14 @@ async function runDrop(ctx, { html, path: filePath, filename, anonymous, org, fr
   if (data.expires_at) lines.push(`Expires ${data.expires_at} — anonymous drops last 7 days.`);
   if (data.claim_url) lines.push("Sign in, then run cloudgrid_claim to keep it past 7 days.");
   lines.push("Drop again in this session to update it in place (same link); pass fresh to start a new one.");
-  return lines.join("\n");
+  return {
+    text: lines.join("\n"),
+    structured: {
+      url: data.url,
+      status: "created",
+      ...(data.expires_at ? { expires_at: data.expires_at } : {}),
+    },
+  };
 }
 
 async function runClaim(ctx, { claim_token, claim_url }) {
@@ -264,13 +295,24 @@ async function runClaim(ctx, { claim_token, claim_url }) {
     throw new Error(`Claim failed (HTTP ${res.status}): ${msg}`);
   }
   const claimed = Array.isArray(data?.claimed) ? data.claimed : [];
-  if (claimed.length === 0) return "Nothing to claim — it may already be claimed or expired.";
+  if (claimed.length === 0) {
+    return {
+      text: "Nothing to claim — it may already be claimed or expired.",
+      structured: { claimed: 0, urls: [] },
+    };
+  }
   ctx.state.lastAnonClaim = null;
   const lines = [`Claimed ${claimed.length}, now yours:`];
   for (const c of claimed) {
     lines.push(`${c.url}${c.new_expires_at ? ` (expires ${c.new_expires_at})` : ""}`);
   }
-  return lines.join("\n");
+  return {
+    text: lines.join("\n"),
+    structured: {
+      claimed: claimed.length,
+      urls: claimed.map((c) => c.url),
+    },
+  };
 }
 
 
@@ -309,7 +351,13 @@ async function runVisibility(ctx, { target, visibility, org }) {
   }
   const lines = [`Visibility is now ${visibility}.`];
   if (data?.url) lines.push(data.url);
-  return lines.join("\n");
+  return {
+    text: lines.join("\n"),
+    structured: {
+      visibility,
+      ...(data?.url ? { url: data.url } : {}),
+    },
+  };
 }
 
 // ── Registration ───────────────────────────────────────────────────────────────
@@ -319,24 +367,32 @@ export function registerTools(server, ctx) {
   // ── Direct-API tools (both editions) ──────────────────────────────────────
 
   // Drop — both editions.
-  server.tool(
+  server.registerTool(
     "cloudgrid_drop",
-    "Publish an HTML page or file to CloudGrid and get a public shareable URL. Use when the user wants to share, publish, send, or 'deploy' an artifact, or wants a link to send a friend. Re-drops in the same session update the existing drop in place — same link, new version; pass fresh: true to force a new one. If signed in, it publishes into the user's org as an owned inspiration (30-day expiry); if not, it drops anonymously (7-day expiry, claimable later). Calls the API directly.",
     {
-      html: z.string().optional().describe("Inline HTML to publish. A fragment is wrapped into a full document."),
-      path: z.string().optional().describe("Path to a local file to upload instead of inline HTML."),
-      filename: z.string().optional().describe("Filename to present. Defaults to index.html for inline HTML."),
-      anonymous: z.boolean().optional().describe("Force an anonymous drop even if the user is signed in."),
-      org: z.string().optional().describe("Org slug to publish into when signed in. Defaults to the active org."),
-      fresh: z
-        .boolean()
-        .optional()
-        .describe("Force a new drop even if you already dropped in this session (default: update in place)."),
+      description: "Publish an HTML page or file to CloudGrid and get a public shareable URL. Use when the user wants to share, publish, send, or 'deploy' an artifact, or wants a link to send a friend. Re-drops in the same session update the existing drop in place — same link, new version; pass fresh: true to force a new one. If signed in, it publishes into the user's org as an owned inspiration (30-day expiry); if not, it drops anonymously (7-day expiry, claimable later). Calls the API directly.",
+      inputSchema: {
+        html: z.string().optional().describe("Inline HTML to publish. A fragment is wrapped into a full document."),
+        path: z.string().optional().describe("Path to a local file to upload instead of inline HTML."),
+        filename: z.string().optional().describe("Filename to present. Defaults to index.html for inline HTML."),
+        anonymous: z.boolean().optional().describe("Force an anonymous drop even if the user is signed in."),
+        org: z.string().optional().describe("Org slug to publish into when signed in. Defaults to the active org."),
+        fresh: z
+          .boolean()
+          .optional()
+          .describe("Force a new drop even if you already dropped in this session (default: update in place)."),
+      },
+      outputSchema: {
+        url: z.string().describe("The public URL of the drop."),
+        status: z.enum(["created", "updated", "unchanged"]).describe("What happened to the drop."),
+        owned_by: z.string().optional().describe("Ownership class, e.g. 'authenticated'."),
+        expires_at: z.string().optional().describe("Expiry timestamp, if any."),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
-    { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     async (input) => {
       try {
-        return ok(await runDrop(ctx, input || {}));
+        return okResult(await runDrop(ctx, input || {}));
       } catch (err) {
         return fail(err.message);
       }
@@ -344,17 +400,23 @@ export function registerTools(server, ctx) {
   );
 
   // Claim — both editions.
-  server.tool(
+  server.registerTool(
     "cloudgrid_claim",
-    "Claim an anonymous drop into the signed-in account, so it becomes owned and stops expiring in 7 days. Use after the user signs in to keep something they dropped anonymously. The public URL does not change. Requires sign-in (cloudgrid_login). Calls the API directly.",
     {
-      claim_token: z.string().optional().describe("The claim token from an anonymous drop."),
-      claim_url: z.string().optional().describe("The claim_url from an anonymous drop; the token is read from it."),
+      description: "Claim an anonymous drop into the signed-in account, so it becomes owned and stops expiring in 7 days. Use after the user signs in to keep something they dropped anonymously. The public URL does not change. Requires sign-in (cloudgrid_login). Calls the API directly.",
+      inputSchema: {
+        claim_token: z.string().optional().describe("The claim token from an anonymous drop."),
+        claim_url: z.string().optional().describe("The claim_url from an anonymous drop; the token is read from it."),
+      },
+      outputSchema: {
+        claimed: z.number().describe("Number of drops claimed."),
+        urls: z.array(z.string()).describe("URLs of the claimed drops."),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
-    { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     async (input) => {
       try {
-        return ok(await runClaim(ctx, input || {}));
+        return okResult(await runClaim(ctx, input || {}));
       } catch (err) {
         return fail(err.message);
       }
@@ -363,30 +425,44 @@ export function registerTools(server, ctx) {
 
   // Login — both editions. Local opens a browser and saves to the credentials
   // file; web returns the URL and saves to the session.
-  server.tool(
+  server.registerTool(
     "cloudgrid_login",
-    "Start a CLI-free CloudGrid sign-in. Use when the user wants to log in, sign in, or authenticate, or to claim an anonymous drop. Returns a URL to open in the browser; then call cloudgrid_login_status to finish. Uses CloudGrid's existing OAuth.",
-    {},
-    { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+    {
+      description: "Start a CLI-free CloudGrid sign-in. Use when the user wants to log in, sign in, or authenticate, or to claim an anonymous drop. Returns a URL to open in the browser; then call cloudgrid_login_status to finish. Uses CloudGrid's existing OAuth.",
+      inputSchema: {},
+      outputSchema: {
+        login_url: z.string().describe("URL to open in a browser to complete sign-in."),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+    },
     async () => {
       const code = newLoginCode();
       ctx.state.pendingLoginCode = code;
       const url = buildLoginUrl(code);
       if (ctx.canOpenBrowser) tryOpenBrowser(url);
-      return ok(
-        `To sign in, open this URL in your browser and finish with Google:\n${url}\n\n` +
+      return {
+        content: [{ type: "text", text:
+          `To sign in, open this URL in your browser and finish with Google:\n${url}\n\n` +
           `After you complete it, run cloudgrid_login_status to finish signing in.`,
-      );
+        }],
+        structuredContent: { login_url: url },
+      };
     },
   );
 
-  server.tool(
+  server.registerTool(
     "cloudgrid_login_status",
-    "Finish a sign-in started by cloudgrid_login. Polls once: if you have completed the browser sign-in, it saves your session; otherwise it tells you to finish and try again.",
     {
-      code: z.string().optional().describe("The sign-in code. Defaults to the most recent cloudgrid_login."),
+      description: "Finish a sign-in started by cloudgrid_login. Polls once: if you have completed the browser sign-in, it saves your session; otherwise it tells you to finish and try again.",
+      inputSchema: {
+        code: z.string().optional().describe("The sign-in code. Defaults to the most recent cloudgrid_login."),
+      },
+      outputSchema: {
+        status: z.enum(["authenticated", "pending"]).describe("Current sign-in state."),
+        email: z.string().optional().describe("Signed-in email, when authenticated."),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
-    { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     async (input) => {
       const code = input?.code || ctx.state.pendingLoginCode;
       if (!code) return fail("No sign-in is in progress. Run cloudgrid_login first.");
@@ -405,30 +481,42 @@ export function registerTools(server, ctx) {
         }
         ctx.state.pendingLoginCode = null;
         const who = info?.email ? ` as ${info.email}` : "";
-        return ok(`Signed in${who}. ${ctx.savedLocationNote()}`);
+        return {
+          content: [{ type: "text", text: `Signed in${who}. ${ctx.savedLocationNote()}` }],
+          structuredContent: { status: "authenticated", ...(info?.email ? { email: info.email } : {}) },
+        };
       }
       if (status.status === "pending" || status.status === "not_started") {
-        return ok(
-          "Still waiting for you to finish signing in. Open the URL from cloudgrid_login " +
+        return {
+          content: [{ type: "text", text:
+            "Still waiting for you to finish signing in. Open the URL from cloudgrid_login " +
             "in your browser, complete it with Google, then run cloudgrid_login_status again.",
-        );
+          }],
+          structuredContent: { status: "pending" },
+        };
       }
       return fail("The sign-in window expired (5 minutes). Run cloudgrid_login to start again.");
     },
   );
 
-  server.tool(
+  server.registerTool(
     "cloudgrid_visibility",
-    "Change who can see a CloudGrid inspiration: private, space, authenticated, org, or link (anyone with the URL). Use when the user wants to make a drop private, restrict who sees it, or open it up. Defaults to the drop made in this session. Requires sign-in. Calls the API directly.",
     {
-      visibility: z.enum(["private", "space", "authenticated", "org", "link"]).describe("The new scope."),
-      target: z.string().optional().describe("Entity id. Defaults to this session's last drop."),
-      org: z.string().optional().describe("Org of the entity. Defaults to the active org."),
+      description: "Change who can see a CloudGrid inspiration: private, space, authenticated, org, or link (anyone with the URL). Use when the user wants to make a drop private, restrict who sees it, or open it up. Defaults to the drop made in this session. Requires sign-in. Calls the API directly.",
+      inputSchema: {
+        visibility: z.enum(["private", "space", "authenticated", "org", "link"]).describe("The new scope."),
+        target: z.string().optional().describe("Entity id. Defaults to this session's last drop."),
+        org: z.string().optional().describe("Org of the entity. Defaults to the active org."),
+      },
+      outputSchema: {
+        visibility: z.string().describe("The visibility that was set."),
+        url: z.string().optional().describe("URL of the entity, if returned."),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
-    { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     async (input) => {
       try {
-        return ok(await runVisibility(ctx, input || {}));
+        return okResult(await runVisibility(ctx, input || {}));
       } catch (err) {
         return fail(err.message);
       }
