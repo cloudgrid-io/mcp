@@ -43,29 +43,56 @@ It speaks MCP over stdio. Point any MCP client at the `cloudgrid-mcp` command.
 
 ## Tools
 
+### Direct-API tools (both editions)
+
 | Tool | Wraps | Notes |
 |---|---|---|
-| `cloudgrid_drop` | `POST /api/v2/drop/auto` | Artifact drop. Anonymous, or owned if signed in. No CLI. Direct API. |
+| `cloudgrid_drop` | `POST /api/v2/drop/auto` | Artifact drop. Anonymous, or owned if signed in. Direct API. |
 | `cloudgrid_claim` | `POST /api/v2/anon-claim` | Claim an anonymous drop into the signed-in account. Direct API. |
-| `cloudgrid_login` | `GET /auth/login` | Start a CLI-free sign-in; returns a URL to open. Calls the API directly. |
+| `cloudgrid_login` | `GET /auth/login` | Start a CLI-free sign-in; returns a URL to open. Direct API. |
 | `cloudgrid_login_status` | `GET /auth/status` | Finish the sign-in; saves the token to the shared CLI credentials. |
 | `cloudgrid_visibility` | `PATCH /api/v2/inspirations/<id>` | Change who can see a drop (private, space, authenticated, org, link). Needs sign-in. Direct API; also in the web edition. |
-| `cloudgrid_init` | `cloudgrid init` | Register an app or agent; optionally seed a web service. |
-| `cloudgrid_plug` | `cloudgrid plug` | Deploy a directory or URL. |
-| `cloudgrid_logs` | `cloudgrid logs` | Snapshot of recent logs. Does not stream. |
-| `cloudgrid_share` | `cloudgrid visibility set` | Set visibility, default link. |
-| `cloudgrid_feedback` | `cloudgrid feedback list` | Read the org feedback feed. |
-| `cloudgrid_brain` | `cloudgrid brain refresh` | Re-run the Grid Brain hooks. |
 
 `cloudgrid_drop`, `cloudgrid_claim`, `cloudgrid_visibility`, and the two
-`cloudgrid_login` tools do not wrap the CLI — they call the API directly, so they
+`cloudgrid_login` tools do not wrap the CLI -- they call the API directly, so they
 also work in the web edition where no CLI exists. `cloudgrid_login` writes the same
 `~/.cloudgrid/credentials` the CLI uses, so the two share one identity.
 
+### CLI-wrapping tools (local edition only)
+
+| Tool | Wraps | Notes |
+|---|---|---|
+| `cloudgrid_init` | `cloudgrid init` | Register an app or agent; optionally seed a web service. |
+| `cloudgrid_plug` | `cloudgrid plug` | Deploy a directory or URL. |
+| `cloudgrid_logs` | `cloudgrid logs` | Snapshot of recent logs. Does not stream. Read-only. |
+| `cloudgrid_share` | `cloudgrid visibility set` | Set visibility, default link. |
+| `cloudgrid_feedback` | `cloudgrid feedback list` | Read the org feedback feed. Read-only. |
+| `cloudgrid_brain` | `cloudgrid brain refresh` | Re-run the Grid Brain hooks. |
+| `cloudgrid_whoami` | `cloudgrid whoami` | Show the signed-in user and active org. Read-only. |
+| `cloudgrid_use` | `cloudgrid use` | Switch the active org. |
+| `cloudgrid_logout` | `cloudgrid logout` | Sign out and clear local credentials. Destructive. |
+| `cloudgrid_status` | `cloudgrid status` | Org dashboard or entity detail. Read-only. |
+| `cloudgrid_info` | `cloudgrid info` | Entity metadata. Read-only. |
+| `cloudgrid_builds` | `cloudgrid builds` | Recent builds and deploys. Read-only. |
+| `cloudgrid_grid` | `cloudgrid grid` | List entities on the hub. Read-only. |
+| `cloudgrid_rename` | `cloudgrid rename` | Rename an entity. |
+| `cloudgrid_unplug` | `cloudgrid unplug` | Take an entity off the grid. Destructive; requires confirm. |
+| `cloudgrid_delete` | `cloudgrid delete` | Archive and delete an entity. Destructive; requires confirm. |
+| `cloudgrid_rollback` | `cloudgrid rollback` | Rollback to a previous version. |
+| `cloudgrid_versions` | `cloudgrid versions` | List published versions. Read-only. |
+| `cloudgrid_env` | `cloudgrid env` | Get, set, or list environment variables. |
+| `cloudgrid_secrets` | `cloudgrid secrets` | Set or list secret names. Never returns secret values. |
+| `cloudgrid_scaffold` | `cloudgrid scaffold` | Generate starter files. |
+| `cloudgrid_doctor` | `cloudgrid doctor` | Run local diagnostics. Read-only. |
+| `cloudgrid_open` | `cloudgrid open` | Return the public URL. Does not open a browser. Read-only. |
+
 `cloudgrid_share` and `cloudgrid_visibility` overlap on purpose: `cloudgrid_share`
 wraps the CLI and defaults to `link`; `cloudgrid_visibility` is direct API, takes an
-explicit scope, and defaults its target to the session's last drop — it is the one
+explicit scope, and defaults its target to the session's last drop -- it is the one
 the web edition gets.
+
+All tools carry MCP annotations (`readOnlyHint`, `destructiveHint`,
+`openWorldHint`) for clients that support them.
 
 ## Test
 
