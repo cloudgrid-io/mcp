@@ -14,6 +14,7 @@
 //
 // Run: PORT=8080 node src/web.js     Health: GET /healthz
 
+import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import express from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -21,6 +22,8 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { registerTools, decodeJwt } from "./tools.js";
 import { mountOAuth, bearerChallenge } from "./oauth.js";
+
+const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url)));
 
 const PORT = Number(process.env.PORT || 8080);
 
@@ -128,7 +131,7 @@ app.post("/mcp", async (req, res) => {
       delete sessionAuth[transport.sessionId];
     }
   };
-  const server = new McpServer({ name: "cloudgrid-mcp-web", version: "0.2.7" });
+  const server = new McpServer({ name: "cloudgrid-mcp-web", version });
   registerTools(server, makeWebContext(newSessionId));
   await server.connect(transport);
   await transport.handleRequest(req, res, req.body);

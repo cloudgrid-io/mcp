@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1
+
+- Fixed stale hardcoded version in MCP `serverInfo`. Both editions (local
+  and web) now read `version` from `package.json` at startup, making
+  `package.json` the single source of truth for `serverInfo.version`.
+
 ## 0.3.0
 
 - Added 17 new tools to the local edition: `cloudgrid_whoami`,
