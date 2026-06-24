@@ -55,7 +55,7 @@ function makeWebContext(sessionId) {
   let sessionToken = null;
   return {
     edition: "web",
-    state: { pendingLoginCode: null, lastAnonClaim: null, lastDrop: null, anonCookie: null },
+    state: { pendingLoginCode: null, lastAnonClaim: null, lastDrop: null, anonCookie: null, awaitingOrgPick: false },
     canOpenBrowser: false,
     // Transport OAuth wins; the in-tool login flow is the fallback.
     getToken: async () => sessionAuth[sessionId] ?? sessionToken,
