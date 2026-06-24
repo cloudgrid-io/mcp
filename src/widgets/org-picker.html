@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#1a1a2e;color:#e0e0e0;padding:16px}
+.card{background:#16213e;border-radius:12px;padding:20px;border:1px solid rgba(138,107,255,.2)}
+.title{font-size:14px;font-weight:600;color:#fff;margin-bottom:4px}
+.subtitle{font-size:12px;color:#9ca3af;margin-bottom:16px}
+.orgs{display:flex;flex-direction:column;gap:8px}
+.org-btn{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-radius:8px;border:1px solid rgba(138,107,255,.3);background:transparent;color:#e0e0e0;cursor:pointer;transition:all .15s;font-size:13px;text-align:left}
+.org-btn:hover{border-color:#8a6bff;background:rgba(138,107,255,.1)}
+.org-btn.loading{opacity:.6;pointer-events:none}
+.org-name{font-weight:500;color:#fff}
+.org-role{font-size:11px;color:#9ca3af}
+.status{font-size:12px;color:#9ca3af;margin-top:12px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+(function () {
+  var root = document.getElementById("root");
+
+  function esc(s) {
+    var d = document.createElement("div");
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function render(data) {
+    if (!data || !data.orgs || data.orgs.length === 0) {
+      root.innerHTML = '<div class="card"><div class="title">No organizations found</div></div>';
+      return;
+    }
+
+    var html =
+      '<div class="card">' +
+        '<div class="title">Choose an organization</div>' +
+        '<div class="subtitle">Which org should this be published to?</div>' +
+        '<div class="orgs">';
+    for (var i = 0; i < data.orgs.length; i++) {
+      var org = data.orgs[i];
+      html +=
+        '<button class="org-btn" data-slug="' + esc(org.slug) + '">' +
+          '<span class="org-name">' + esc(org.name) + '</span>' +
+          '<span class="org-role">' + esc(org.role) + '</span>' +
+        '</button>';
+    }
+    html += '</div><div class="status" id="status"></div></div>';
+    root.innerHTML = html;
+
+    var buttons = document.querySelectorAll(".org-btn");
+    for (var j = 0; j < buttons.length; j++) {
+      (function (btn) {
+        btn.addEventListener("click", function () {
+          var slug = btn.getAttribute("data-slug");
+          var all = document.querySelectorAll(".org-btn");
+          for (var k = 0; k < all.length; k++) all[k].classList.add("loading");
+          var statusEl = document.getElementById("status");
+          if (statusEl) statusEl.textContent = "Publishing\u2026";
+          if (!window.openai || !window.openai.callTool) return;
+          var input = (window.openai && window.openai.toolInput) || {};
+          var args = {};
+          if (input.html) args.html = input.html;
+          if (input.path) args.path = input.path;
+          if (input.filename) args.filename = input.filename;
+          if (input.fresh !== undefined) args.fresh = input.fresh;
+          args.org = slug;
+          window.openai.callTool("cloudgrid_drop", args).then(function () {
+            // The host will render the new result with the live-result card.
+          }).catch(function () {
+            for (var m = 0; m < all.length; m++) all[m].classList.remove("loading");
+            if (statusEl) statusEl.textContent = "Failed to publish";
+          });
+        });
+      })(buttons[j]);
+    }
+  }
+
+  var data = window.openai && window.openai.toolOutput;
+  if (data) render(data);
+  window.addEventListener("message", function (e) {
+    if (e.data && e.data.method === "ui/notifications/tool-result" &&
+        e.data.params && e.data.params.structuredContent) {
+      render(e.data.params.structuredContent);
+    }
+  });
+})();
+</script>
+</body>
+</html>

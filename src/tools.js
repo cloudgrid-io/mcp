@@ -11,6 +11,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { z } from "zod";
 import { newLoginCode, buildLoginUrl, pollStatusOnce, decodeJwt } from "./auth.js";
@@ -24,6 +25,17 @@ export const API_BASE = (process.env.CLOUDGRID_API_URL || "https://api.cloudgrid
 
 const ANON_HTML_MAX_BYTES = 2_000_000;
 const CONSOLE_URL = "https://console.cloudgrid.io/";
+
+// ── Widget resources (ChatGPT Apps SDK, web edition only) ────────────────────
+const LIVE_RESULT_URI = "ui://cloudgrid/live-result.html";
+const ORG_PICKER_URI = "ui://cloudgrid/org-picker.html";
+const LIVE_RESULT_HTML = readFileSync(new URL("./widgets/live-result.html", import.meta.url), "utf-8");
+const ORG_PICKER_HTML = readFileSync(new URL("./widgets/org-picker.html", import.meta.url), "utf-8");
+const WIDGET_CSP = {
+  connectDomains: ["https://*.cloudgrid.io"],
+  resourceDomains: ["https://*.cloudgrid.io"],
+};
+
 const VISIBILITY_LABELS = {
   private: "Only you",
   org: "Your org",
@@ -38,8 +50,12 @@ function ok(text) {
 function fail(text) {
   return { content: [{ type: "text", text }], isError: true };
 }
-function okResult({ text, structured }) {
-  return { content: [{ type: "text", text }], structuredContent: structured };
+function okResult({ text, structured, meta }) {
+  return {
+    content: [{ type: "text", text }],
+    structuredContent: structured,
+    ...(meta ? { _meta: meta } : {}),
+  };
 }
 
 // ── CLI wrapping (local edition only) ──────────────────────────────────────────
@@ -440,6 +456,33 @@ async function runVisibility(ctx, { target, visibility, org }) {
 // Registers the tools onto `server`. ctx.edition decides whether the CLI-wrapping
 // tools are included (they need a local machine).
 export function registerTools(server, ctx) {
+  // ── Widget resources (web edition, ChatGPT Apps SDK) ──────────────────────
+  if (ctx.edition === "web") {
+    server.registerResource("cloudgrid-live-result", LIVE_RESULT_URI, {
+      description: "Live result card after a CloudGrid drop — shows URL, grid link, and visibility controls.",
+      mimeType: "text/html;profile=mcp-app",
+    }, async () => ({
+      contents: [{
+        uri: LIVE_RESULT_URI,
+        mimeType: "text/html;profile=mcp-app",
+        text: LIVE_RESULT_HTML,
+        _meta: { ui: { csp: WIDGET_CSP } },
+      }],
+    }));
+
+    server.registerResource("cloudgrid-org-picker", ORG_PICKER_URI, {
+      description: "Org picker card — lets the user choose which organization to publish into.",
+      mimeType: "text/html;profile=mcp-app",
+    }, async () => ({
+      contents: [{
+        uri: ORG_PICKER_URI,
+        mimeType: "text/html;profile=mcp-app",
+        text: ORG_PICKER_HTML,
+        _meta: { ui: { csp: WIDGET_CSP } },
+      }],
+    }));
+  }
+
   // ── Direct-API tools (both editions) ──────────────────────────────────────
 
   // Drop — both editions.
@@ -479,6 +522,12 @@ export function registerTools(server, ctx) {
         login_url: z.string().optional().describe("Sign-in URL when authentication is needed."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+      ...(ctx.edition === "web" ? {
+        _meta: {
+          ui: { resourceUri: LIVE_RESULT_URI, csp: WIDGET_CSP },
+          "openai/outputTemplate": LIVE_RESULT_URI,
+        },
+      } : {}),
     },
     async (input) => {
       try {
@@ -507,6 +556,7 @@ export function registerTools(server, ctx) {
                 return okResult({
                   text: lines.join("\n"),
                   structured: { needs_org: true, orgs },
+                  meta: { "openai/outputTemplate": ORG_PICKER_URI },
                 });
               }
               if (orgs.length === 1) {
