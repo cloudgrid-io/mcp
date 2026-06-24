@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.4
+
+- Fixed default visibility for authenticated web-edition drops: after a
+  successful drop, the tool now PATCHes visibility to `link` ("Anyone with
+  the link") so the published URL is shareable and the console preview
+  renders without a sign-in wall. The post-drop message offers to restrict
+  access (private / org) via `cloudgrid_visibility`.
+- Fixed org disambiguation not firing when the user has multiple orgs: the
+  tool now always validates the `org` parameter against the user's real org
+  list from `GET /api/v2/orgs`. If the LLM supplies a guessed slug that
+  does not match a real org, it is ignored and the tool asks which org to
+  use. Previously, any non-empty `org` value skipped disambiguation.
+- Updated the `org` parameter description on `cloudgrid_drop` to instruct
+  the model to leave it unset and let the tool handle org selection.
+- No changes to local-edition tools or behavior.
+
 ## 0.3.3
 
 - Enriched `cloudgrid_drop` success response in the web edition: "Your app
