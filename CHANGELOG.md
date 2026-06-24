@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.3.3
+
+- Enriched `cloudgrid_drop` success response in the web edition: "Your app
+  is live" message with the console management link and a visibility offer
+  stating the current access level and how to change it. `structuredContent`
+  now includes `console_url`, `current_visibility`, and
+  `visibility_options` (widget-ready shapes for a future Apps SDK card).
+- Added org disambiguation to `cloudgrid_drop` (web edition): when the user
+  has multiple orgs and no `org` parameter, the tool returns the org list
+  so the LLM (or a future widget) can ask which one. With exactly one org
+  it publishes there automatically.
+- Added `cloudgrid_orgs` tool (web edition, read-only) to list the
+  signed-in user's organizations with slug, name, and role. Uses the
+  canonical `GET /api/v2/orgs` endpoint (JWT claims do not carry orgs).
+- Added sign-in guidance to `cloudgrid_drop` (web edition): unauthenticated
+  non-anonymous calls return a prompt with the `cloudgrid_login` URL
+  instead of silently falling through to an anonymous drop.
+- Updated `cloudgrid_visibility` description to clarify it can be used
+  right after a drop with no target id.
+- No changes to local-edition tools or behavior.
+
 ## 0.3.2
 
 - Added `outputSchema` to the 5 web-edition tools (`cloudgrid_drop`,
