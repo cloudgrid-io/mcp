@@ -23,6 +23,14 @@ export const API_BASE = (process.env.CLOUDGRID_API_URL || "https://api.cloudgrid
 );
 
 const ANON_HTML_MAX_BYTES = 2_000_000;
+const CONSOLE_URL = "https://console.cloudgrid.io/";
+const VISIBILITY_LABELS = {
+  private: "Only you",
+  org: "Your org",
+  authenticated: "Anyone signed in",
+  space: "A space",
+  link: "Anyone with the link",
+};
 
 function ok(text) {
   return { content: [{ type: "text", text }] };
@@ -74,6 +82,28 @@ function tryOpenBrowser(url) {
     execFile(cmd, [url], () => {});
   } catch {
     // ignore — the URL is returned to the user anyway
+  }
+}
+
+// ── Org listing (bearer-authed, web edition) ──────────────────────────────────
+// Fetches the signed-in user's orgs via GET /api/v2/orgs. The JWT does not
+// carry orgs (claims: sub, email, name, iat, exp), so the API is the canonical
+// source. Returns [{slug, name, role}].
+async function fetchUserOrgs(token) {
+  try {
+    const res = await fetch(`${API_BASE}/api/v2/orgs`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const orgs = Array.isArray(data?.orgs) ? data.orgs : Array.isArray(data) ? data : [];
+    return orgs.map((o) => ({
+      slug: o.slug ?? "",
+      name: o.name ?? o.slug ?? "",
+      role: o.role ?? "member",
+    }));
+  } catch {
+    return [];
   }
 }
 
@@ -198,34 +228,51 @@ async function runDrop(ctx, { html, path: filePath, filename, anonymous, org, fr
   if (res.status === 200) {
     // Updated in place: same URL, new version, views/reactions intact.
     const url = (data.url ?? ctx.state.lastDrop?.url ?? "").trim();
-    const lines = [`Updated in place — same link: ${url}`];
-    if (data.owned_by === "authenticated") lines.push("Owned by you.");
+    const lines = ctx.edition === "web"
+      ? [`Your app is live: ${url}`]
+      : [`Updated in place — same link: ${url}`];
+    if (ctx.edition !== "web" && data.owned_by === "authenticated") lines.push("Owned by you.");
     if (data.expires_at) lines.push(`Expires ${data.expires_at}.`);
-    return {
-      text: lines.join("\n"),
-      structured: {
-        url,
-        status: "updated",
-        ...(data.owned_by ? { owned_by: data.owned_by } : {}),
-        ...(data.expires_at ? { expires_at: data.expires_at } : {}),
-      },
+    const structured = {
+      url,
+      status: "updated",
+      ...(data.owned_by ? { owned_by: data.owned_by } : {}),
+      ...(data.expires_at ? { expires_at: data.expires_at } : {}),
     };
+    if (ctx.edition === "web") {
+      lines.push(`See and manage all your apps in your grid: ${CONSOLE_URL}`);
+      const vis = data.visibility || "link";
+      lines.push(`Visible to: ${VISIBILITY_LABELS[vis] || vis}. Want to change who can see it? I can set it to only you, your org, or anyone with the link.`);
+      structured.console_url = CONSOLE_URL;
+      structured.current_visibility = vis;
+      structured.visibility_options = Object.entries(VISIBILITY_LABELS).map(([v, l]) => ({ value: v, label: l }));
+    }
+    return { text: lines.join("\n"), structured };
   }
 
   if (data.owned_by === "authenticated") {
     ctx.state.lastAnonClaim = null;
-    const lines = [`Published to your org: ${data.url}`, "Owned by you."];
+    const lines = ctx.edition === "web"
+      ? [`Your app is live: ${data.url}`]
+      : [`Published to your org: ${data.url}`, "Owned by you."];
     if (data.expires_at) lines.push(`Expires ${data.expires_at}.`);
-    lines.push("Drop again in this session to update it in place (same link); pass fresh to start a new one.");
-    return {
-      text: lines.join("\n"),
-      structured: {
-        url: data.url,
-        status: "created",
-        owned_by: "authenticated",
-        ...(data.expires_at ? { expires_at: data.expires_at } : {}),
-      },
+    const structured = {
+      url: data.url,
+      status: "created",
+      owned_by: "authenticated",
+      ...(data.expires_at ? { expires_at: data.expires_at } : {}),
     };
+    if (ctx.edition === "web") {
+      lines.push(`See and manage all your apps in your grid: ${CONSOLE_URL}`);
+      const vis = data.visibility || "link";
+      lines.push(`Visible to: ${VISIBILITY_LABELS[vis] || vis}. Want to change who can see it? I can set it to only you, your org, or anyone with the link.`);
+      structured.console_url = CONSOLE_URL;
+      structured.current_visibility = vis;
+      structured.visibility_options = Object.entries(VISIBILITY_LABELS).map(([v, l]) => ({ value: v, label: l }));
+    } else {
+      lines.push("Drop again in this session to update it in place (same link); pass fresh to start a new one.");
+    }
+    return { text: lines.join("\n"), structured };
   }
 
   // 201 — created new (first drop, fresh: true, or the server fell back to create).
@@ -240,7 +287,7 @@ async function runDrop(ctx, { html, path: filePath, filename, anonymous, org, fr
       ctx.state.lastAnonClaim = null;
     }
   }
-  const lines = [`Live: ${data.url}`];
+  const lines = [ctx.edition === "web" ? `Your app is live: ${data.url}` : `Live: ${data.url}`];
   if (data.expires_at) lines.push(`Expires ${data.expires_at} — anonymous drops last 7 days.`);
   if (data.claim_url) lines.push("Sign in, then run cloudgrid_claim to keep it past 7 days.");
   lines.push("Drop again in this session to update it in place (same link); pass fresh to start a new one.");
@@ -383,15 +430,56 @@ export function registerTools(server, ctx) {
           .describe("Force a new drop even if you already dropped in this session (default: update in place)."),
       },
       outputSchema: {
-        url: z.string().describe("The public URL of the drop."),
-        status: z.enum(["created", "updated", "unchanged"]).describe("What happened to the drop."),
+        url: z.string().optional().describe("The public URL of the drop."),
+        status: z.enum(["created", "updated", "unchanged"]).optional().describe("What happened to the drop."),
         owned_by: z.string().optional().describe("Ownership class, e.g. 'authenticated'."),
         expires_at: z.string().optional().describe("Expiry timestamp, if any."),
+        console_url: z.string().optional().describe("URL to manage all apps in the grid."),
+        current_visibility: z.string().optional().describe("Current visibility of the drop."),
+        visibility_options: z.array(z.object({
+          value: z.string().describe("Visibility value to pass to cloudgrid_visibility."),
+          label: z.string().describe("Human-readable label."),
+        })).optional().describe("Available visibility levels."),
+        needs_org: z.boolean().optional().describe("True when the user must choose an org before dropping."),
+        orgs: z.array(z.object({
+          slug: z.string().describe("Org slug to pass as the org parameter."),
+          name: z.string().describe("Human-readable org name."),
+          role: z.string().describe("User's role in the org."),
+        })).optional().describe("The user's orgs, when org choice is needed."),
+        needs_sign_in: z.boolean().optional().describe("True when sign-in is needed before dropping."),
+        login_url: z.string().optional().describe("Sign-in URL when authentication is needed."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
     async (input) => {
       try {
+        // Web edition: sign-in guidance when unauthenticated.
+        if (ctx.edition === "web" && input?.anonymous !== true) {
+          const token = await ctx.getToken();
+          if (!token) {
+            const url = buildLoginUrl(newLoginCode());
+            return okResult({
+              text: `Sign in to publish to your org.\n${url}`,
+              structured: { needs_sign_in: true, login_url: url },
+            });
+          }
+          // Org disambiguation: if signed in, no org arg, list the user's orgs.
+          if (!input?.org) {
+            const orgs = await fetchUserOrgs(token);
+            if (orgs.length > 1) {
+              const lines = ["Which org should this be published to?"];
+              for (const o of orgs) lines.push(`  ${o.slug} — ${o.name} (${o.role})`);
+              lines.push("Pass the org slug in the org parameter to publish.");
+              return okResult({
+                text: lines.join("\n"),
+                structured: { needs_org: true, orgs },
+              });
+            }
+            if (orgs.length === 1) {
+              input = { ...(input || {}), org: orgs[0].slug };
+            }
+          }
+        }
         return okResult(await runDrop(ctx, input || {}));
       } catch (err) {
         return fail(err.message);
@@ -502,7 +590,7 @@ export function registerTools(server, ctx) {
   server.registerTool(
     "cloudgrid_visibility",
     {
-      description: "Change who can see a CloudGrid inspiration: private, space, authenticated, org, or link (anyone with the URL). Use when the user wants to make a drop private, restrict who sees it, or open it up. Defaults to the drop made in this session. Requires sign-in. Calls the API directly.",
+      description: "Change who can see a CloudGrid inspiration: private, space, authenticated, org, or link (anyone with the URL). Use when the user wants to make a drop private, restrict who sees it, or open it up — including right after a drop, with no target id needed. Defaults to the drop made in this session. Requires sign-in. Calls the API directly.",
       inputSchema: {
         visibility: z.enum(["private", "space", "authenticated", "org", "link"]).describe("The new scope."),
         target: z.string().optional().describe("Entity id. Defaults to this session's last drop."),
@@ -522,6 +610,37 @@ export function registerTools(server, ctx) {
       }
     },
   );
+
+  // Org listing — web edition only (local edition uses cloudgrid_whoami).
+  if (ctx.edition === "web") {
+    server.registerTool(
+      "cloudgrid_orgs",
+      {
+        description: "List the signed-in user's organizations. Returns each org's slug, name, and the user's role. Use to discover which org to publish to. Requires sign-in.",
+        inputSchema: {},
+        outputSchema: {
+          orgs: z.array(z.object({
+            slug: z.string().describe("Org slug."),
+            name: z.string().describe("Human-readable org name."),
+            role: z.string().describe("User's role in the org."),
+          })).describe("The user's org memberships."),
+        },
+        annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
+      },
+      async () => {
+        const token = await ctx.getToken();
+        if (!token) {
+          return fail("You are not signed in. Run cloudgrid_login first.");
+        }
+        const orgs = await fetchUserOrgs(token);
+        if (orgs.length === 0) {
+          return okResult({ text: "No organizations found.", structured: { orgs: [] } });
+        }
+        const lines = orgs.map((o) => `${o.slug} — ${o.name} (${o.role})`);
+        return okResult({ text: lines.join("\n"), structured: { orgs } });
+      },
+    );
+  }
 
   if (ctx.edition !== "local") return; // web edition stops here — no CLI tools
 
