@@ -107,6 +107,26 @@ async function fetchUserOrgs(token) {
   }
 }
 
+// After an authenticated web drop, upgrade visibility to "link" so the artifact
+// is shareable and its preview renders without a sign-in wall. Best-effort — a
+// failure here does not fail the drop; the user can always call cloudgrid_visibility.
+async function upgradeVisibilityToLink(ctx, entityId, orgSlug) {
+  const token = await ctx.getToken();
+  if (!token || !entityId) return false;
+  try {
+    const hdrs = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+    if (orgSlug) hdrs["X-CloudGrid-Org"] = orgSlug;
+    const res = await fetch(`${API_BASE}/api/v2/inspirations/${encodeURIComponent(entityId)}`, {
+      method: "PATCH",
+      headers: hdrs,
+      body: JSON.stringify({ visibility: "link" }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 // ── Direct-API tools (both editions) ───────────────────────────────────────────
 function looksLikeFullHtml(s) {
   const head = s.replace(/^﻿/, "").trimStart().slice(0, 256).toLowerCase();
@@ -240,9 +260,14 @@ async function runDrop(ctx, { html, path: filePath, filename, anonymous, org, fr
       ...(data.expires_at ? { expires_at: data.expires_at } : {}),
     };
     if (ctx.edition === "web") {
+      // Default authed web drops to "link" visibility so the URL is shareable
+      // and the console thumbnail renders without a sign-in wall.
+      if (data.visibility !== "link" && data.entity_id) {
+        await upgradeVisibilityToLink(ctx, data.entity_id, orgSlug);
+      }
       lines.push(`See and manage all your apps in your grid: ${CONSOLE_URL}`);
-      const vis = data.visibility || "link";
-      lines.push(`Visible to: ${VISIBILITY_LABELS[vis] || vis}. Want to change who can see it? I can set it to only you, your org, or anyone with the link.`);
+      const vis = "link";
+      lines.push(`Visible to: ${VISIBILITY_LABELS[vis]}. Want to restrict access? I can set it to only you or your org.`);
       structured.console_url = CONSOLE_URL;
       structured.current_visibility = vis;
       structured.visibility_options = Object.entries(VISIBILITY_LABELS).map(([v, l]) => ({ value: v, label: l }));
@@ -263,9 +288,13 @@ async function runDrop(ctx, { html, path: filePath, filename, anonymous, org, fr
       ...(data.expires_at ? { expires_at: data.expires_at } : {}),
     };
     if (ctx.edition === "web") {
+      // Default authed web drops to "link" visibility (same as above).
+      if (data.visibility !== "link" && data.entity_id) {
+        await upgradeVisibilityToLink(ctx, data.entity_id, orgSlug);
+      }
       lines.push(`See and manage all your apps in your grid: ${CONSOLE_URL}`);
-      const vis = data.visibility || "link";
-      lines.push(`Visible to: ${VISIBILITY_LABELS[vis] || vis}. Want to change who can see it? I can set it to only you, your org, or anyone with the link.`);
+      const vis = "link";
+      lines.push(`Visible to: ${VISIBILITY_LABELS[vis]}. Want to restrict access? I can set it to only you or your org.`);
       structured.console_url = CONSOLE_URL;
       structured.current_visibility = vis;
       structured.visibility_options = Object.entries(VISIBILITY_LABELS).map(([v, l]) => ({ value: v, label: l }));
@@ -423,7 +452,7 @@ export function registerTools(server, ctx) {
         path: z.string().optional().describe("Path to a local file to upload instead of inline HTML."),
         filename: z.string().optional().describe("Filename to present. Defaults to index.html for inline HTML."),
         anonymous: z.boolean().optional().describe("Force an anonymous drop even if the user is signed in."),
-        org: z.string().optional().describe("Org slug to publish into when signed in. Defaults to the active org."),
+        org: z.string().optional().describe("Leave unset; the tool will ask the user which org to publish into. Only set this after the user picks from the list the tool returns."),
         fresh: z
           .boolean()
           .optional()
@@ -463,20 +492,26 @@ export function registerTools(server, ctx) {
               structured: { needs_sign_in: true, login_url: url },
             });
           }
-          // Org disambiguation: if signed in, no org arg, list the user's orgs.
-          if (!input?.org) {
+          // Org disambiguation: always validate the org against the user's real
+          // orgs. If the LLM guessed an org slug that doesn't match, ignore it
+          // and ask — this is why the >1-org ask didn't fire in the first test.
+          {
             const orgs = await fetchUserOrgs(token);
-            if (orgs.length > 1) {
-              const lines = ["Which org should this be published to?"];
-              for (const o of orgs) lines.push(`  ${o.slug} — ${o.name} (${o.role})`);
-              lines.push("Pass the org slug in the org parameter to publish.");
-              return okResult({
-                text: lines.join("\n"),
-                structured: { needs_org: true, orgs },
-              });
-            }
-            if (orgs.length === 1) {
-              input = { ...(input || {}), org: orgs[0].slug };
+            const suppliedOrg = input?.org;
+            const validOrg = suppliedOrg && orgs.some((o) => o.slug === suppliedOrg);
+            if (!validOrg) {
+              if (orgs.length > 1) {
+                const lines = ["Which org should this be published to?"];
+                for (const o of orgs) lines.push(`  ${o.slug} — ${o.name} (${o.role})`);
+                lines.push("Pass the org slug in the org parameter to publish.");
+                return okResult({
+                  text: lines.join("\n"),
+                  structured: { needs_org: true, orgs },
+                });
+              }
+              if (orgs.length === 1) {
+                input = { ...(input || {}), org: orgs[0].slug };
+              }
             }
           }
         }
