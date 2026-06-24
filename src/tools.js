@@ -150,6 +150,15 @@ function looksLikeFullHtml(s) {
 }
 
 async function runDrop(ctx, { html, path: filePath, filename, anonymous, org, fresh }) {
+  // Defensive: the web edition schema excludes `path`, but if a model still
+  // passes one (e.g. from a cached tool description), reject early with a
+  // clear explanation.
+  if (ctx.edition === "web" && filePath) {
+    throw new Error(
+      "The hosted server cannot read local files — pass the full document as `html` instead of a `path`.",
+    );
+  }
+
   let bytes;
   let name;
   let type;
@@ -485,22 +494,35 @@ export function registerTools(server, ctx) {
 
   // ── Direct-API tools (both editions) ──────────────────────────────────────
 
-  // Drop — both editions.
-  server.registerTool(
-    "cloudgrid_drop",
-    {
-      description: "Publish an HTML page or file to CloudGrid and get a public shareable URL. Use when the user wants to share, publish, send, or 'deploy' an artifact, or wants a link to send a friend. Re-drops in the same session update the existing drop in place — same link, new version; pass fresh: true to force a new one. If signed in, it publishes into the user's org as an owned inspiration (30-day expiry); if not, it drops anonymously (7-day expiry, claimable later). Calls the API directly.",
-      inputSchema: {
+  // Drop — both editions, but the input schema is edition-aware: the web
+  // edition removes `path` (the cloud server cannot read local files) and
+  // strengthens `html` so the model always pastes the full document inline.
+  const dropInputSchema = ctx.edition === "web"
+    ? {
+        html: z.string().optional().describe(
+          "The COMPLETE HTML document to publish — paste the full file contents here (not a path). " +
+          "For a game, include all HTML/CSS/JS inline so it runs standalone. " +
+          "A fragment is wrapped into a full document automatically.",
+        ),
+        filename: z.string().optional().describe("Filename to present. Defaults to index.html for inline HTML."),
+        anonymous: z.boolean().optional().describe("Force an anonymous drop even if the user is signed in."),
+        org: z.string().optional().describe("Leave unset; the tool will ask the user which org to publish into. Only set this after the user picks from the list the tool returns."),
+        fresh: z.boolean().optional().describe("Force a new drop even if you already dropped in this session (default: update in place)."),
+      }
+    : {
         html: z.string().optional().describe("Inline HTML to publish. A fragment is wrapped into a full document."),
         path: z.string().optional().describe("Path to a local file to upload instead of inline HTML."),
         filename: z.string().optional().describe("Filename to present. Defaults to index.html for inline HTML."),
         anonymous: z.boolean().optional().describe("Force an anonymous drop even if the user is signed in."),
         org: z.string().optional().describe("Leave unset; the tool will ask the user which org to publish into. Only set this after the user picks from the list the tool returns."),
-        fresh: z
-          .boolean()
-          .optional()
-          .describe("Force a new drop even if you already dropped in this session (default: update in place)."),
-      },
+        fresh: z.boolean().optional().describe("Force a new drop even if you already dropped in this session (default: update in place)."),
+      };
+
+  server.registerTool(
+    "cloudgrid_drop",
+    {
+      description: "Publish an HTML page or file to CloudGrid and get a public shareable URL. Use when the user wants to share, publish, send, or 'deploy' an artifact, or wants a link to send a friend. Re-drops in the same session update the existing drop in place — same link, new version; pass fresh: true to force a new one. If signed in, it publishes into the user's org as an owned inspiration (30-day expiry); if not, it drops anonymously (7-day expiry, claimable later). Calls the API directly.",
+      inputSchema: dropInputSchema,
       outputSchema: {
         url: z.string().optional().describe("The public URL of the drop."),
         status: z.enum(["created", "updated", "unchanged"]).optional().describe("What happened to the drop."),
@@ -531,6 +553,15 @@ export function registerTools(server, ctx) {
     },
     async (input) => {
       try {
+        // Web edition: reject `path` early — the hosted server cannot read
+        // local files. The schema already omits it, but a model with a
+        // cached tool description might still send one.
+        if (ctx.edition === "web" && input?.path) {
+          return fail(
+            "The hosted server cannot read local files — pass the full document as `html` instead of a `path`.",
+          );
+        }
+
         // Web edition: sign-in guidance when unauthenticated.
         if (ctx.edition === "web" && input?.anonymous !== true) {
           const token = await ctx.getToken();
@@ -541,15 +572,26 @@ export function registerTools(server, ctx) {
               structured: { needs_sign_in: true, login_url: url },
             });
           }
-          // Org disambiguation: always validate the org against the user's real
-          // orgs. If the LLM guessed an org slug that doesn't match, ignore it
-          // and ask — this is why the >1-org ask didn't fire in the first test.
+          // Org disambiguation with per-session pick gate: the first drop
+          // always shows the picker when >1 org (even if the model guessed an
+          // org). The flag ctx.state.awaitingOrgPick gates: only after the
+          // picker was shown and the re-call supplies a valid slug do we honor
+          // it. This prevents the model from silently guessing and skipping
+          // the user's choice.
           {
             const orgs = await fetchUserOrgs(token);
-            const suppliedOrg = input?.org;
-            const validOrg = suppliedOrg && orgs.some((o) => o.slug === suppliedOrg);
-            if (!validOrg) {
-              if (orgs.length > 1) {
+            if (orgs.length > 1) {
+              const suppliedOrg = input?.org;
+              const validOrg = suppliedOrg && orgs.some((o) => o.slug === suppliedOrg);
+              if (ctx.state.awaitingOrgPick && validOrg) {
+                // The picker was shown previously and the user (or widget)
+                // picked a valid org — honor it, clear the flag, and publish.
+                ctx.state.awaitingOrgPick = false;
+                input = { ...(input || {}), org: suppliedOrg };
+              } else {
+                // First drop (any model-guessed org is ignored) or the
+                // re-call supplied an invalid slug — show the picker.
+                ctx.state.awaitingOrgPick = true;
                 const lines = ["Which org should this be published to?"];
                 for (const o of orgs) lines.push(`  ${o.slug} — ${o.name} (${o.role})`);
                 lines.push("Pass the org slug in the org parameter to publish.");
@@ -559,9 +601,8 @@ export function registerTools(server, ctx) {
                   meta: { "openai/outputTemplate": ORG_PICKER_URI },
                 });
               }
-              if (orgs.length === 1) {
-                input = { ...(input || {}), org: orgs[0].slug };
-              }
+            } else if (orgs.length === 1) {
+              input = { ...(input || {}), org: orgs[0].slug };
             }
           }
         }

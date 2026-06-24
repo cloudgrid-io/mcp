@@ -55,6 +55,12 @@ const names = tools.map((t) => t.name).sort();
 check(`lists ${EXPECTED.length} tools`, names.length === EXPECTED.length);
 for (const name of EXPECTED) check(`exposes ${name}`, names.includes(name));
 
+// Local edition: cloudgrid_drop must include the `path` parameter.
+const dropTool = tools.find((t) => t.name === "cloudgrid_drop");
+const dropProps = dropTool?.inputSchema?.properties ?? {};
+check("local drop has `path` param", "path" in dropProps);
+check("local drop has `html` param", "html" in dropProps);
+
 // The end-to-end CLI call requires a logged-in cloudgrid CLI on $PATH.
 // In CI the CLI is not installed, so skip this part.
 if (!process.env.CI) {

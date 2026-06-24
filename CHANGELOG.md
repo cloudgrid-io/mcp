@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.1
+
+- Made `cloudgrid_drop` input schema edition-aware. The web edition no
+  longer exposes the `path` parameter (the hosted server cannot read
+  local files). The `html` parameter description is strengthened to
+  instruct the model to paste the complete HTML document inline, with
+  all CSS/JS included so it runs standalone. The local edition retains
+  both `path` and `html` unchanged.
+- Added a defensive guard: if a web-edition drop receives a `path`
+  parameter despite its absence from the schema (e.g. from a cached
+  tool description), the tool returns a clear error directing the model
+  to use `html` instead.
+- Fixed org picker being skipped when ChatGPT auto-guessed a valid org
+  slug. The web-edition drop now uses per-session state
+  (`awaitingOrgPick`) to ensure the org picker is always shown on the
+  first drop when the user has multiple orgs, regardless of any
+  model-supplied org. Only after the picker has been presented and the
+  re-call supplies a valid slug is the org honored. Single-org users
+  continue to publish without a prompt.
+- Removed the `path` passthrough from the org-picker widget (web edition
+  only; `path` is no longer a valid web-edition parameter).
+
 ## 0.4.0
 
 - Added ChatGPT Apps SDK UI widgets (web edition, Task 12 Part B). Two
