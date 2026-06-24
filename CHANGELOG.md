@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.4.0
+
+- Added ChatGPT Apps SDK UI widgets (web edition, Task 12 Part B). Two
+  MCP resource templates are registered as `text/html;profile=mcp-app`
+  components, rendered deterministically in ChatGPT instead of
+  paraphrased text:
+  - **Live-result card** (`ui://cloudgrid/live-result.html`): shown
+    after a successful drop. Displays the live URL (Open button), a
+    link to the console grid, and a visibility picker with buttons
+    for each access level. Changing visibility calls
+    `cloudgrid_visibility` via the `window.openai.callTool` bridge.
+  - **Org-picker card** (`ui://cloudgrid/org-picker.html`): shown
+    when the user has multiple orgs and needs to choose. Buttons for
+    each org re-invoke `cloudgrid_drop` with the selected org slug
+    via the bridge.
+- The `cloudgrid_drop` tool descriptor now carries
+  `_meta.ui.resourceUri` and `"openai/outputTemplate"` (web edition
+  only) so ChatGPT renders the live-result card by default. The
+  `needs_org` result overrides to the org-picker card via per-result
+  `_meta["openai/outputTemplate"]`.
+- CSP metadata allows `*.cloudgrid.io` for connect and resource
+  domains.
+- All existing text `content` fallbacks are preserved unchanged.
+  Clients that do not support the Apps SDK (Claude, MCP Inspector,
+  any non-ChatGPT host) continue to work with text responses.
+- No changes to tool input/output schemas, local-edition tools, or
+  the anonymous/connected endpoint behavior.
+
 ## 0.3.4
 
 - Fixed default visibility for authenticated web-edition drops: after a

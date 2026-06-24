@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#1a1a2e;color:#e0e0e0;padding:16px}
+.card{background:#16213e;border-radius:12px;padding:20px;border:1px solid rgba(138,107,255,.2)}
+.title{font-size:14px;font-weight:600;color:#fff;margin-bottom:12px}
+.url{font-size:13px;color:#4dd0ff;word-break:break-all;margin-bottom:16px}
+.buttons{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:500;border:none;cursor:pointer;transition:opacity .15s}
+.btn:hover{opacity:.85}
+.btn-primary{background:linear-gradient(135deg,#8a6bff,#4dd0ff);color:#fff}
+.btn-secondary{background:rgba(138,107,255,.15);color:#a78bfa;border:1px solid rgba(138,107,255,.3)}
+.vis-section{margin-top:12px;border-top:1px solid rgba(255,255,255,.08);padding-top:12px}
+.vis-label{font-size:12px;color:#9ca3af;margin-bottom:8px}
+.vis-pills{display:flex;gap:6px;flex-wrap:wrap}
+.vis-pill{padding:6px 12px;border-radius:6px;font-size:12px;border:1px solid rgba(138,107,255,.3);background:transparent;color:#d1d5db;cursor:pointer;transition:all .15s}
+.vis-pill:hover{border-color:#8a6bff;color:#fff}
+.vis-pill.active{background:rgba(138,107,255,.25);border-color:#8a6bff;color:#fff}
+.vis-pill.updating{opacity:.6;pointer-events:none}
+.status{font-size:12px;color:#9ca3af;margin-top:8px}
+.sign-in{text-align:center;padding:20px 0}
+.sign-in p{margin-bottom:12px;color:#9ca3af;font-size:13px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+(function () {
+  var root = document.getElementById("root");
+
+  function esc(s) {
+    var d = document.createElement("div");
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function render(data) {
+    if (!data) { root.innerHTML = ""; return; }
+
+    if (data.needs_sign_in) {
+      root.innerHTML =
+        '<div class="card sign-in">' +
+          '<p>Sign in to publish to your org</p>' +
+          '<button class="btn btn-primary" id="sign-in-btn">Sign in with Google</button>' +
+        '</div>';
+      var signInBtn = document.getElementById("sign-in-btn");
+      if (signInBtn) {
+        signInBtn.addEventListener("click", function () {
+          if (data.login_url && window.openai && window.openai.openExternal) {
+            window.openai.openExternal({ href: data.login_url, redirectUrl: false });
+          }
+        });
+      }
+      return;
+    }
+
+    if (!data.url) {
+      root.innerHTML = '<div class="card"><div class="title">Done</div></div>';
+      return;
+    }
+
+    var label =
+      data.status === "created" ? "Published" :
+      data.status === "updated" ? "Updated" :
+      data.status === "unchanged" ? "Already live" : "Live";
+
+    var html =
+      '<div class="card">' +
+        '<div class="title">' + esc(label) + '</div>' +
+        '<div class="url">' + esc(data.url) + '</div>' +
+        '<div class="buttons">' +
+          '<button class="btn btn-primary" id="open-btn">Open</button>';
+
+    if (data.console_url) {
+      html += '<button class="btn btn-secondary" id="grid-btn">Open in your grid</button>';
+    }
+    html += '</div>';
+
+    if (data.visibility_options && data.current_visibility) {
+      html +=
+        '<div class="vis-section">' +
+          '<div class="vis-label">Visible to</div>' +
+          '<div class="vis-pills">';
+      for (var i = 0; i < data.visibility_options.length; i++) {
+        var opt = data.visibility_options[i];
+        var cls = opt.value === data.current_visibility ? " active" : "";
+        html += '<button class="vis-pill' + cls + '" data-vis="' + esc(opt.value) + '">' + esc(opt.label) + '</button>';
+      }
+      html += '</div><div class="status" id="vis-status"></div></div>';
+    }
+
+    html += '</div>';
+    root.innerHTML = html;
+
+    var openBtn = document.getElementById("open-btn");
+    if (openBtn) {
+      openBtn.addEventListener("click", function () {
+        if (window.openai && window.openai.openExternal) {
+          window.openai.openExternal({ href: data.url, redirectUrl: false });
+        }
+      });
+    }
+    var gridBtn = document.getElementById("grid-btn");
+    if (gridBtn) {
+      gridBtn.addEventListener("click", function () {
+        if (window.openai && window.openai.openExternal) {
+          window.openai.openExternal({ href: data.console_url, redirectUrl: false });
+        }
+      });
+    }
+
+    var pills = document.querySelectorAll(".vis-pill");
+    for (var j = 0; j < pills.length; j++) {
+      (function (pill) {
+        pill.addEventListener("click", function () {
+          var vis = pill.getAttribute("data-vis");
+          if (vis === data.current_visibility) return;
+          var all = document.querySelectorAll(".vis-pill");
+          for (var k = 0; k < all.length; k++) all[k].classList.add("updating");
+          var statusEl = document.getElementById("vis-status");
+          if (statusEl) statusEl.textContent = "Updating\u2026";
+          if (!window.openai || !window.openai.callTool) return;
+          window.openai.callTool("cloudgrid_visibility", { visibility: vis }).then(function (res) {
+            var newVis = res && res.structuredContent && res.structuredContent.visibility;
+            if (newVis) {
+              data.current_visibility = newVis;
+              for (var m = 0; m < all.length; m++) {
+                all[m].classList.remove("updating", "active");
+                if (all[m].getAttribute("data-vis") === newVis) all[m].classList.add("active");
+              }
+              if (statusEl) statusEl.textContent = "";
+            }
+          }).catch(function () {
+            for (var m = 0; m < all.length; m++) all[m].classList.remove("updating");
+            if (statusEl) statusEl.textContent = "Failed to update visibility";
+          });
+        });
+      })(pills[j]);
+    }
+  }
+
+  var data = window.openai && window.openai.toolOutput;
+  if (data) render(data);
+  window.addEventListener("message", function (e) {
+    if (e.data && e.data.method === "ui/notifications/tool-result" &&
+        e.data.params && e.data.params.structuredContent) {
+      render(e.data.params.structuredContent);
+    }
+  });
+})();
+</script>
+</body>
+</html>
