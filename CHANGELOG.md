@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.2
+
+- Made org disambiguation fully stateless in the web-edition
+  `cloudgrid_drop`. The per-session `awaitingOrgPick` flag has been
+  removed — org selection now relies solely on the current call's
+  parameters. A supplied org that matches a real org slug publishes
+  immediately; no valid org with multiple orgs returns the picker once;
+  a single-org user publishes silently. This fixes an infinite
+  "needs_org" loop when the client reconnects on every tool call
+  (ChatGPT Apps SDK behaviour), since the flag would reset each time.
+- Removed `awaitingOrgPick` from the web session state initialiser
+  (no longer needed).
+- No changes to local-edition tools, anonymous drops, or any other
+  web-edition behaviour.
+
 ## 0.4.1
 
 - Made `cloudgrid_drop` input schema edition-aware. The web edition no
