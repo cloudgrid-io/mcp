@@ -572,36 +572,28 @@ export function registerTools(server, ctx) {
               structured: { needs_sign_in: true, login_url: url },
             });
           }
-          // Org disambiguation with per-session pick gate: the first drop
-          // always shows the picker when >1 org (even if the model guessed an
-          // org). The flag ctx.state.awaitingOrgPick gates: only after the
-          // picker was shown and the re-call supplies a valid slug do we honor
-          // it. This prevents the model from silently guessing and skipping
-          // the user's choice.
+          // Stateless org disambiguation — no dependency on prior-call state
+          // so it works even when the client reconnects on every tool call
+          // (ChatGPT Apps SDK behaviour).
           {
             const orgs = await fetchUserOrgs(token);
-            if (orgs.length > 1) {
-              const suppliedOrg = input?.org;
-              const validOrg = suppliedOrg && orgs.some((o) => o.slug === suppliedOrg);
-              if (ctx.state.awaitingOrgPick && validOrg) {
-                // The picker was shown previously and the user (or widget)
-                // picked a valid org — honor it, clear the flag, and publish.
-                ctx.state.awaitingOrgPick = false;
-                input = { ...(input || {}), org: suppliedOrg };
-              } else {
-                // First drop (any model-guessed org is ignored) or the
-                // re-call supplied an invalid slug — show the picker.
-                ctx.state.awaitingOrgPick = true;
-                const lines = ["Which org should this be published to?"];
-                for (const o of orgs) lines.push(`  ${o.slug} — ${o.name} (${o.role})`);
-                lines.push("Pass the org slug in the org parameter to publish.");
-                return okResult({
-                  text: lines.join("\n"),
-                  structured: { needs_org: true, orgs },
-                  meta: { "openai/outputTemplate": ORG_PICKER_URI },
-                });
-              }
+            const suppliedOrg = input?.org;
+            const validOrg = suppliedOrg && orgs.some((o) => o.slug === suppliedOrg);
+            if (validOrg) {
+              // Supplied org matches a real org slug — publish to it.
+              input = { ...(input || {}), org: suppliedOrg };
+            } else if (orgs.length > 1) {
+              // No valid org supplied and multiple orgs — ask once.
+              const lines = ["Which org should this be published to?"];
+              for (const o of orgs) lines.push(`  ${o.slug} — ${o.name} (${o.role})`);
+              lines.push("Pass the org slug in the org parameter to publish.");
+              return okResult({
+                text: lines.join("\n"),
+                structured: { needs_org: true, orgs },
+                meta: { "openai/outputTemplate": ORG_PICKER_URI },
+              });
             } else if (orgs.length === 1) {
+              // Single org — publish to it silently.
               input = { ...(input || {}), org: orgs[0].slug };
             }
           }
