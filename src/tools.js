@@ -166,7 +166,7 @@ function tryOpenBrowser(url) {
 // ── Org listing (bearer-authed, web edition) ──────────────────────────────────
 // Fetches the signed-in user's orgs via GET /api/v2/orgs. The JWT does not
 // carry orgs (claims: sub, email, name, iat, exp), so the API is the canonical
-// source. Returns [{slug, name, role}].
+// source. Returns [{slug, name, role, render_ready}].
 async function fetchUserOrgs(token) {
   try {
     const res = await fetch(`${API_BASE}/api/v2/orgs`, {
@@ -179,6 +179,7 @@ async function fetchUserOrgs(token) {
       slug: o.slug ?? "",
       name: o.name ?? o.slug ?? "",
       role: o.role ?? "member",
+      render_ready: o.render_ready ?? true, // default true for older APIs
     }));
   } catch {
     return [];
@@ -646,9 +647,11 @@ export function registerTools(server, ctx) {
             const orgs = await fetchUserOrgs(token);
             const activeOrg = await ctx.getActiveOrg();
             const suppliedOrg = input?.org;
-            const validOrg = suppliedOrg && orgs.some((o) => o.slug === suppliedOrg);
-            if (validOrg) {
-              // Supplied org matches a real org slug — publish to it.
+            const matchedOrg = suppliedOrg && orgs.find((o) => o.slug === suppliedOrg);
+            if (matchedOrg) {
+              // Supplied org matches — proceed with it. The agent should have
+              // already checked render_ready via cloudgrid_orgs and warned the
+              // user if this org isn't set up yet. We don't block here.
               input = { ...(input || {}), org: suppliedOrg };
             } else if (orgs.length > 1) {
               // No valid org supplied and multiple orgs — ask once.
@@ -657,20 +660,40 @@ export function registerTools(server, ctx) {
                 ...o,
                 is_active: o.slug === activeOrg,
               }));
-              annotated.sort((a, b) => (b.is_active ? 1 : 0) - (a.is_active ? 1 : 0));
+              // Sort: active org first, then ready orgs, then not-ready orgs.
+              annotated.sort((a, b) => {
+                if (a.is_active !== b.is_active) return b.is_active ? 1 : -1;
+                if (a.render_ready !== b.render_ready) return b.render_ready ? 1 : -1;
+                return 0;
+              });
               const lines = ["Which org should this be published to?"];
               for (const o of annotated) {
-                const tag = o.is_active ? " (your active org)" : "";
-                lines.push(`  ${o.slug} — ${o.name} (${o.role})${tag}`);
+                const tags = [];
+                if (o.is_active) tags.push("your active org");
+                if (!o.render_ready) tags.push("not set up yet");
+                const suffix = tags.length ? ` (${tags.join(", ")})` : "";
+                lines.push(`  ${o.slug} — ${o.name} (${o.role})${suffix}`);
               }
               lines.push("Pass the org slug in the org parameter to publish.");
+              const readyCount = annotated.filter((o) => o.render_ready).length;
+              if (readyCount === 0) {
+                lines.push("Note: none of your orgs are fully set up yet. You can use anonymous: true as a fallback.");
+              }
               return okResult({
                 text: lines.join("\n"),
                 structured: { needs_org: true, orgs: annotated },
                 ...(ctx.edition === "web" ? { meta: { "openai/outputTemplate": ORG_PICKER_URI } } : {}),
               });
             } else if (orgs.length === 1) {
-              // Single org — publish to it silently.
+              if (!orgs[0].render_ready) {
+                // Single org but not set up — tell the agent so it can warn
+                // the user and offer anonymous drop as fallback.
+                const annotated = [{ ...orgs[0], is_active: orgs[0].slug === activeOrg, render_ready: false }];
+                return okResult({
+                  text: `Your only org "${orgs[0].slug}" isn't fully set up yet — pages published there may not load. You can drop anonymously (set anonymous: true) or wait until provisioning completes, then re-run.`,
+                  structured: { needs_org: true, org_not_ready: true, orgs: annotated },
+                });
+              }
               input = { ...(input || {}), org: orgs[0].slug };
             }
           }
@@ -810,7 +833,7 @@ export function registerTools(server, ctx) {
   server.registerTool(
     "cloudgrid_orgs",
     {
-      description: "List the signed-in user's organizations. Returns each org's slug, name, and the user's role. Use to discover which org to publish to. Requires sign-in.",
+      description: "List the signed-in user's organizations. Returns each org's slug, name, role, and render_ready status. Orgs where render_ready is false are still provisioning — pages published there may not load yet. Prefer a render_ready org; if the user insists on a not-ready one, warn them that pages may not load and suggest waiting or choosing a ready org instead. Requires sign-in.",
       inputSchema: {},
       outputSchema: {
         orgs: z.array(z.object({
@@ -818,6 +841,7 @@ export function registerTools(server, ctx) {
           name: z.string().describe("Human-readable org name."),
           role: z.string().describe("User's role in the org."),
           is_active: z.boolean().optional().describe("True if this is the user's currently active org."),
+          render_ready: z.boolean().describe("True if the org's DNS and TLS are provisioned and pages will load. False means the org is still being set up."),
         })).describe("The user's org memberships."),
       },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
@@ -836,11 +860,23 @@ export function registerTools(server, ctx) {
         ...o,
         is_active: o.slug === activeOrg,
       }));
-      annotated.sort((a, b) => (b.is_active ? 1 : 0) - (a.is_active ? 1 : 0));
-      const lines = annotated.map((o) => {
-        const tag = o.is_active ? " (your active org)" : "";
-        return `${o.slug} — ${o.name} (${o.role})${tag}`;
+      // Sort: active org first, then ready orgs, then not-ready orgs.
+      annotated.sort((a, b) => {
+        if (a.is_active !== b.is_active) return b.is_active ? 1 : -1;
+        if (a.render_ready !== b.render_ready) return b.render_ready ? 1 : -1;
+        return 0;
       });
+      const lines = annotated.map((o) => {
+        const tags = [];
+        if (o.is_active) tags.push("your active org");
+        if (!o.render_ready) tags.push("not set up yet");
+        const suffix = tags.length ? ` (${tags.join(", ")})` : "";
+        return `${o.slug} — ${o.name} (${o.role})${suffix}`;
+      });
+      const readyCount = annotated.filter((o) => o.render_ready).length;
+      if (readyCount === 0 && annotated.length > 0) {
+        lines.push("\nNone of your orgs are fully set up yet. You can use an anonymous drop as a fallback, or wait until provisioning completes.");
+      }
       return okResult({ text: lines.join("\n"), structured: { orgs: annotated } });
     },
   );
