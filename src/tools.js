@@ -601,6 +601,7 @@ export function registerTools(server, ctx) {
           slug: z.string().describe("Org slug to pass as the org parameter."),
           name: z.string().describe("Human-readable org name."),
           role: z.string().describe("User's role in the org."),
+          is_active: z.boolean().optional().describe("True if this is the user's currently active org."),
         })).optional().describe("The user's orgs, when org choice is needed."),
         needs_sign_in: z.boolean().optional().describe("True when sign-in is needed before dropping."),
         login_url: z.string().optional().describe("Sign-in URL when authentication is needed."),
@@ -634,11 +635,16 @@ export function registerTools(server, ctx) {
               structured: { needs_sign_in: true, login_url: url },
             });
           }
-          // Stateless org disambiguation — no dependency on prior-call state
-          // so it works even when the client reconnects on every tool call
-          // (ChatGPT Apps SDK behaviour).
-          {
+        }
+
+        // Stateless org disambiguation — both editions, when authenticated.
+        // No dependency on prior-call state so it works even when the client
+        // reconnects on every tool call (ChatGPT Apps SDK behaviour).
+        if (input?.anonymous !== true) {
+          const token = await ctx.getToken();
+          if (token) {
             const orgs = await fetchUserOrgs(token);
+            const activeOrg = await ctx.getActiveOrg();
             const suppliedOrg = input?.org;
             const validOrg = suppliedOrg && orgs.some((o) => o.slug === suppliedOrg);
             if (validOrg) {
@@ -646,13 +652,22 @@ export function registerTools(server, ctx) {
               input = { ...(input || {}), org: suppliedOrg };
             } else if (orgs.length > 1) {
               // No valid org supplied and multiple orgs — ask once.
+              // Mark the active org so the agent can offer it as the default.
+              const annotated = orgs.map((o) => ({
+                ...o,
+                is_active: o.slug === activeOrg,
+              }));
+              annotated.sort((a, b) => (b.is_active ? 1 : 0) - (a.is_active ? 1 : 0));
               const lines = ["Which org should this be published to?"];
-              for (const o of orgs) lines.push(`  ${o.slug} — ${o.name} (${o.role})`);
+              for (const o of annotated) {
+                const tag = o.is_active ? " (your active org)" : "";
+                lines.push(`  ${o.slug} — ${o.name} (${o.role})${tag}`);
+              }
               lines.push("Pass the org slug in the org parameter to publish.");
               return okResult({
                 text: lines.join("\n"),
-                structured: { needs_org: true, orgs },
-                meta: { "openai/outputTemplate": ORG_PICKER_URI },
+                structured: { needs_org: true, orgs: annotated },
+                ...(ctx.edition === "web" ? { meta: { "openai/outputTemplate": ORG_PICKER_URI } } : {}),
               });
             } else if (orgs.length === 1) {
               // Single org — publish to it silently.
@@ -791,36 +806,44 @@ export function registerTools(server, ctx) {
     },
   );
 
-  // Org listing — web edition only (local edition uses cloudgrid_whoami).
-  if (ctx.edition === "web") {
-    server.registerTool(
-      "cloudgrid_orgs",
-      {
-        description: "List the signed-in user's organizations. Returns each org's slug, name, and the user's role. Use to discover which org to publish to. Requires sign-in.",
-        inputSchema: {},
-        outputSchema: {
-          orgs: z.array(z.object({
-            slug: z.string().describe("Org slug."),
-            name: z.string().describe("Human-readable org name."),
-            role: z.string().describe("User's role in the org."),
-          })).describe("The user's org memberships."),
-        },
-        annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
+  // Org listing — both editions.
+  server.registerTool(
+    "cloudgrid_orgs",
+    {
+      description: "List the signed-in user's organizations. Returns each org's slug, name, and the user's role. Use to discover which org to publish to. Requires sign-in.",
+      inputSchema: {},
+      outputSchema: {
+        orgs: z.array(z.object({
+          slug: z.string().describe("Org slug."),
+          name: z.string().describe("Human-readable org name."),
+          role: z.string().describe("User's role in the org."),
+          is_active: z.boolean().optional().describe("True if this is the user's currently active org."),
+        })).describe("The user's org memberships."),
       },
-      async () => {
-        const token = await ctx.getToken();
-        if (!token) {
-          return fail("You are not signed in. Run cloudgrid_login first.");
-        }
-        const orgs = await fetchUserOrgs(token);
-        if (orgs.length === 0) {
-          return okResult({ text: "No organizations found.", structured: { orgs: [] } });
-        }
-        const lines = orgs.map((o) => `${o.slug} — ${o.name} (${o.role})`);
-        return okResult({ text: lines.join("\n"), structured: { orgs } });
-      },
-    );
-  }
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
+    },
+    async () => {
+      const token = await ctx.getToken();
+      if (!token) {
+        return fail("You are not signed in. Run cloudgrid_login first.");
+      }
+      const orgs = await fetchUserOrgs(token);
+      if (orgs.length === 0) {
+        return okResult({ text: "No organizations found.", structured: { orgs: [] } });
+      }
+      const activeOrg = await ctx.getActiveOrg();
+      const annotated = orgs.map((o) => ({
+        ...o,
+        is_active: o.slug === activeOrg,
+      }));
+      annotated.sort((a, b) => (b.is_active ? 1 : 0) - (a.is_active ? 1 : 0));
+      const lines = annotated.map((o) => {
+        const tag = o.is_active ? " (your active org)" : "";
+        return `${o.slug} — ${o.name} (${o.role})${tag}`;
+      });
+      return okResult({ text: lines.join("\n"), structured: { orgs: annotated } });
+    },
+  );
 
   if (ctx.edition !== "local") return; // web edition stops here — no CLI tools
 
