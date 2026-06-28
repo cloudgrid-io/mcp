@@ -1,0 +1,32 @@
+# Tests
+test/
+
+# CI
+.github/
+
+# Docker (web edition only)
+Dockerfile
+.dockerignore
+
+# Documentation
+README.md
+REMOTE.md
+CHANGELOG.md
+CONTRIBUTING.md
+SECURITY.md
+CODEOWNERS
+
+# Web edition files (not needed for local stdio extension)
+src/web.js
+src/oauth.js
+
+# Build output and scripts
+cloudgrid.mcpb
+scripts/
+
+# Config
+.mcpbignore
+
+# Extra icon sizes (512px is bundled for the manifest)
+assets/cloudgrid-icon-256.png
+assets/cloudgrid-icon.png
