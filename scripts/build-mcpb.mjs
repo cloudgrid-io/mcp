@@ -57,6 +57,14 @@ execFileSync("npm", ["ci", "--omit=dev", "--ignore-scripts"], {
   stdio: "inherit",
 });
 
+// The CLI is no longer a normal dependency (keeps npx installs light), but the
+// .mcpb must be offline-complete — install it explicitly into the staging area.
+console.log("\n— npm install @cloudgrid-io/cli (bundle for .mcpb)");
+execFileSync("npm", ["install", "--no-save", "@cloudgrid-io/cli@^0.9.20", "--ignore-scripts"], {
+  cwd: stage,
+  stdio: "inherit",
+});
+
 // Write .mcpbignore for the staging dir (exclude lockfile, npm cache)
 writeFileSync(
   join(stage, ".mcpbignore"),

@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "cloudgrid",
   "display_name": "CloudGrid",
-  "version": "0.4.4",
+  "version": "0.4.7",
   "description": "Deploy web apps, APIs, and sites to CloudGrid. Full local MCP with 28 tools — drop, deploy, manage, and more.",
   "long_description": "CloudGrid MCP gives Claude Desktop the full CloudGrid toolset: instant drops (live preview URLs), production deploys, logs, rollbacks, environment variables, secrets, and more — all without leaving the conversation. The extension bundles everything; no terminal, no Node, no JSON config.",
   "author": {
@@ -18,18 +18,31 @@
   "support": "https://github.com/cloudgrid-io/mcp/issues",
   "icon": "assets/cloudgrid-icon-512.png",
   "license": "Apache-2.0",
-  "keywords": ["cloudgrid", "deploy", "hosting", "web", "mcp", "drop"],
+  "keywords": [
+    "cloudgrid",
+    "deploy",
+    "hosting",
+    "web",
+    "mcp",
+    "drop"
+  ],
   "server": {
     "type": "node",
     "entry_point": "src/index.js",
     "mcp_config": {
       "command": "node",
-      "args": ["${__dirname}/src/index.js"]
+      "args": [
+        "${__dirname}/src/index.js"
+      ]
     }
   },
   "tools_generated": true,
   "compatibility": {
-    "platforms": ["darwin", "win32", "linux"],
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
     "runtimes": {
       "node": ">=18"
     }

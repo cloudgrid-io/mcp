@@ -1,6 +1,6 @@
 {
   "name": "@cloudgrid-io/mcp",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "description": "MCP server for CloudGrid. Two editions: a local stdio server (full toolset) and a hosted web server (light, CLI-free toolset) over MCP Streamable HTTP.",
   "type": "module",
   "bin": {
@@ -26,7 +26,6 @@
     "build:mcpb": "node scripts/build-mcpb.mjs"
   },
   "dependencies": {
-    "@cloudgrid-io/cli": "^0.9.20",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "express": "^4.22.2",
     "zod": "^3.23.0"
