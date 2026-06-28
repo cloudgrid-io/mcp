@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.4.3
+
+- Added `cwd` parameter to directory-sensitive CLI-wrapping tools
+  (`cloudgrid_init`, `cloudgrid_plug`, `cloudgrid_env`, `cloudgrid_secrets`,
+  `cloudgrid_scaffold`). The parameter sets the working directory for the
+  underlying CLI process, so MCP clients can target a specific project
+  directory instead of relying on the server's own CWD. Defaults to the
+  server's `process.cwd()` when omitted (preserves existing behaviour; in
+  Claude Code / Cursor that is the project root). The path is validated —
+  a clear error is returned if the directory does not exist.
+- Made `cloudgrid_plug` non-interactive by always passing `--auto`. In a
+  fresh (unlinked) directory the CLI's framework-detection prompt would
+  block indefinitely under MCP because stdin is not a TTY. `--auto` tells
+  the CLI to detect and configure the framework without prompting.
+- Set `stdin: 'ignore'` on all CLI subprocess spawns (`runCloudgrid`) so
+  any unexpected prompt from the CLI fails fast instead of hanging to the
+  10-minute timeout.
+- Fixed `cloudgrid_env` arg builder: `set` now sends `KEY=VALUE` as a
+  single arg (was split), and `get` now sends `<key> <name>` in the
+  correct positional order.
+- Made `cloudgrid_unplug` pass `--skip-confirm` and `cloudgrid_delete`
+  pass `--yes`, so the CLI's confirmation prompts don't block with
+  stdin ignored. Both tools already enforce `confirm: true` at the
+  MCP schema level.
+- No CLI change was needed — the existing `--auto` flag covers the prompt.
+- No changes to the web-edition toolset, org-disambiguation logic, or
+  name/org-targeted tools (whoami, status, grid, etc.).
+
 ## 0.4.2
 
 - Made org disambiguation fully stateless in the web-edition

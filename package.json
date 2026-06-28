@@ -1,6 +1,6 @@
 {
   "name": "@cloudgrid-io/mcp",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "MCP server for CloudGrid. Two editions: a local stdio server (full toolset) and a hosted web server (light, CLI-free toolset) over MCP Streamable HTTP.",
   "type": "module",
   "bin": {

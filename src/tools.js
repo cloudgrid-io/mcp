@@ -11,8 +11,8 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile } from "node:fs/promises";
-import { readFileSync } from "node:fs";
-import { basename } from "node:path";
+import { readFileSync, existsSync, statSync } from "node:fs";
+import { basename, resolve } from "node:path";
 import { z } from "zod";
 import { newLoginCode, buildLoginUrl, pollStatusOnce, decodeJwt } from "./auth.js";
 
@@ -59,11 +59,29 @@ function okResult({ text, structured, meta }) {
 }
 
 // ── CLI wrapping (local edition only) ──────────────────────────────────────────
-async function runCloudgrid(args) {
+
+// Resolve and validate a caller-supplied working directory. Returns the resolved
+// absolute path, or process.cwd() when omitted.
+function resolveCwd(cwd) {
+  if (cwd === undefined || cwd === null || cwd === "") return undefined; // let execFile default
+  const abs = resolve(cwd);
+  if (!existsSync(abs)) {
+    throw new Error(`Directory does not exist: ${abs}`);
+  }
+  if (!statSync(abs).isDirectory()) {
+    throw new Error(`Not a directory: ${abs}`);
+  }
+  return abs;
+}
+
+async function runCloudgrid(args, opts = {}) {
+  const cwd = resolveCwd(opts.cwd);
   try {
     const { stdout, stderr } = await execFileAsync("cloudgrid", args, {
       maxBuffer: 16 * 1024 * 1024,
       timeout: 10 * 60 * 1000,
+      stdio: ["ignore", "pipe", "pipe"],
+      ...(cwd ? { cwd } : {}),
     });
     return (stdout || stderr || "").trim() || "Done.";
   } catch (err) {
@@ -80,10 +98,16 @@ async function runCloudgrid(args) {
   }
 }
 
-function cliTool(buildArgs) {
+function cliTool(buildArgs, { cwdParam = false } = {}) {
   return async (input) => {
     try {
-      return ok(await runCloudgrid(buildArgs(input || {})));
+      const params = input || {};
+      const opts = {};
+      if (cwdParam) {
+        // Accept cwd, directory, or dir as the working-directory override.
+        opts.cwd = params.cwd ?? params.directory ?? params.dir;
+      }
+      return ok(await runCloudgrid(buildArgs(params), opts));
     } catch (err) {
       return fail(err.message);
     }
@@ -774,6 +798,7 @@ export function registerTools(server, ctx) {
       description: z.string().optional().describe("Initial one-line description."),
       dir: z.string().optional().describe("Target directory. Defaults to ./<name>."),
       org: z.string().optional().describe("Override the active org for this init."),
+      cwd: z.string().optional().describe("Working directory. The CLI runs in this directory. Defaults to the MCP server's working directory."),
     },
     { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     cliTool(({ kind, name, type, description, dir, org }) => {
@@ -783,7 +808,7 @@ export function registerTools(server, ctx) {
       if (dir) args.push("--dir", dir);
       if (org) args.push("--org", org);
       return args;
-    }),
+    }, { cwdParam: true }),
   );
 
   server.tool(
@@ -793,6 +818,7 @@ export function registerTools(server, ctx) {
       target: z.string().optional().describe("Path or URL. Omit to deploy the entity linked to the current directory."),
       org: z.string().optional().describe("Pick or override the org."),
       no_deploy: z.boolean().optional().describe("Register the entity but do not build or deploy."),
+      cwd: z.string().optional().describe("Working directory. The CLI runs in this directory. Defaults to the MCP server's working directory."),
     },
     { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     cliTool(({ target, org, no_deploy }) => {
@@ -800,9 +826,9 @@ export function registerTools(server, ctx) {
       if (target) args.push(target);
       if (org) args.push("--org", org);
       if (no_deploy) args.push("--no-deploy");
-      args.push("--no-clipboard", "--no-notify");
+      args.push("--auto", "--no-clipboard", "--no-notify");
       return args;
-    }),
+    }, { cwdParam: true }),
   );
 
   server.tool(
@@ -958,7 +984,7 @@ export function registerTools(server, ctx) {
       confirm: z.literal(true).describe("Must be true to proceed."),
     },
     { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
-    cliTool(({ name }) => ["unplug", name]),
+    cliTool(({ name }) => ["unplug", name, "--skip-confirm"]),
   );
 
   server.tool(
@@ -969,7 +995,7 @@ export function registerTools(server, ctx) {
       confirm: z.literal(true).describe("Must be true to proceed."),
     },
     { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
-    cliTool(({ name }) => ["delete", name]),
+    cliTool(({ name }) => ["delete", name, "--yes"]),
   );
 
   server.tool(
@@ -1007,19 +1033,20 @@ export function registerTools(server, ctx) {
       name: z.string().describe("Entity slug."),
       key: z.string().optional().describe("Variable name. Required for get and set."),
       value: z.string().optional().describe("Variable value. Required for set."),
+      cwd: z.string().optional().describe("Working directory. The CLI runs in this directory. Defaults to the MCP server's working directory."),
     },
     { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     cliTool(({ action, name, key, value }) => {
       if (action === "set") {
         if (!key || value === undefined) throw new Error("key and value are required for set");
-        return ["env", "set", name, key, value];
+        return ["env", "set", name, `${key}=${value}`];
       }
       if (action === "get") {
         if (!key) throw new Error("key is required for get");
-        return ["env", "get", name, key];
+        return ["env", "get", key, name];
       }
       return ["env", "list", name];
-    }),
+    }, { cwdParam: true }),
   );
 
   server.tool(
@@ -1030,6 +1057,7 @@ export function registerTools(server, ctx) {
       name: z.string().describe("Entity slug."),
       key: z.string().optional().describe("Secret name. Required for set."),
       value: z.string().optional().describe("Secret value. Required for set."),
+      cwd: z.string().optional().describe("Working directory. The CLI runs in this directory. Defaults to the MCP server's working directory."),
     },
     { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     cliTool(({ action, name, key, value }) => {
@@ -1038,7 +1066,7 @@ export function registerTools(server, ctx) {
         return ["secrets", "set", name, key, value];
       }
       return ["secrets", "list", name];
-    }),
+    }, { cwdParam: true }),
   );
 
   server.tool(
@@ -1047,6 +1075,7 @@ export function registerTools(server, ctx) {
     {
       template: z.string().optional().describe("Template name."),
       dir: z.string().optional().describe("Target directory."),
+      cwd: z.string().optional().describe("Working directory. The CLI runs in this directory. Defaults to the MCP server's working directory."),
     },
     { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     cliTool(({ template, dir }) => {
@@ -1054,7 +1083,7 @@ export function registerTools(server, ctx) {
       if (template) args.push(template);
       if (dir) args.push("--dir", dir);
       return args;
-    }),
+    }, { cwdParam: true }),
   );
 
   server.tool(
