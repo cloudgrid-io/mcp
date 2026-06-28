@@ -90,6 +90,9 @@ function resolveBundledCli() {
   }
 }
 
+// Pin the CLI version for the lazy npx fallback so behaviour is reproducible.
+const CLI_NPX_PKG = "@cloudgrid-io/cli@^0.9.20";
+
 async function runCloudgrid(args, opts = {}) {
   const cwd = resolveCwd(opts.cwd);
   const execOpts = {
@@ -99,7 +102,15 @@ async function runCloudgrid(args, opts = {}) {
     ...(cwd ? { cwd } : {}),
   };
 
-  // 1. Try the bundled CLI (node <cliEntry> ...args)
+  const extract = (err) => {
+    const detail = [err && err.stdout, err && err.stderr, err && err.message]
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+    return new Error(detail || "cloudgrid command failed");
+  };
+
+  // 1. Bundled CLI (the .mcpb ships it in its node_modules)
   const bundled = resolveBundledCli();
   if (bundled) {
     try {
@@ -110,29 +121,32 @@ async function runCloudgrid(args, opts = {}) {
       );
       return (stdout || stderr || "").trim() || "Done.";
     } catch (err) {
-      const detail = [err && err.stdout, err && err.stderr, err && err.message]
-        .filter(Boolean)
-        .join("\n")
-        .trim();
-      throw new Error(detail || "cloudgrid command failed");
+      throw extract(err);
     }
   }
 
-  // 2. Fallback: global `cloudgrid` on PATH
+  // 2. Global `cloudgrid` on PATH
   try {
     const { stdout, stderr } = await execFileAsync("cloudgrid", args, execOpts);
     return (stdout || stderr || "").trim() || "Done.";
   } catch (err) {
-    if (err && err.code === "ENOENT") {
-      throw new Error(
-        "The cloudgrid CLI is not installed. Install it with: npm install -g @cloudgrid-io/cli",
-      );
-    }
-    const detail = [err && err.stdout, err && err.stderr, err && err.message]
-      .filter(Boolean)
-      .join("\n")
-      .trim();
-    throw new Error(detail || "cloudgrid command failed");
+    if (!(err && err.code === "ENOENT")) throw extract(err);
+    // Not found — fall through to lazy npx fetch
+  }
+
+  // 3. Lazy fetch: npx -y @cloudgrid-io/cli@<pinned> <args>
+  //    One-time download; npx caches it for subsequent invocations.
+  console.error("cloudgrid-mcp: fetching the CloudGrid CLI (first use)…");
+  const npx = process.platform === "win32" ? "npx.cmd" : "npx";
+  try {
+    const { stdout, stderr } = await execFileAsync(
+      npx,
+      ["-y", CLI_NPX_PKG, ...args],
+      execOpts,
+    );
+    return (stdout || stderr || "").trim() || "Done.";
+  } catch (err) {
+    throw extract(err);
   }
 }
 
