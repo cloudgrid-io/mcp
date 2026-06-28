@@ -9,10 +9,11 @@
 // The difference is injected as a `ctx` object, so the tool logic is written once.
 
 import { execFile } from "node:child_process";
+import { createRequire } from "node:module";
 import { promisify } from "node:util";
 import { readFile } from "node:fs/promises";
 import { readFileSync, existsSync, statSync } from "node:fs";
-import { basename, resolve } from "node:path";
+import { basename, dirname, resolve, join } from "node:path";
 import { z } from "zod";
 import { newLoginCode, buildLoginUrl, pollStatusOnce, decodeJwt } from "./auth.js";
 
@@ -74,15 +75,52 @@ function resolveCwd(cwd) {
   return abs;
 }
 
+// Resolve the bundled CLI entry point from this package's own node_modules.
+// Returns the absolute path to the JS entry, or null if unresolvable.
+function resolveBundledCli() {
+  try {
+    const require = createRequire(import.meta.url);
+    const pkgPath = require.resolve("@cloudgrid-io/cli/package.json");
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+    const bin = pkg.bin && pkg.bin.cloudgrid;
+    if (!bin) return null;
+    return join(dirname(pkgPath), bin);
+  } catch {
+    return null;
+  }
+}
+
 async function runCloudgrid(args, opts = {}) {
   const cwd = resolveCwd(opts.cwd);
+  const execOpts = {
+    maxBuffer: 16 * 1024 * 1024,
+    timeout: 10 * 60 * 1000,
+    stdio: ["ignore", "pipe", "pipe"],
+    ...(cwd ? { cwd } : {}),
+  };
+
+  // 1. Try the bundled CLI (node <cliEntry> ...args)
+  const bundled = resolveBundledCli();
+  if (bundled) {
+    try {
+      const { stdout, stderr } = await execFileAsync(
+        process.execPath,
+        [bundled, ...args],
+        execOpts,
+      );
+      return (stdout || stderr || "").trim() || "Done.";
+    } catch (err) {
+      const detail = [err && err.stdout, err && err.stderr, err && err.message]
+        .filter(Boolean)
+        .join("\n")
+        .trim();
+      throw new Error(detail || "cloudgrid command failed");
+    }
+  }
+
+  // 2. Fallback: global `cloudgrid` on PATH
   try {
-    const { stdout, stderr } = await execFileAsync("cloudgrid", args, {
-      maxBuffer: 16 * 1024 * 1024,
-      timeout: 10 * 60 * 1000,
-      stdio: ["ignore", "pipe", "pipe"],
-      ...(cwd ? { cwd } : {}),
-    });
+    const { stdout, stderr } = await execFileAsync("cloudgrid", args, execOpts);
     return (stdout || stderr || "").trim() || "Done.";
   } catch (err) {
     if (err && err.code === "ENOENT") {
