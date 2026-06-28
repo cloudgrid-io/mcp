@@ -23,7 +23,9 @@ jobs:
       - run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Build .mcpb desktop extension
+        run: npm run build:mcpb
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" --generate-notes
+        run: gh release create "${{ github.ref_name }}" --generate-notes cloudgrid.mcpb
