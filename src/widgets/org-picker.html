@@ -13,8 +13,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .org-btn{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-radius:8px;border:1px solid rgba(138,107,255,.3);background:transparent;color:#e0e0e0;cursor:pointer;transition:all .15s;font-size:13px;text-align:left}
 .org-btn:hover{border-color:#8a6bff;background:rgba(138,107,255,.1)}
 .org-btn.loading{opacity:.6;pointer-events:none}
+.org-btn.not-ready{opacity:.65;border-color:rgba(255,200,50,.3)}
+.org-btn.not-ready:hover{border-color:rgba(255,200,50,.6);background:rgba(255,200,50,.06)}
 .org-name{font-weight:500;color:#fff}
 .org-role{font-size:11px;color:#9ca3af}
+.org-warn{font-size:10px;color:#e2b340;margin-left:6px}
 .status{font-size:12px;color:#9ca3af;margin-top:12px}
 </style>
 </head>
@@ -43,9 +46,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
         '<div class="orgs">';
     for (var i = 0; i < data.orgs.length; i++) {
       var org = data.orgs[i];
+      var notReady = org.render_ready === false;
       html +=
-        '<button class="org-btn" data-slug="' + esc(org.slug) + '">' +
-          '<span class="org-name">' + esc(org.name) + '</span>' +
+        '<button class="org-btn' + (notReady ? ' not-ready' : '') + '" data-slug="' + esc(org.slug) + '">' +
+          '<span class="org-name">' + esc(org.name) + (notReady ? '<span class="org-warn">not set up yet</span>' : '') + '</span>' +
           '<span class="org-role">' + esc(org.role) + '</span>' +
         '</button>';
     }
