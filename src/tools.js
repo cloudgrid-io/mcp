@@ -9,7 +9,6 @@
 // The difference is injected as a `ctx` object, so the tool logic is written once.
 
 import { execFile } from "node:child_process";
-import { createRequire } from "node:module";
 import { promisify } from "node:util";
 import { readFile } from "node:fs/promises";
 import { readFileSync, existsSync, statSync } from "node:fs";
@@ -75,23 +74,41 @@ function resolveCwd(cwd) {
   return abs;
 }
 
-// Resolve the bundled CLI entry point from this package's own node_modules.
-// Returns the absolute path to the JS entry, or null if unresolvable.
+// Pin the CLI version for the lazy npx fallback so behaviour is reproducible.
+const CLI_NPX_PKG = "@cloudgrid-io/cli@^0.9.20";
+
+// Minimum CLI version that supports the flags the MCP passes (--auto etc.).
+const MIN_CLI_VERSION = "0.9.20";
+
+// Simple semver comparison: true when `version` >= MIN_CLI_VERSION.
+function meetsMinVersion(version) {
+  if (!version) return false;
+  const parse = (s) => s.replace(/^v/, "").split(".").map((p) => parseInt(p, 10) || 0);
+  const v = parse(version);
+  const m = parse(MIN_CLI_VERSION);
+  for (let i = 0; i < 3; i++) {
+    if ((v[i] || 0) > (m[i] || 0)) return true;
+    if ((v[i] || 0) < (m[i] || 0)) return false;
+  }
+  return true;
+}
+
+// Resolve the bundled CLI from this package's OWN node_modules only — never
+// walk up to parent directories (which may contain stale CLI versions).
+// Returns { entry, version } or null.
 function resolveBundledCli() {
   try {
-    const require = createRequire(import.meta.url);
-    const pkgPath = require.resolve("@cloudgrid-io/cli/package.json");
+    const srcDir = dirname(new URL(import.meta.url).pathname);
+    const pkgPath = join(srcDir, "..", "node_modules", "@cloudgrid-io", "cli", "package.json");
+    if (!existsSync(pkgPath)) return null;
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
     const bin = pkg.bin && pkg.bin.cloudgrid;
     if (!bin) return null;
-    return join(dirname(pkgPath), bin);
+    return { entry: join(dirname(pkgPath), bin), version: pkg.version || null };
   } catch {
     return null;
   }
 }
-
-// Pin the CLI version for the lazy npx fallback so behaviour is reproducible.
-const CLI_NPX_PKG = "@cloudgrid-io/cli@^0.9.20";
 
 async function runCloudgrid(args, opts = {}) {
   const cwd = resolveCwd(opts.cwd);
@@ -110,28 +127,52 @@ async function runCloudgrid(args, opts = {}) {
     return new Error(detail || "cloudgrid command failed");
   };
 
-  // 1. Bundled CLI (the .mcpb ships it in its node_modules)
+  // 1. Bundled CLI — own node_modules only, version-gated
   const bundled = resolveBundledCli();
-  if (bundled) {
+  if (bundled && meetsMinVersion(bundled.version)) {
     try {
       const { stdout, stderr } = await execFileAsync(
         process.execPath,
-        [bundled, ...args],
+        [bundled.entry, ...args],
         execOpts,
       );
       return (stdout || stderr || "").trim() || "Done.";
     } catch (err) {
       throw extract(err);
     }
+  } else if (bundled) {
+    console.error(
+      `cloudgrid-mcp: bundled CLI ${bundled.version} < ${MIN_CLI_VERSION}, skipping`,
+    );
   }
 
-  // 2. Global `cloudgrid` on PATH
-  try {
-    const { stdout, stderr } = await execFileAsync("cloudgrid", args, execOpts);
-    return (stdout || stderr || "").trim() || "Done.";
-  } catch (err) {
-    if (!(err && err.code === "ENOENT")) throw extract(err);
-    // Not found — fall through to lazy npx fetch
+  // 2. Global `cloudgrid` on PATH — version-gated
+  {
+    let useGlobal = false;
+    try {
+      const { stdout: vOut } = await execFileAsync("cloudgrid", ["--version"], {
+        timeout: 5_000,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      const ver = vOut.trim().match(/(\d+\.\d+\.\d+)/)?.[1];
+      if (meetsMinVersion(ver)) {
+        useGlobal = true;
+      } else {
+        console.error(
+          `cloudgrid-mcp: global CLI ${ver || vOut.trim()} < ${MIN_CLI_VERSION}, skipping`,
+        );
+      }
+    } catch {
+      // Not on PATH or --version failed — skip
+    }
+    if (useGlobal) {
+      try {
+        const { stdout, stderr } = await execFileAsync("cloudgrid", args, execOpts);
+        return (stdout || stderr || "").trim() || "Done.";
+      } catch (err) {
+        throw extract(err);
+      }
+    }
   }
 
   // 3. Lazy fetch: npx -y @cloudgrid-io/cli@<pinned> <args>
