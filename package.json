@@ -1,7 +1,7 @@
 {
   "name": "@cloudgrid-io/mcp",
-  "version": "0.4.7",
-  "description": "MCP server for CloudGrid. Two editions: a local stdio server (full toolset) and a hosted web server (light, CLI-free toolset) over MCP Streamable HTTP.",
+  "version": "0.5.0",
+  "description": "MCP server for CloudGrid. Three editions: a local stdio server (full toolset), a hosted web server (light, CLI-free toolset), and a public docs server (search_cloudgrid_documentation) over MCP Streamable HTTP.",
   "type": "module",
   "bin": {
     "cloudgrid-mcp": "src/index.js"
@@ -23,6 +23,9 @@
     "smoke:redrop": "node test/smoke-redrop.mjs",
     "smoke:oauth": "node test/smoke-oauth.mjs",
     "test:auth": "node test/auth.test.mjs",
+    "smoke:docs": "node test/smoke-docs.mjs",
+    "start:docs": "node src/docs.js",
+    "snapshot:corpus": "node scripts/snapshot-corpus.mjs",
     "build:mcpb": "node scripts/build-mcpb.mjs"
   },
   "dependencies": {

@@ -1,0 +1,106 @@
+# Draft deployment manifest for the CloudGrid docs MCP edition.
+# A single-replica, read-only, public server. No auth, no secrets, no CLI.
+#
+# NOT YET APPLIED — hosting is a separate step (Task 23c-host).
+#
+# The same Docker image as the web edition works; override the command to start
+# the docs server (node src/docs.js) instead of the web server (node src/web.js).
+#
+# Endpoint options:
+#   A) docs.mcp.cloudgrid.io/mcp  — clean subdomain, matches Cloudflare's pattern.
+#      Needs: new DNS A/CNAME record + TLS cert + Ingress (founder/platform).
+#   B) mcp.cloudgrid.io/docs      — path on the existing host.
+#      Reuses the existing cert and DNS. Needs only an Ingress path rule.
+#
+# Recommendation: B for speed (no DNS/cert dependency), A later for the clean
+# subdomain if desired. The server is host-agnostic — it serves on whatever
+# path the Ingress routes to it.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docs-mcp
+  namespace: cloudgrid-system
+  labels:
+    app: docs-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: docs-mcp
+  template:
+    metadata:
+      labels:
+        app: docs-mcp
+    spec:
+      containers:
+        - name: docs-mcp
+          # Uses the same image as the web edition. Override the command to
+          # start the docs server instead.
+          image: gcr.io/PROJECT_ID/mcp-server:latest   # replace PROJECT_ID
+          command: ["node", "src/docs.js"]
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "8080"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: docs-mcp
+  namespace: cloudgrid-system
+  labels:
+    app: docs-mcp
+spec:
+  selector:
+    app: docs-mcp
+  ports:
+    - port: 80
+      targetPort: 8080
+      protocol: TCP
+  type: ClusterIP
+---
+# Option B ingress: route mcp.cloudgrid.io/docs → docs-mcp service.
+# Uncomment and adjust when wiring the live route.
+#
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: docs-mcp
+#   namespace: cloudgrid-system
+#   annotations:
+#     kubernetes.io/ingress.class: "gce"
+# spec:
+#   rules:
+#     - host: mcp.cloudgrid.io
+#       http:
+#         paths:
+#           - path: /docs
+#             pathType: Prefix
+#             backend:
+#               service:
+#                 name: docs-mcp
+#                 port:
+#                   number: 80
