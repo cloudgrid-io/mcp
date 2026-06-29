@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.5.0
+
+- Added **docs edition** — a public, no-auth, read-only MCP server exposing
+  `search_cloudgrid_documentation` and `cloudgrid_quickstart_guide` over
+  MCP Streamable HTTP. Safe to expose anonymously (no drop/deploy/secrets
+  tools).
+- BM25 keyword search over the bundled documentation corpus (15 markdown
+  files, ~122 chunks). The search interface is behind a clean seam so the
+  backend can be upgraded to semantic/embedding search later.
+- Corpus: skills repo markdown (USAGE.md, INSTALL.md, COOKBOOK.md, the nine
+  SKILL.md files, README, INSTALL_FOR_AGENTS) + CLI reference. Snapshot at
+  build time via `npm run snapshot:corpus`.
+- Draft Kubernetes deployment manifest (`k8s/docs-mcp-deployment.yaml`) —
+  single replica, read-only, healthz. Not yet applied.
+- New scripts: `start:docs`, `smoke:docs`, `snapshot:corpus`.
+- The same Docker image serves all three editions; the docs edition starts
+  with `node src/docs.js`.
+
 ## 0.4.3
 
 - Added `cwd` parameter to directory-sensitive CLI-wrapping tools
