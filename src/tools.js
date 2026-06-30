@@ -75,10 +75,37 @@ function resolveCwd(cwd) {
 }
 
 // Pin the CLI version for the lazy npx fallback so behaviour is reproducible.
-const CLI_NPX_PKG = "@cloudgrid-io/cli@^0.9.20";
+// MCP 0.5.2 is tested against CLI 0.10.1.
+const CLI_NPX_PKG = "@cloudgrid-io/cli@~0.10.1";
 
-// Minimum CLI version that supports the flags the MCP passes (--auto etc.).
-const MIN_CLI_VERSION = "0.9.20";
+// Minimum CLI version that supports the verbs and flags the MCP passes.
+const MIN_CLI_VERSION = "0.10.1";
+
+// Verb map for the drift guard: each CLI-wrapping tool's top-level verb(s).
+// The drift-guard test imports this and asserts every verb exists in `cloudgrid --help`.
+export const CLI_TOOL_VERBS = {
+  cloudgrid_init:     ["init"],
+  cloudgrid_plug:     ["plug"],
+  cloudgrid_logs:     ["logs"],
+  cloudgrid_share:    ["visibility"],
+  cloudgrid_feedback: ["feedback"],
+  cloudgrid_whoami:   ["whoami"],
+  cloudgrid_use:      ["use"],
+  cloudgrid_logout:   ["logout"],
+  cloudgrid_status:   ["status"],
+  cloudgrid_info:     ["info"],
+  cloudgrid_grid:     ["get"],
+  cloudgrid_rename:   ["rename"],
+  cloudgrid_unplug:   ["unplug"],
+  cloudgrid_delete:   ["delete"],
+  cloudgrid_rollback: ["rollback"],
+  cloudgrid_versions: ["versions"],
+  cloudgrid_env:      ["env"],
+  cloudgrid_secrets:  ["secrets"],
+  cloudgrid_scaffold: ["scaffold"],
+  cloudgrid_doctor:   ["doctor"],
+  cloudgrid_open:     ["open"],
+};
 
 // Simple semver comparison: true when `version` >= MIN_CLI_VERSION.
 function meetsMinVersion(version) {
@@ -1006,7 +1033,7 @@ export function registerTools(server, ctx) {
     "Set an entity's visibility and print its URL. Defaults to link (anyone with the URL). Wraps `cloudgrid visibility set`.",
     {
       name: z.string().describe("Entity slug."),
-      mode: z.enum(["link", "private", "authenticated", "org", "space"]).optional().describe("Visibility mode. Default link."),
+      mode: z.enum(["link", "private", "authenticated", "grid"]).optional().describe("Visibility mode. Default link."),
     },
     { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     cliTool(({ name, mode }) => ["visibility", "set", name, mode ?? "link"]),
@@ -1025,23 +1052,6 @@ export function registerTools(server, ctx) {
       const args = ["feedback", "list"];
       if (since) args.push("--since", since);
       if (limit) args.push("--limit", String(limit));
-      if (org) args.push("--org", org);
-      return args;
-    }),
-  );
-
-  server.tool(
-    "cloudgrid_brain",
-    "Re-run an entity's Grid Brain hooks to re-classify its description, tags, and diagram. Wraps `cloudgrid brain refresh`.",
-    {
-      name: z.string().describe("Entity slug."),
-      wait: z.boolean().optional().describe("Wait for the refresh to finish. Default true."),
-      org: z.string().optional().describe("Target an entity in another org."),
-    },
-    { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
-    cliTool(({ name, wait, org }) => {
-      const args = ["brain", "refresh", name];
-      if (wait !== false) args.push("--wait");
       if (org) args.push("--org", org);
       return args;
     }),
@@ -1094,35 +1104,19 @@ export function registerTools(server, ctx) {
   );
 
   server.tool(
-    "cloudgrid_builds",
-    "List recent builds and deploys for an entity. Wraps `cloudgrid builds`.",
-    {
-      name: z.string().optional().describe("Entity name. Omit for the entity linked to the current directory."),
-      limit: z.number().int().positive().optional().describe("Number of builds to show."),
-    },
-    { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
-    cliTool(({ name, limit }) => {
-      const args = ["builds"];
-      if (name) args.push(name);
-      if (limit) args.push("--limit", String(limit));
-      return args;
-    }),
-  );
-
-  server.tool(
     "cloudgrid_grid",
-    "List entities on the hub or org. Wraps `cloudgrid grid`.",
-    { org: z.string().optional().describe("Org slug. Omit for the active org.") },
+    "List entities on the grid. Wraps `cloudgrid get entities`.",
+    { grid: z.string().optional().describe("Grid slug. Omit for the active grid.") },
     { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
-    cliTool(({ org }) => (org ? ["grid", "--org", org] : ["grid"])),
+    cliTool(({ grid }) => (grid ? ["get", "entities", "--grid", grid] : ["get", "entities"])),
   );
 
   server.tool(
     "cloudgrid_rename",
-    "Rename a CloudGrid entity. Wraps `cloudgrid rename`.",
+    "Rename a CloudGrid entity's display name (slug stays the same). Wraps `cloudgrid rename`.",
     {
-      name: z.string().describe("Current entity slug."),
-      new_name: z.string().describe("New slug."),
+      name: z.string().describe("Entity slug."),
+      new_name: z.string().describe("New display name."),
     },
     { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     cliTool(({ name, new_name }) => ["rename", name, new_name]),
@@ -1141,13 +1135,13 @@ export function registerTools(server, ctx) {
 
   server.tool(
     "cloudgrid_delete",
-    "Archive and delete a CloudGrid entity. Destructive. Wraps `cloudgrid delete`.",
+    "Archive a CloudGrid inspiration. Destructive. Wraps `cloudgrid delete entity`.",
     {
       name: z.string().describe("Entity slug to delete (required)."),
       confirm: z.literal(true).describe("Must be true to proceed."),
     },
     { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
-    cliTool(({ name }) => ["delete", name, "--yes"]),
+    cliTool(({ name }) => ["delete", "entity", name, "--yes"]),
   );
 
   server.tool(
@@ -1159,7 +1153,7 @@ export function registerTools(server, ctx) {
     },
     { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     cliTool(({ name, to }) => {
-      const args = ["rollback", name];
+      const args = ["rollback", name, "--yes"];
       if (to) args.push("--to", to);
       return args;
     }),
@@ -1215,7 +1209,7 @@ export function registerTools(server, ctx) {
     cliTool(({ action, name, key, value }) => {
       if (action === "set") {
         if (!key || value === undefined) throw new Error("key and value are required for set");
-        return ["secrets", "set", name, key, value];
+        return ["secrets", "set", name, `${key}=${value}`];
       }
       return ["secrets", "list", name];
     }, { cwdParam: true }),
@@ -1223,19 +1217,12 @@ export function registerTools(server, ctx) {
 
   server.tool(
     "cloudgrid_scaffold",
-    "Generate starter files for a CloudGrid entity. Wraps `cloudgrid scaffold`.",
+    "Scaffold service folders declared in cloudgrid.yaml (idempotent). Wraps `cloudgrid scaffold`.",
     {
-      template: z.string().optional().describe("Template name."),
-      dir: z.string().optional().describe("Target directory."),
       cwd: z.string().optional().describe("Working directory. The CLI runs in this directory. Defaults to the MCP server's working directory."),
     },
     { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
-    cliTool(({ template, dir }) => {
-      const args = ["scaffold"];
-      if (template) args.push(template);
-      if (dir) args.push("--dir", dir);
-      return args;
-    }, { cwdParam: true }),
+    cliTool(() => ["scaffold"], { cwdParam: true }),
   );
 
   server.tool(
@@ -1248,11 +1235,11 @@ export function registerTools(server, ctx) {
 
   server.tool(
     "cloudgrid_open",
-    "Return the public URL for an entity. Does not open a browser. Wraps `cloudgrid open --url`.",
+    "Return the public URL for an entity. Does not open a browser. Wraps `cloudgrid open --print`.",
     { name: z.string().optional().describe("Entity name. Omit for the entity linked to the current directory.") },
     { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     cliTool(({ name }) => {
-      const args = ["open", "--url"];
+      const args = ["open", "--print"];
       if (name) args.push(name);
       return args;
     }),
