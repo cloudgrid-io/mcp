@@ -79,7 +79,9 @@ also work in the web edition where no CLI exists. `cloudgrid_login` writes the s
 | `cloudgrid_logout` | `cloudgrid logout` | Sign out and clear local credentials. Destructive. |
 | `cloudgrid_status` | `cloudgrid status` | Org dashboard or entity detail. Read-only. |
 | `cloudgrid_info` | `cloudgrid info` | Entity metadata. Read-only. |
-| `cloudgrid_grid` | `cloudgrid get entities` | List entities on the grid. Read-only. |
+| `cloudgrid_get` | `cloudgrid get grids\|entities\|spaces` | List grids, entities, or spaces. Read-only. |
+| `cloudgrid_describe_grid` | `cloudgrid describe grid <slug>` | Grid detail. Read-only. |
+| `cloudgrid_pickup` | `cloudgrid pickup <name>` | Download an entity's source and bind the folder. |
 | `cloudgrid_rename` | `cloudgrid rename` | Rename an entity's display name. |
 | `cloudgrid_unplug` | `cloudgrid unplug` | Take an entity off the grid. Destructive; requires confirm. |
 | `cloudgrid_delete` | `cloudgrid delete entity` | Archive an inspiration. Destructive; requires confirm. |

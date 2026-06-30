@@ -25,15 +25,24 @@ function check(label, cond) {
 
 const CLI_PIN = "@cloudgrid-io/cli@~0.10.1";
 
-async function getHelpText() {
+async function getHelpText(verb) {
   const npx = process.platform === "win32" ? "npx.cmd" : "npx";
+  const args = verb ? ["-y", CLI_PIN, verb, "--help"] : ["-y", CLI_PIN, "--help"];
   const { stdout } = await execFileAsync(
     npx,
-    ["-y", CLI_PIN, "--help"],
+    args,
     { timeout: 60_000, stdio: ["ignore", "pipe", "pipe"] },
   );
   return stdout;
 }
+
+// Required subcommands per top-level verb. The top-level check above only catches
+// a renamed/removed verb; this catches a renamed/removed SUBCOMMAND (e.g. the CLI
+// renaming `get entities` → `get apps`), which the MCP's CLI-wrapping tools depend on.
+const REQUIRED_SUBCOMMANDS = {
+  get: ["grids", "entities", "spaces"],
+  describe: ["grid"],
+};
 
 // ── Parse the Commands section from --help ──────────────────────────────────
 
@@ -72,6 +81,29 @@ console.log(`drift-guard: checking ${toolEntries.length} CLI-wrapping tools …\
 for (const [tool, verbs] of toolEntries) {
   for (const verb of verbs) {
     check(`${tool} → "${verb}" exists in CLI`, availableVerbs.has(verb));
+  }
+}
+
+console.log("");
+
+// ── Subcommand checks ───────────────────────────────────────────────────────
+// For each verb that has required subcommands, fetch `cloudgrid <verb> --help`
+// and assert each subcommand appears in that verb's Commands block.
+const subVerbs = Object.entries(REQUIRED_SUBCOMMANDS);
+console.log(`drift-guard: checking subcommands for ${subVerbs.length} verb(s) …\n`);
+
+for (const [verb, subs] of subVerbs) {
+  let subcommands = new Set();
+  try {
+    const subHelp = await getHelpText(verb);
+    subcommands = parseVerbs(subHelp);
+  } catch (err) {
+    check(`fetched "${verb} --help"`, false);
+    console.log(`     (${err.message})`);
+    continue;
+  }
+  for (const sub of subs) {
+    check(`"${verb} ${sub}" subcommand exists in CLI`, subcommands.has(sub));
   }
 }
 
