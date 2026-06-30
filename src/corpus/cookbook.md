@@ -67,14 +67,14 @@ cloudgrid feedback list
 The fastest chain has one step and no login. Drop an HTML file, get a public URL:
 
 ```
-curl -sS -X POST https://api.cloudgrid.io/api/v2/drop/auto \
+curl -sS -X POST https://api.cloudgrid.io/api/v2/plug \
   -F "artifact=@./index.html;type=text/html"
 ```
 
-The response includes `url` (the live link) and `claim_url` (sign in within 7 days
-to keep it). This is what the `cloudgrid-drop` skill and the `cloudgrid_drop` MCP
-tool do for you. It is anonymous and serves inspirations only; a full app needs the
-signed-in `plug` flow above.
+The response includes `slug` (the live link is `https://guest.cloudgrid.io/<slug>`)
+and `claim_url` (sign in within 7 days to keep it). This is what the `cloudgrid-drop`
+skill and the `cloudgrid_drop` MCP tool do for you. It is anonymous and serves
+inspirations only; a full app needs the signed-in `plug` flow above.
 
 ## Shorter chains
 

@@ -26,7 +26,7 @@ const FAKE_JWT = `${b64url(Buffer.from(JSON.stringify({ alg: "HS256" })))}.${b64
   Buffer.from(JSON.stringify({ sub: "u_oauth", email: "oauth@example.com", exp: Math.floor(Date.now() / 1000) + 3600 })),
 )}.sig`;
 
-// ── Mock upstream CloudGrid: /auth/status + /api/v2/drop/auto ──────────────────
+// ── Mock upstream CloudGrid: /auth/status + /api/v2/plug ───────────────────────
 let statusCalls = 0;
 let dropAuthHeader = null;
 const dropBodies = [];
@@ -37,15 +37,27 @@ const mock = createServer((req, res) => {
     res.end(JSON.stringify(statusCalls < 2 ? { status: "pending" } : { status: "authenticated", jwt: FAKE_JWT }));
     return;
   }
-  if (req.url.startsWith("/api/v2/drop/auto")) {
+  if (req.url.startsWith("/api/v2/plug")) {
     dropAuthHeader = req.headers.authorization ?? null;
     let body = "";
     req.on("data", (c) => (body += c.toString("utf8")));
     req.on("end", () => {
       dropBodies.push(body);
-      res.statusCode = 201;
+      // Authed create → 202 with the unified-plug shape: slug + grid, no `url`
+      // (the client composes the URL). Mirrors planAuthedCreatePlug's response.
+      res.statusCode = 202;
       res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ url: "https://e2e-bot.cloudgrid.io/mock-1", entity_id: "e-1", owned_by: "authenticated", expires_at: "2026-07-01T00:00:00Z" }));
+      res.end(JSON.stringify({
+        trace_id: null,
+        deploy_event_id: null,
+        status: "live",
+        entity_id: "e-1",
+        slug: "mock-1",
+        grid: "e2e-bot",
+        poll_url: null,
+        detection: { kind: "inspiration", framework: "", confidence: 0.95, signals: ["html-document"] },
+        forkable: true,
+      }));
     });
     return;
   }
@@ -130,12 +142,16 @@ try {
     }),
   );
   const drop = await client.callTool({ name: "cloudgrid_drop", arguments: { html: "<h1>authed</h1>" } });
-  check("authed drop reports Published to your org", (drop.content?.[0]?.text ?? "").includes("Published to your org"));
+  check("authed drop reports Your app is live (web edition)", (drop.content?.[0]?.text ?? "").includes("Your app is live"));
+  check("authed drop composed the live URL from slug + grid", (drop.content?.[0]?.text ?? "").includes("https://e2e-bot.cloudgrid.io/mock-1"));
   check("upstream drop received the OAuth Bearer", dropAuthHeader === `Bearer ${FAKE_JWT}`);
 
-  // Authed redrop continuity: the SECOND authed drop must carry previous_id.
+  // Each `/plug` drop is a fresh create (the unified plug is create-only — there
+  // is no in-place redrop / `previous_id` on this path), so a second drop never
+  // sends a `previous_id` part. The artifact part name is still `artifact`.
   await client.callTool({ name: "cloudgrid_drop", arguments: { html: "<h1>authed v2</h1>" } });
-  check("authed redrop sends previous_id", dropBodies.length >= 2 && dropBodies[1].includes('name="previous_id"') && dropBodies[1].includes("e-1"));
+  check("second authed drop sends NO previous_id (plug is create-only)", dropBodies.length >= 2 && !dropBodies[1].includes('name="previous_id"'));
+  check("drop sends the artifact part", dropBodies[0].includes('name="artifact"'));
   await client.close();
 } finally {
   try {
