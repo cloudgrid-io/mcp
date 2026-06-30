@@ -303,8 +303,7 @@ const GUEST_ORG_SLUG = "guest";
 // Compose an entity's public URL from the `/api/v2/plug` response. Unlike the
 // retired `/drop/auto`, `/plug` does NOT return a `url` field — it returns
 // `slug` + `grid` (+ a `detection.kind`) and expects the client to derive the
-// canonical URL, mirroring `entityUrl()` in cloudgrid-mono (shared/entity-url.ts,
-// decision 007):
+// canonical URL, mirroring the platform's `entityUrl()` URL derivation:
 //   - inspiration (HTML drops): path-based at the org apex
 //       https://<grid>.cloudgrid.io/<slug>
 //   - runtime (app/agent):      subdomain

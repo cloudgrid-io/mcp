@@ -45,10 +45,11 @@ jobs:
   # API drift guard: the web/local editions call api.cloudgrid.io directly (drop
   # → POST /api/v2/plug, claim → POST /api/v2/entities/:id/pickup). The CLI-verb
   # drift guard above does NOT cover these direct HTTP endpoints, so a
-  # deleted/renamed API endpoint would otherwise reach prod silently (BL584 M7
-  # deleted /drop/auto + /anon-claim out from under the MCP). smoke:web spawns
-  # the web edition and performs a real anonymous drop against the live API,
-  # asserting a guest URL comes back — so this class of break fails CI, not prod.
+  # deleted/renamed API endpoint would otherwise reach prod silently (this is
+  # exactly how the platform once deleted the MCP's drop/claim endpoints out
+  # from under it). smoke:web spawns the web edition and performs a real
+  # anonymous drop against the live API, asserting a guest URL comes back — so
+  # this class of break fails CI, not prod.
   smoke-web:
     runs-on: ubuntu-latest
     steps:
