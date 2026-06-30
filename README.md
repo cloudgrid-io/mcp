@@ -13,6 +13,13 @@ The local edition wraps the `cloudgrid` CLI for authenticated operations (the CL
 handles auth, org context, and error formatting) and calls the API directly for the
 drop, claim, and login tools.
 
+## CLI compatibility
+
+MCP 0.5.2 is tested against CLI 0.10.1. The lazy-npx fallback pins
+`@cloudgrid-io/cli@~0.10.1` so a future CLI major with renamed verbs cannot
+silently break a released MCP. A CI drift guard (`npm run test:drift-guard`)
+asserts every wrapped verb exists in the CLI help.
+
 ## Prerequisite
 
 Install and log in to the CLI:
@@ -67,24 +74,22 @@ also work in the web edition where no CLI exists. `cloudgrid_login` writes the s
 | `cloudgrid_logs` | `cloudgrid logs` | Snapshot of recent logs. Does not stream. Read-only. |
 | `cloudgrid_share` | `cloudgrid visibility set` | Set visibility, default link. |
 | `cloudgrid_feedback` | `cloudgrid feedback list` | Read the org feedback feed. Read-only. |
-| `cloudgrid_brain` | `cloudgrid brain refresh` | Re-run the Grid Brain hooks. |
 | `cloudgrid_whoami` | `cloudgrid whoami` | Show the signed-in user and active org. Read-only. |
 | `cloudgrid_use` | `cloudgrid use` | Switch the active org. |
 | `cloudgrid_logout` | `cloudgrid logout` | Sign out and clear local credentials. Destructive. |
 | `cloudgrid_status` | `cloudgrid status` | Org dashboard or entity detail. Read-only. |
 | `cloudgrid_info` | `cloudgrid info` | Entity metadata. Read-only. |
-| `cloudgrid_builds` | `cloudgrid builds` | Recent builds and deploys. Read-only. |
-| `cloudgrid_grid` | `cloudgrid grid` | List entities on the hub. Read-only. |
-| `cloudgrid_rename` | `cloudgrid rename` | Rename an entity. |
+| `cloudgrid_grid` | `cloudgrid get entities` | List entities on the grid. Read-only. |
+| `cloudgrid_rename` | `cloudgrid rename` | Rename an entity's display name. |
 | `cloudgrid_unplug` | `cloudgrid unplug` | Take an entity off the grid. Destructive; requires confirm. |
-| `cloudgrid_delete` | `cloudgrid delete` | Archive and delete an entity. Destructive; requires confirm. |
+| `cloudgrid_delete` | `cloudgrid delete entity` | Archive an inspiration. Destructive; requires confirm. |
 | `cloudgrid_rollback` | `cloudgrid rollback` | Rollback to a previous version. |
 | `cloudgrid_versions` | `cloudgrid versions` | List published versions. Read-only. |
 | `cloudgrid_env` | `cloudgrid env` | Get, set, or list environment variables. |
 | `cloudgrid_secrets` | `cloudgrid secrets` | Set or list secret names. Never returns secret values. |
 | `cloudgrid_scaffold` | `cloudgrid scaffold` | Generate starter files. |
 | `cloudgrid_doctor` | `cloudgrid doctor` | Run local diagnostics. Read-only. |
-| `cloudgrid_open` | `cloudgrid open` | Return the public URL. Does not open a browser. Read-only. |
+| `cloudgrid_open` | `cloudgrid open --print` | Return the public URL. Does not open a browser. Read-only. |
 
 `cloudgrid_share` and `cloudgrid_visibility` overlap on purpose: `cloudgrid_share`
 wraps the CLI and defaults to `link`; `cloudgrid_visibility` is direct API, takes an
