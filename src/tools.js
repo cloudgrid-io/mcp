@@ -94,7 +94,9 @@ export const CLI_TOOL_VERBS = {
   cloudgrid_logout:   ["logout"],
   cloudgrid_status:   ["status"],
   cloudgrid_info:     ["info"],
-  cloudgrid_grid:     ["get"],
+  cloudgrid_get:          ["get"],
+  cloudgrid_describe_grid: ["describe"],
+  cloudgrid_pickup:        ["pickup"],
   cloudgrid_rename:   ["rename"],
   cloudgrid_unplug:   ["unplug"],
   cloudgrid_delete:   ["delete"],
@@ -1103,12 +1105,69 @@ export function registerTools(server, ctx) {
     }),
   );
 
+  // cloudgrid_get is the single canonical lister for grids, entities, and spaces
+  // (wraps `cloudgrid get <resource> --json`). It replaces the former
+  // cloudgrid_grid (which wrapped only `get entities`) — retired here so there is
+  // exactly one way to list entities. resource="entities" reproduces the old
+  // cloudgrid_grid behaviour with `grid` mapping to the CLI's `--grid` flag.
   server.tool(
-    "cloudgrid_grid",
-    "List entities on the grid. Wraps `cloudgrid get entities`.",
-    { grid: z.string().optional().describe("Grid slug. Omit for the active grid.") },
+    "cloudgrid_get",
+    "List CloudGrid grids, entities, or spaces. Wraps `cloudgrid get <grids|entities|spaces> --json`.",
+    {
+      resource: z.enum(["grids", "entities", "spaces"]).describe("What to list: grids, entities, or spaces."),
+      grid: z.string().optional().describe("Grid slug (entities/spaces only). Omit for the active grid."),
+      kind: z.enum(["app", "agent", "inspiration"]).optional().describe("Filter by kind (entities only)."),
+      status: z.enum(["charged", "live", "dark", "archived"]).optional().describe("Filter by status (entities only)."),
+      space: z.string().optional().describe("Only entities scoped to this space slug (entities only)."),
+      archived: z.boolean().optional().describe("Include archived entities (entities only)."),
+    },
     { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
-    cliTool(({ grid }) => (grid ? ["get", "entities", "--grid", grid] : ["get", "entities"])),
+    cliTool(({ resource, grid, kind, status, space, archived }) => {
+      const args = ["get", resource];
+      // --grid applies to entities and spaces; grids has no such flag.
+      if (grid && resource !== "grids") args.push("--grid", grid);
+      if (resource === "entities") {
+        if (kind) args.push("--kind", kind);
+        if (status) args.push("--status", status);
+        if (space) args.push("--space", space);
+        if (archived) args.push("--archived");
+      }
+      args.push("--json");
+      return args;
+    }),
+  );
+
+  server.tool(
+    "cloudgrid_describe_grid",
+    "Show a grid's detail: role, members, spaces, tier, wildcard-TLS state. Wraps `cloudgrid describe grid <slug> --json`.",
+    { grid: z.string().describe("Grid slug to describe.") },
+    { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
+    cliTool(({ grid }) => ["describe", "grid", grid, "--json"]),
+  );
+
+  server.tool(
+    "cloudgrid_pickup",
+    "Download an entity's source + cloudgrid.yaml and link the folder to it. Overwrites with --force. Wraps `cloudgrid pickup`.",
+    {
+      name: z.string().describe("Entity slug or id to pick up."),
+      target_dir: z.string().optional().describe("Directory to pick up into (relative to cwd). Defaults to the entity name."),
+      grid: z.string().optional().describe("Grid to resolve the entity in. Defaults to the active grid."),
+      version: z.string().optional().describe("Pick up an older version's source instead of HEAD."),
+      force: z.boolean().optional().describe("Pick up into a non-empty directory."),
+      no_bind: z.boolean().optional().describe("Download source only — skip cloudgrid.yaml and the link."),
+      cwd: z.string().optional().describe("Working directory the CLI runs in. The download lands here; pass an explicit, writable directory."),
+    },
+    { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+    cliTool(({ name, target_dir, grid, version, force, no_bind }) => {
+      const args = ["pickup", name];
+      if (target_dir) args.push(target_dir);
+      // The CLI's pickup --help exposes `--org <slug>` (legacy naming) for the grid.
+      if (grid) args.push("--org", grid);
+      if (version) args.push("--version", version);
+      if (force) args.push("--force");
+      if (no_bind) args.push("--no-bind");
+      return args;
+    }, { cwdParam: true }),
   );
 
   server.tool(
