@@ -41,3 +41,21 @@ jobs:
           node-version: 20
       - run: npm ci
       - run: npm run test:drift-guard
+
+  # API drift guard: the web/local editions call api.cloudgrid.io directly (drop
+  # → POST /api/v2/plug, claim → POST /api/v2/entities/:id/pickup). The CLI-verb
+  # drift guard above does NOT cover these direct HTTP endpoints, so a
+  # deleted/renamed API endpoint would otherwise reach prod silently (this is
+  # exactly how the platform once deleted the MCP's drop/claim endpoints out
+  # from under it). smoke:web spawns the web edition and performs a real
+  # anonymous drop against the live API, asserting a guest URL comes back — so
+  # this class of break fails CI, not prod.
+  smoke-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run smoke:web

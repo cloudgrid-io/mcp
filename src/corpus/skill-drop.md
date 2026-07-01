@@ -41,17 +41,21 @@ first. The content must be a full HTML document (start with `<!doctype html>` or
 `<html>`); if you only have a fragment, wrap it in a minimal document. HTML is
 capped at 2 MB for anonymous drops.
 
-Then POST it:
+Then POST it to the unified plug endpoint:
 
 ```
-curl -sS -X POST https://api.cloudgrid.io/api/v2/drop/auto \
+curl -sS -X POST https://api.cloudgrid.io/api/v2/plug \
   -F "artifact=@/path/to/index.html;type=text/html"
 ```
 
-The response is JSON. Read two fields:
+The response is JSON (HTTP 201 for an anonymous drop). Read these fields:
 
-- `url` — the live, shareable link. Give this to the user.
+- `slug` — the entity's public slug. An anonymous inspiration's live link is
+  `https://guest.cloudgrid.io/<slug>`. The response has no ready-made `url`;
+  compose it from the slug. (Apps/agents would be `https://<slug>.<grid>.cloudgrid.io`,
+  but anonymous drops are always inspirations.)
 - `claim_url` — the link to sign in and keep it past the 7-day expiry.
+- `claim_message` — a ready-to-show nudge to sign in and claim.
 
 ## If the user is signed in
 
@@ -62,45 +66,35 @@ request:
 ```
 JWT=$(jq -r .jwt ~/.cloudgrid/credentials 2>/dev/null)
 ORG=$(grep -E '^\s*active_org_slug:' ~/.cloudgrid/config.yaml | awk '{print $2}')
-curl -sS -X POST https://api.cloudgrid.io/api/v2/drop/auto \
+curl -sS -X POST https://api.cloudgrid.io/api/v2/plug \
   -H "Authorization: Bearer $JWT" -H "X-CloudGrid-Org: $ORG" \
-  -F "artifact=@/path/to/index.html;type=text/html" -F "org_slug=$ORG"
+  -F "artifact=@/path/to/index.html;type=text/html"
 ```
 
-The response has `owned_by: "authenticated"` and no `claim_url`. If the user is a
-member of several orgs and `X-CloudGrid-Org` is missing, the API replies with the
-list of orgs to choose from. The MCP `cloudgrid_drop` tool does this automatically
-when credentials are present.
+A signed-in drop returns HTTP 202 with `slug` + `grid` and no `claim_url` (it is
+already owned). Its live link is `https://<grid>.cloudgrid.io/<slug>` for an
+inspiration. The org is taken from the `X-CloudGrid-Org` header — there is no
+`org_slug` form field. If the user is a member of several orgs and the header is
+missing, the API replies with the list of orgs to choose from. The MCP
+`cloudgrid_drop` tool does this automatically when credentials are present.
 
-## Re-dropping (update in place)
+## One drop = one entity (no in-place re-drop)
 
-A re-drop of the same artifact updates it in place — same URL, new version, views
-and reactions intact. The platform matches ownership through the anon-session
-cookie, so keep a cookie jar across drops:
+The unified `/api/v2/plug` endpoint is create-only for this flow: every drop mints
+a NEW entity with a NEW URL. There is no `previous_id` / in-place-update path and no
+`202 unchanged` no-op — those belonged to the retired `/drop/auto` endpoint. To
+publish an update, drop again; you get a fresh link. (To update an existing app in
+place, sign in and use `cloudgrid:plug`, which targets the entity by name.)
 
-```
-curl -sS -c jar.txt -X POST https://api.cloudgrid.io/api/v2/drop/auto \
-  -F "artifact=@index.html;type=text/html"                      # first drop
-curl -sS -b jar.txt -X POST https://api.cloudgrid.io/api/v2/drop/auto \
-  -F "previous_id=<entity_id from the first response>" \
-  -F "artifact=@index.html;type=text/html"                      # re-drop
-```
-
-Send `previous_id` before the artifact part. Read the status:
-
-- `200` — updated in place; the same `url` now serves the new bytes.
-- `202` — no change; this exact content is already live.
-- `201` — created new: no `previous_id`, or the previous drop was claimed, expired,
-  or not yours — the server falls back to create and never hard-fails.
-
-Omit `previous_id` to start a separate new drop. The MCP `cloudgrid_drop` tool does
-all of this for you (re-drops update in place; `fresh: true` forces a new one).
+The MCP `cloudgrid_drop` tool accepts a `fresh` flag for backward compatibility,
+but it is now a no-op — each drop is already a fresh create.
 
 ## After the drop
 
-Print the `url` on its own line, by itself, so it can be copied in one go. Then add
-one line of context: an anonymous drop lasts 7 days and can be claimed to keep it;
-a signed-in drop is already owned. Do not bury the URL in prose.
+Print the composed `url` (e.g. `https://guest.cloudgrid.io/<slug>`) on its own line,
+by itself, so it can be copied in one go. Then add one line of context: an anonymous
+drop lasts 7 days and can be claimed to keep it; a signed-in drop is already owned.
+Do not bury the URL in prose.
 
 ## Limits and errors
 

@@ -4,7 +4,8 @@ name: claim
 description: |
   Claim an anonymous CloudGrid drop into the user's account. Use when the user
   dropped something anonymously and now wants to keep it, own it, or stop it from
-  expiring after signing in. The public URL does not change.
+  expiring after signing in. Ownership transfers to the user and the drop re-homes
+  into their grid, so its public URL changes.
 argument-hint: "[claim-url-or-token]"
 allowed-tools: Bash
 ---
@@ -12,9 +13,10 @@ allowed-tools: Bash
 # CloudGrid Claim
 
 Turn an anonymous drop into an owned one. After an anonymous drop, the user has a
-`claim_url` (or token). Once they sign in, claiming transfers ownership to them and
-extends the expiry from 7 days to 30. The shareable URL stays the same, so any link
-already shared keeps working.
+`claim_url` (or token) plus the drop's `entity_id`. Once they sign in, claiming
+transfers ownership to them and extends the expiry from 7 days to 30. Claiming
+re-homes the drop into the user's grid, so its public URL changes from
+`guest.cloudgrid.io/<slug>` to `<grid>.cloudgrid.io/<slug>` — share the new link.
 
 ## Step 0 — sign in first
 
@@ -23,31 +25,43 @@ skill (or `cloudgrid login` with the CLI) first.
 
 ## What you need
 
-The claim token from the anonymous drop. It is the `token` query parameter inside
-the `claim_url` the drop returned, for example
-`https://console.cloudgrid.io/claim?token=<TOKEN>`.
+Two things: the **entity id** of the anonymous drop (the `entity_id` field the drop
+returned), and the **claim token** — the `token` query parameter inside the
+`claim_url` the drop returned, e.g. `https://console.cloudgrid.io/claim?token=<TOKEN>`.
+A browser that still holds the `cg_anon_session` cookie from the drop can claim
+without a token instead.
 
 ## How to run it
 
+Claiming is now a "pickup" of the entity into your grid. The entity id goes in the
+URL path; the claim token goes in the body:
+
 ```
 JWT=$(jq -r .jwt ~/.cloudgrid/credentials 2>/dev/null)
-# TOKEN is the claim token (from claim_url's ?token=...)
-curl -sS -X POST https://api.cloudgrid.io/api/v2/anon-claim \
-  -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
+ORG=$(grep -E '^\s*active_org_slug:' ~/.cloudgrid/config.yaml | awk '{print $2}')
+# ENTITY_ID from the drop response; TOKEN from claim_url's ?token=...
+curl -sS -X POST "https://api.cloudgrid.io/api/v2/entities/$ENTITY_ID/pickup" \
+  -H "Authorization: Bearer $JWT" -H "X-CloudGrid-Org: $ORG" \
+  -H "Content-Type: application/json" \
   -d "{\"claim_token\":\"$TOKEN\"}"
 ```
 
-The response is `{ "claimed": [ { "url", "new_expires_at" }, ... ] }`.
+A successful claim returns HTTP 200 with `{ entity_id, slug, grid, url,
+new_expires_at, role_granted: "owner", ... }`.
 
 ## Reading the result
 
-- A non-empty `claimed` list means it worked. Tell the user the drop is now theirs,
-  the URL is unchanged, and the new expiry.
-- An empty `claimed` list means there was nothing to claim — it may already be
-  claimed or expired. Say so plainly.
+- HTTP 200 means it worked. Ownership transferred to the user; tell them the drop is
+  now theirs and give them the new `url` and `new_expires_at`. NOTE: claiming
+  re-homes the inspiration into the user's grid, so the public URL CHANGES from
+  `guest.cloudgrid.io/<slug>` to `<grid>.cloudgrid.io/<slug>` — share the new one.
+- HTTP 409 `ALREADY_CLAIMED` means there was nothing left to claim — it was already
+  picked up. Say so plainly.
+- HTTP 403 `CLAIM_TOKEN_REQUIRED` / `INVALID_CLAIM_TOKEN` means the token is missing,
+  wrong, or expired (and no owning cookie was sent).
 
 ## Notes
 
-- One token claims one drop. To claim several, repeat with each token.
-- The MCP `cloudgrid_claim` tool does this for you, and remembers the token from the
-  last anonymous drop so you can claim with no arguments.
+- One pickup claims one entity. To claim several, repeat with each entity id + token.
+- The MCP `cloudgrid_claim` tool does this for you, and remembers the entity id +
+  token from the last anonymous drop so you can claim with no arguments.

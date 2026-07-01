@@ -296,6 +296,32 @@ function looksLikeFullHtml(s) {
   return head.startsWith("<!doctype html") || head.startsWith("<html");
 }
 
+// Anonymous drops are owned by the platform Guest Org, whose slug is the apex
+// the public URL hangs off (https://guest.cloudgrid.io/<slug>).
+const GUEST_ORG_SLUG = "guest";
+
+// Compose an entity's public URL from the `/api/v2/plug` response. Unlike the
+// retired `/drop/auto`, `/plug` does NOT return a `url` field — it returns
+// `slug` + `grid` (+ a `detection.kind`) and expects the client to derive the
+// canonical URL, mirroring the platform's `entityUrl()` URL derivation:
+//   - inspiration (HTML drops): path-based at the org apex
+//       https://<grid>.cloudgrid.io/<slug>
+//   - runtime (app/agent):      subdomain
+//       https://<slug>.<grid>.cloudgrid.io
+// Anonymous drops are grid-less in the response (`grid: null`); they live under
+// the Guest Org, so the apex slug is the constant `guest`.
+function composePlugUrl(data) {
+  const slug = data?.slug;
+  if (!slug) return null;
+  const grid = data?.grid || GUEST_ORG_SLUG;
+  const kind = data?.detection?.kind;
+  if (kind === "app" || kind === "agent") {
+    return `https://${slug}.${grid}.cloudgrid.io`;
+  }
+  // inspiration (and any unknown/static kind) — path-based at the org apex.
+  return `https://${grid}.cloudgrid.io/${slug}`;
+}
+
 async function runDrop(ctx, { html, path: filePath, filename, anonymous, org, fresh }) {
   // Defensive: the web edition schema excludes `path`, but if a model still
   // passes one (e.g. from a cached tool description), reject early with a
@@ -361,19 +387,23 @@ async function runDrop(ctx, { html, path: filePath, filename, anonymous, org, fr
   }
 
   const form = new FormData();
-  // Redrop: a re-drop in the same session updates the previous drop in place (same URL,
-  // new version). `fresh: true` forces a new drop. The platform validates ownership and
-  // falls back to create if the caller does not own the previous drop.
-  // Field appended before the artifact so streaming parsers see it.
-  if (fresh !== true && ctx.state.lastDrop?.entity_id) {
-    form.append("previous_id", ctx.state.lastDrop.entity_id);
-  }
+  // The unified `/plug` create path is the same orchestrator `/drop/auto` used,
+  // but it is CREATE-ONLY for the drop flow: an anonymous caller naming a
+  // `target_entity_id` is rejected 401, and the authed create path mints a NEW
+  // entity. So `/plug` has NO in-place redrop / `previous_id` concept — every
+  // drop creates a fresh entity (new URL). `fresh` is accepted for backward
+  // compatibility but is now a no-op. See PR notes: the in-place-update +
+  // `202 unchanged` no-op semantics from `/drop/auto` are gone with M7.
+  void fresh;
+  // The artifact part name is unchanged from `/drop/auto` (`artifact`); the plug
+  // create path treats every non-`cloudgrid.yaml` part as raw artifact bytes.
   form.append("artifact", new Blob([bytes], { type }), name);
-  if (orgSlug) form.append("org_slug", orgSlug);
+  // `/plug` resolves the authed org from the `X-CloudGrid-Org` header (set
+  // above), not a form field — so `org_slug` is no longer sent.
 
   let res;
   try {
-    res = await fetch(`${API_BASE}/api/v2/drop/auto`, { method: "POST", headers, body: form });
+    res = await fetch(`${API_BASE}/api/v2/plug`, { method: "POST", headers, body: form });
   } catch (err) {
     throw new Error(`Could not reach CloudGrid at ${API_BASE}: ${err.message}`);
   }
@@ -391,7 +421,8 @@ async function runDrop(ctx, { html, path: filePath, filename, anonymous, org, fr
     throw new Error(`Drop failed (HTTP ${res.status}): ${msg}${hint ? ` ${hint}` : ""}`);
   }
 
-  // Persist the platform's anon-session cookie for ownership continuity.
+  // Persist the platform's anon-session cookie for ownership continuity (so a
+  // cookie-class caller can claim — via pickup — what it dropped).
   const setCookies = res.headers.getSetCookie
     ? res.headers.getSetCookie()
     : [res.headers.get("set-cookie")].filter(Boolean);
@@ -400,41 +431,34 @@ async function runDrop(ctx, { html, path: filePath, filename, anonymous, org, fr
     .find((c) => c.startsWith("cg_anon_session="));
   if (anonCookie) ctx.state.anonCookie = anonCookie;
 
-  // Remember the drop for redrop continuity — any caller class, any 2xx outcome.
-  if (data.entity_id || data.url) {
+  // `/plug` returns no `url`; derive the canonical public URL from slug + grid.
+  const url = composePlugUrl(data);
+
+  // Remember the drop for session continuity — any caller class.
+  if (data.entity_id || url) {
     ctx.state.lastDrop = {
       entity_id: data.entity_id ?? ctx.state.lastDrop?.entity_id ?? null,
-      url: data.url ?? ctx.state.lastDrop?.url ?? null,
+      url: url ?? ctx.state.lastDrop?.url ?? null,
     };
   }
 
-  if (res.status === 202) {
-    // Idempotent no-op — the bytes matched the live version exactly.
-    const url = (data.url ?? ctx.state.lastDrop?.url ?? "").trim();
-    return {
-      text: `No change — this exact content is already live: ${url}`,
-      structured: { url, status: "unchanged" },
-    };
-  }
-
-  if (res.status === 200) {
-    // Updated in place: same URL, new version, views/reactions intact.
-    const url = (data.url ?? ctx.state.lastDrop?.url ?? "").trim();
+  // Authenticated create (202): the drop minted an entity owned by the caller.
+  // `/plug`'s authed branch is reached only when an Authorization header was
+  // sent, so distinguish on the call class rather than a (now-absent) `owned_by`.
+  if (!isAnonymousCall) {
+    ctx.state.lastAnonClaim = null;
     const lines = ctx.edition === "web"
       ? [`Your app is live: ${url}`]
-      : [`Updated in place — same link: ${url}`];
-    if (ctx.edition !== "web" && data.owned_by === "authenticated") lines.push("Owned by you.");
-    if (data.expires_at) lines.push(`Expires ${data.expires_at}.`);
+      : [`Published to your org: ${url}`, "Owned by you."];
     const structured = {
       url,
-      status: "updated",
-      ...(data.owned_by ? { owned_by: data.owned_by } : {}),
-      ...(data.expires_at ? { expires_at: data.expires_at } : {}),
+      status: "created",
+      owned_by: "authenticated",
     };
     if (ctx.edition === "web") {
       // Default authed web drops to "link" visibility so the URL is shareable
       // and the console thumbnail renders without a sign-in wall.
-      if (data.visibility !== "link" && data.entity_id) {
+      if (data.entity_id) {
         await upgradeVisibilityToLink(ctx, data.entity_id, orgSlug);
       }
       lines.push(`See and manage all your apps in your grid: ${CONSOLE_URL}`);
@@ -447,66 +471,48 @@ async function runDrop(ctx, { html, path: filePath, filename, anonymous, org, fr
     return { text: lines.join("\n"), structured };
   }
 
-  if (data.owned_by === "authenticated") {
-    ctx.state.lastAnonClaim = null;
-    const lines = ctx.edition === "web"
-      ? [`Your app is live: ${data.url}`]
-      : [`Published to your org: ${data.url}`, "Owned by you."];
-    if (data.expires_at) lines.push(`Expires ${data.expires_at}.`);
-    const structured = {
-      url: data.url,
-      status: "created",
-      owned_by: "authenticated",
-      ...(data.expires_at ? { expires_at: data.expires_at } : {}),
-    };
-    if (ctx.edition === "web") {
-      // Default authed web drops to "link" visibility (same as above).
-      if (data.visibility !== "link" && data.entity_id) {
-        await upgradeVisibilityToLink(ctx, data.entity_id, orgSlug);
-      }
-      lines.push(`See and manage all your apps in your grid: ${CONSOLE_URL}`);
-      const vis = "link";
-      lines.push(`Visible to: ${VISIBILITY_LABELS[vis]}. Want to restrict access? I can set it to only you or your org.`);
-      structured.console_url = CONSOLE_URL;
-      structured.current_visibility = vis;
-      structured.visibility_options = Object.entries(VISIBILITY_LABELS).map(([v, l]) => ({ value: v, label: l }));
-    } else {
-      lines.push("Drop again in this session to update it in place (same link); pass fresh to start a new one.");
-    }
-    return { text: lines.join("\n"), structured };
-  }
-
-  // 201 — created new (first drop, fresh: true, or the server fell back to create).
-  if (data.claim_url) {
+  // Anonymous create (201) — Guest-Org inspiration, 7-day expiry, claimable.
+  // `/plug` carries the reward fields (`claim_url` + `claim_message`) and the
+  // real `entity_id`; pickup-by-id is how it is later claimed.
+  if (data.claim_url || data.entity_id) {
+    let token = null;
     try {
-      ctx.state.lastAnonClaim = {
-        token: new URL(data.claim_url).searchParams.get("token"),
-        entity_id: data.entity_id,
-        url: data.url,
-      };
+      token = data.claim_url ? new URL(data.claim_url).searchParams.get("token") : null;
     } catch {
-      ctx.state.lastAnonClaim = null;
+      token = null;
     }
+    ctx.state.lastAnonClaim = {
+      token,
+      entity_id: data.entity_id ?? null,
+      url,
+    };
   }
-  const lines = [ctx.edition === "web" ? `Your app is live: ${data.url}` : `Live: ${data.url}`];
-  if (data.expires_at) lines.push(`Expires ${data.expires_at} — anonymous drops last 7 days.`);
-  if (data.claim_url) lines.push("Sign in, then run cloudgrid_claim to keep it past 7 days.");
-  lines.push("Drop again in this session to update it in place (same link); pass fresh to start a new one.");
+  const lines = [ctx.edition === "web" ? `Your app is live: ${url}` : `Live: ${url}`];
+  if (data.claim_message) {
+    lines.push(data.claim_message);
+  } else if (data.claim_url) {
+    lines.push("Sign in, then run cloudgrid_claim to keep it past 7 days.");
+  }
   return {
     text: lines.join("\n"),
     structured: {
-      url: data.url,
+      url,
       status: "created",
-      ...(data.expires_at ? { expires_at: data.expires_at } : {}),
     },
   };
 }
 
-async function runClaim(ctx, { claim_token, claim_url }) {
+async function runClaim(ctx, { claim_token, claim_url, entity_id }) {
   const token = await ctx.getToken();
   if (!token) {
     throw new Error("You are not signed in. Run cloudgrid_login first, then claim.");
   }
+
+  // `/api/v2/anon-claim` (claim-token-in-body, returns a list) was retired; the
+  // claim now runs through `POST /api/v2/entities/:id/pickup`, which takes the
+  // entity id in the PATH and the `claim_token` in the body, and re-homes the
+  // Guest-Org inspiration into the caller's grid (ownership transfer). The
+  // anon-session cookie is the token-less alternative auth.
   let claimToken = claim_token;
   if (!claimToken && claim_url) {
     try {
@@ -516,16 +522,36 @@ async function runClaim(ctx, { claim_token, claim_url }) {
     }
   }
   if (!claimToken && ctx.state.lastAnonClaim) claimToken = ctx.state.lastAnonClaim.token;
-  if (!claimToken) {
-    throw new Error("No claim token. Pass claim_token or claim_url from an anonymous drop.");
+
+  // Pickup needs the target entity id in the URL path. Prefer an explicit one,
+  // else the entity remembered from this session's anonymous drop.
+  const targetId = entity_id || ctx.state.lastAnonClaim?.entity_id;
+  if (!targetId) {
+    throw new Error(
+      "No drop to claim. Pass entity_id (or drop something anonymously first in this session), " +
+        "so the pickup knows which entity to claim.",
+    );
   }
+
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+  // The claim re-homes the inspiration into the caller's grid; the platform
+  // resolves the destination from the active-org context, so send the org
+  // header (the same header every other authed write uses).
+  const orgSlug = await ctx.getActiveOrg();
+  if (orgSlug) headers["X-CloudGrid-Org"] = orgSlug;
+  // Replay the anon-session cookie so a cookie-class caller can claim what it
+  // dropped, even without a claim token.
+  if (ctx.state.anonCookie) headers["Cookie"] = ctx.state.anonCookie;
 
   let res;
   try {
-    res = await fetch(`${API_BASE}/api/v2/anon-claim`, {
+    res = await fetch(`${API_BASE}/api/v2/entities/${encodeURIComponent(targetId)}/pickup`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ claim_token: claimToken }),
+      headers,
+      body: JSON.stringify(claimToken ? { claim_token: claimToken } : {}),
     });
   } catch (err) {
     throw new Error(`Could not reach CloudGrid at ${API_BASE}: ${err.message}`);
@@ -539,26 +565,27 @@ async function runClaim(ctx, { claim_token, claim_url }) {
     /* handled below */
   }
   if (!res.ok) {
+    // 409 ALREADY_CLAIMED is the idempotent "nothing left to do" outcome.
+    if (res.status === 409) {
+      ctx.state.lastAnonClaim = null;
+      return {
+        text: "Nothing to claim — it was already claimed.",
+        structured: { claimed: 0, urls: [] },
+      };
+    }
     const msg = data?.error?.message || data?.message || raw || `HTTP ${res.status}`;
     throw new Error(`Claim failed (HTTP ${res.status}): ${msg}`);
   }
-  const claimed = Array.isArray(data?.claimed) ? data.claimed : [];
-  if (claimed.length === 0) {
-    return {
-      text: "Nothing to claim — it may already be claimed or expired.",
-      structured: { claimed: 0, urls: [] },
-    };
-  }
+
   ctx.state.lastAnonClaim = null;
-  const lines = [`Claimed ${claimed.length}, now yours:`];
-  for (const c of claimed) {
-    lines.push(`${c.url}${c.new_expires_at ? ` (expires ${c.new_expires_at})` : ""}`);
-  }
+  const url = data?.url || data?.redirect_url || ctx.state.lastDrop?.url || null;
+  const lines = ["Claimed 1, now yours:"];
+  lines.push(`${url ?? ""}${data?.new_expires_at ? ` (expires ${data.new_expires_at})` : ""}`.trim());
   return {
     text: lines.join("\n"),
     structured: {
-      claimed: claimed.length,
-      urls: claimed.map((c) => c.url),
+      claimed: 1,
+      urls: url ? [url] : [],
     },
   };
 }
@@ -797,6 +824,7 @@ export function registerTools(server, ctx) {
       inputSchema: {
         claim_token: z.string().optional().describe("The claim token from an anonymous drop."),
         claim_url: z.string().optional().describe("The claim_url from an anonymous drop; the token is read from it."),
+        entity_id: z.string().optional().describe("The entity id of the anonymous drop to claim. Defaults to this session's last anonymous drop."),
       },
       outputSchema: {
         claimed: z.number().describe("Number of drops claimed."),
