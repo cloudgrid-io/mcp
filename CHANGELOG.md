@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.6.0
+
+- **Agent Core — orientation + on-demand loading.** Two new tools on the authed
+  editions (local + web; not the anon docs edition):
+  - `gridctl_start` → returns the CloudGrid playbook (operating rules + golden
+    path), the workflow index (`presentation`, …), and live `context`
+    (`active_grid`, `signed_in`). The "orient once" entry point.
+  - `gridctl_fetch({kind, name})` → deterministic retrieval of a
+    workflow/template/example/rule/doc from the bundled corpus (complements the
+    fuzzy `gridctl_search_docs`). `kind ∈ workflow|template|example|rule|doc`.
+- **Corpus pipeline.** `scripts/snapshot-corpus.mjs` now directory-walks
+  `workflows/`, `templates/`, and `examples/` from the skills repo (in addition
+  to the hardcoded doc list); missing directories are tolerated. The `.mcpb`
+  build now bundles `src/corpus/` so `gridctl_fetch` works offline.
+- **Naming cleanup — `cloudgrid_*` → `gridctl_*` (alias-migrated).** Every tool
+  is registered under its new `gridctl_*` name and keeps its legacy
+  `cloudgrid_*` name as a **deprecated alias** (same handler) for the migration.
+  Docs edition: `search_cloudgrid_documentation` → `gridctl_search_docs`,
+  `cloudgrid_quickstart_guide` → `gridctl_quickstart` (aliases retained).
+  In-description cross-references updated to the `gridctl_*` names.
+- Aligned the `.mcpb` bundled-CLI pin `^0.9.20` → `~0.10.1`.
+
 ## 0.5.0
 
 - Added **docs edition** — a public, no-auth, read-only MCP server exposing

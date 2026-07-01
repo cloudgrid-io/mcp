@@ -51,10 +51,15 @@ try {
   const names = toolList.map((t) => t.name).sort();
   console.log("docs tools:", names.join(", "));
 
-  check("exposes search_cloudgrid_documentation", names.includes("search_cloudgrid_documentation"));
-  check("exposes cloudgrid_quickstart_guide", names.includes("cloudgrid_quickstart_guide"));
+  // New gridctl_* doc tool names.
+  check("exposes gridctl_search_docs", names.includes("gridctl_search_docs"));
+  check("exposes gridctl_quickstart", names.includes("gridctl_quickstart"));
+  // Deprecated aliases still resolve during migration.
+  check("exposes deprecated alias search_cloudgrid_documentation", names.includes("search_cloudgrid_documentation"));
+  check("exposes deprecated alias cloudgrid_quickstart_guide", names.includes("cloudgrid_quickstart_guide"));
 
-  // Must NOT expose any write/auth/deploy tools.
+  // Must NOT expose any write/auth/deploy tools — neither the new names, the
+  // aliases, nor the Agent Core tools (the anon docs edition has no auth/deploy).
   for (const forbidden of [
     "cloudgrid_drop",
     "cloudgrid_login",
@@ -63,6 +68,11 @@ try {
     "cloudgrid_claim",
     "cloudgrid_secrets",
     "cloudgrid_delete",
+    "gridctl_drop",
+    "gridctl_login",
+    "gridctl_plug",
+    "gridctl_start",
+    "gridctl_fetch",
   ]) {
     check(`does NOT expose ${forbidden}`, !names.includes(forbidden));
   }

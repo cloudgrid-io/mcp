@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{DECK_TITLE}}</title>
+<style>
+  :root {
+    --bg: #0b0f17;
+    --panel: #121826;
+    --fg: #e8edf5;
+    --muted: #9aa7bd;
+    --accent: #5b8cff;
+    --border: #223049;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  #deck { position: relative; height: 100vh; width: 100vw; }
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    padding: clamp(2rem, 8vw, 8rem);
+    gap: 1.25rem;
+    animation: fade 0.35s ease;
+  }
+  .slide.active { display: flex; }
+  @keyframes fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .slide[data-role="title"] h1 {
+    font-size: clamp(2.5rem, 7vw, 5rem);
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+  }
+  .slide[data-role="title"] p {
+    font-size: clamp(1.1rem, 2.5vw, 1.6rem);
+    color: var(--muted);
+    max-width: 40ch;
+  }
+  .slide h2 {
+    font-size: clamp(1.8rem, 4.5vw, 3rem);
+    letter-spacing: -0.01em;
+  }
+  .slide .body {
+    font-size: clamp(1.05rem, 2.2vw, 1.5rem);
+    color: var(--muted);
+    max-width: 60ch;
+    line-height: 1.5;
+  }
+  .slide .body ul { padding-left: 1.4em; display: grid; gap: 0.6em; }
+  .accent-bar {
+    width: 64px; height: 5px; border-radius: 99px;
+    background: var(--accent);
+  }
+  #chrome {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.9rem 1.4rem;
+    border-top: 1px solid var(--border);
+    background: color-mix(in srgb, var(--panel) 85%, transparent);
+    backdrop-filter: blur(6px);
+    font-size: 0.85rem; color: var(--muted);
+  }
+  #chrome button {
+    background: transparent; color: var(--fg);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 0.35rem 0.7rem; cursor: pointer; font: inherit;
+  }
+  #chrome button:hover { border-color: var(--accent); }
+  #counter { font-variant-numeric: tabular-nums; }
+  #progress {
+    position: fixed; top: 0; left: 0; height: 3px;
+    background: var(--accent); transition: width 0.3s ease; z-index: 10;
+  }
+</style>
+</head>
+<body>
+  <div id="progress"></div>
+  <div id="deck">
+    <!-- SLIDES_START -->
+    <section class="slide active" data-role="title">
+      <div class="accent-bar"></div>
+      <h1>{{DECK_TITLE}}</h1>
+      <p>{{DECK_SUBTITLE}}</p>
+    </section>
+
+    <section class="slide">
+      <div class="accent-bar"></div>
+      <h2>{{SLIDE_1_HEADING}}</h2>
+      <div class="body">{{SLIDE_1_BODY}}</div>
+    </section>
+
+    <section class="slide">
+      <div class="accent-bar"></div>
+      <h2>{{SLIDE_2_HEADING}}</h2>
+      <div class="body">{{SLIDE_2_BODY}}</div>
+    </section>
+    <!-- Add more <section class="slide">...</section> blocks as needed. -->
+    <!-- SLIDES_END -->
+  </div>
+
+  <div id="chrome">
+    <span id="deck-name">{{DECK_TITLE}}</span>
+    <span>
+      <button id="prev" aria-label="Previous slide">Prev</button>
+      <span id="counter">1 / 1</span>
+      <button id="next" aria-label="Next slide">Next</button>
+    </span>
+  </div>
+
+  <script>
+    (function () {
+      var slides = Array.prototype.slice.call(document.querySelectorAll(".slide"));
+      var idx = 0;
+      var counter = document.getElementById("counter");
+      var progress = document.getElementById("progress");
+
+      function render() {
+        slides.forEach(function (s, i) { s.classList.toggle("active", i === idx); });
+        counter.textContent = (idx + 1) + " / " + slides.length;
+        progress.style.width = ((idx + 1) / slides.length * 100) + "%";
+      }
+      function go(delta) {
+        idx = Math.max(0, Math.min(slides.length - 1, idx + delta));
+        render();
+      }
+
+      document.getElementById("next").addEventListener("click", function () { go(1); });
+      document.getElementById("prev").addEventListener("click", function () { go(-1); });
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") { go(1); e.preventDefault(); }
+        else if (e.key === "ArrowLeft" || e.key === "PageUp") { go(-1); e.preventDefault(); }
+        else if (e.key === "Home") { idx = 0; render(); }
+        else if (e.key === "End") { idx = slides.length - 1; render(); }
+      });
+
+      render();
+    })();
+  </script>
+</body>
+</html>
