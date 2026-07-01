@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{APP_TITLE}}</title>
+<style>
+  :root {
+    --bg: #0b0f17;
+    --panel: #121826;
+    --fg: #e8edf5;
+    --muted: #9aa7bd;
+    --accent: #5b8cff;
+    --border: #223049;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    display: grid; place-items: center;
+    padding: 1.5rem;
+  }
+  .app {
+    width: 100%; max-width: 420px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 16px; padding: 1.75rem;
+  }
+  h1 { font-size: 1.5rem; letter-spacing: -0.01em; margin-bottom: 0.35rem; }
+  .subtitle { color: var(--muted); font-size: 0.95rem; margin-bottom: 1.4rem; }
+  label { display: block; font-size: 0.85rem; color: var(--muted); margin: 0.9rem 0 0.35rem; }
+  input, select {
+    width: 100%; font: inherit; color: var(--fg);
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 0.65rem 0.75rem;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  .row { display: flex; gap: 0.75rem; }
+  .row > * { flex: 1; }
+  .result {
+    margin-top: 1.5rem; padding: 1.1rem 1.25rem;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+    display: flex; align-items: baseline; justify-content: space-between;
+  }
+  .result .label { color: var(--muted); font-size: 0.85rem; }
+  .result .value { font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+  <!-- Adapt this shell into the tool you need: rename the title, replace the
+       inputs, and rewrite compute() to produce the output. Keep all logic
+       inline. This starter reads two numeric inputs and shows their result. -->
+  <main class="app">
+    <h1>{{APP_TITLE}}</h1>
+    <p class="subtitle">{{APP_SUBTITLE}}</p>
+
+    <div class="row">
+      <div>
+        <label for="a">{{INPUT_A_LABEL}}</label>
+        <input id="a" type="number" value="0" inputmode="decimal" />
+      </div>
+      <div>
+        <label for="b">{{INPUT_B_LABEL}}</label>
+        <input id="b" type="number" value="0" inputmode="decimal" />
+      </div>
+    </div>
+
+    <div class="result">
+      <span class="label">{{RESULT_LABEL}}</span>
+      <span class="value" id="out">0</span>
+    </div>
+  </main>
+
+  <script>
+    (function () {
+      var a = document.getElementById("a");
+      var b = document.getElementById("b");
+      var out = document.getElementById("out");
+
+      // Replace this with the tool's real calculation.
+      function compute() {
+        var x = parseFloat(a.value) || 0;
+        var y = parseFloat(b.value) || 0;
+        return x + y;
+      }
+
+      function render() {
+        out.textContent = String(compute());
+      }
+
+      a.addEventListener("input", render);
+      b.addEventListener("input", render);
+      render();
+    })();
+  </script>
+</body>
+</html>

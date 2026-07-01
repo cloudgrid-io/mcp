@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{DASHBOARD_TITLE}}</title>
+<style>
+  :root {
+    --bg: #0b0f17;
+    --panel: #121826;
+    --fg: #e8edf5;
+    --muted: #9aa7bd;
+    --accent: #5b8cff;
+    --good: #46d19e;
+    --border: #223049;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding: clamp(1.25rem, 4vw, 2.5rem);
+  }
+  header { margin-bottom: 1.75rem; }
+  h1 { font-size: clamp(1.6rem, 4vw, 2.3rem); letter-spacing: -0.02em; }
+  .status { color: var(--muted); margin-top: 0.35rem; }
+  .grid { display: grid; gap: 1.1rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; padding: 1.25rem 1.4rem;
+  }
+  .card .label { color: var(--muted); font-size: 0.85rem; }
+  .card .value { font-size: 2rem; font-weight: 600; margin: 0.35rem 0; font-variant-numeric: tabular-nums; }
+  .card .trend { font-size: 0.85rem; color: var(--good); }
+  .charts { display: grid; gap: 1.1rem; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); margin-top: 1.1rem; }
+  .chart-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem 1.4rem; }
+  .chart-card h2 { font-size: 1rem; color: var(--muted); font-weight: 600; margin-bottom: 0.9rem; }
+  svg { width: 100%; height: auto; display: block; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>{{DASHBOARD_TITLE}}</h1>
+    <div class="status">{{STATUS_LINE}}</div>
+  </header>
+
+  <!-- One card per KPI. -->
+  <section class="grid">
+    <div class="card">
+      <div class="label">{{KPI_1_LABEL}}</div>
+      <div class="value">{{KPI_1_VALUE}}</div>
+      <div class="trend">{{KPI_1_TREND}}</div>
+    </div>
+    <div class="card">
+      <div class="label">{{KPI_2_LABEL}}</div>
+      <div class="value">{{KPI_2_VALUE}}</div>
+      <div class="trend">{{KPI_2_TREND}}</div>
+    </div>
+    <div class="card">
+      <div class="label">{{KPI_3_LABEL}}</div>
+      <div class="value">{{KPI_3_VALUE}}</div>
+      <div class="trend">{{KPI_3_TREND}}</div>
+    </div>
+  </section>
+
+  <section class="charts">
+    <div class="chart-card">
+      <h2>{{BAR_CHART_TITLE}}</h2>
+      <svg id="bar" viewBox="0 0 320 160" role="img" aria-label="Bar chart"></svg>
+    </div>
+    <div class="chart-card">
+      <h2>{{LINE_CHART_TITLE}}</h2>
+      <svg id="line" viewBox="0 0 320 160" role="img" aria-label="Line chart"></svg>
+    </div>
+  </section>
+
+  <script>
+    // Charts are hand-rolled inline SVG — no external library. Edit these arrays.
+    var barData = [{{BAR_DATA}}];   // e.g. 12, 19, 9, 22, 17
+    var lineData = [{{LINE_DATA}}]; // e.g. 4, 8, 6, 11, 9, 14
+
+    var NS = "http://www.w3.org/2000/svg";
+    function el(name, attrs) {
+      var n = document.createElementNS(NS, name);
+      for (var k in attrs) n.setAttribute(k, attrs[k]);
+      return n;
+    }
+
+    (function drawBars() {
+      var svg = document.getElementById("bar");
+      var W = 320, H = 160, pad = 20;
+      var max = Math.max.apply(null, barData.concat([1]));
+      var bw = (W - pad * 2) / barData.length;
+      barData.forEach(function (v, i) {
+        var h = (v / max) * (H - pad * 2);
+        svg.appendChild(el("rect", {
+          x: pad + i * bw + bw * 0.15, y: H - pad - h,
+          width: bw * 0.7, height: h, rx: 3, fill: "var(--accent)"
+        }));
+      });
+      svg.appendChild(el("line", { x1: pad, y1: H - pad, x2: W - pad, y2: H - pad, stroke: "var(--border)" }));
+    })();
+
+    (function drawLine() {
+      var svg = document.getElementById("line");
+      var W = 320, H = 160, pad = 20;
+      var max = Math.max.apply(null, lineData.concat([1]));
+      var step = (W - pad * 2) / Math.max(1, lineData.length - 1);
+      var pts = lineData.map(function (v, i) {
+        return (pad + i * step) + "," + (H - pad - (v / max) * (H - pad * 2));
+      }).join(" ");
+      svg.appendChild(el("polyline", { points: pts, fill: "none", stroke: "var(--good)", "stroke-width": 2.5 }));
+      svg.appendChild(el("line", { x1: pad, y1: H - pad, x2: W - pad, y2: H - pad, stroke: "var(--border)" }));
+    })();
+  </script>
+</body>
+</html>

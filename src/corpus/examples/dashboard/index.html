@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Service Health Dashboard</title>
+<style>
+  :root {
+    --bg: #0b0f17;
+    --panel: #121826;
+    --fg: #e8edf5;
+    --muted: #9aa7bd;
+    --accent: #5b8cff;
+    --good: #46d19e;
+    --border: #223049;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding: clamp(1.25rem, 4vw, 2.5rem);
+  }
+  header { margin-bottom: 1.75rem; }
+  h1 { font-size: clamp(1.6rem, 4vw, 2.3rem); letter-spacing: -0.02em; }
+  .status { color: var(--muted); margin-top: 0.35rem; }
+  .grid { display: grid; gap: 1.1rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; padding: 1.25rem 1.4rem;
+  }
+  .card .label { color: var(--muted); font-size: 0.85rem; }
+  .card .value { font-size: 2rem; font-weight: 600; margin: 0.35rem 0; font-variant-numeric: tabular-nums; }
+  .card .trend { font-size: 0.85rem; color: var(--good); }
+  .charts { display: grid; gap: 1.1rem; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); margin-top: 1.1rem; }
+  .chart-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem 1.4rem; }
+  .chart-card h2 { font-size: 1rem; color: var(--muted); font-weight: 600; margin-bottom: 0.9rem; }
+  svg { width: 100%; height: auto; display: block; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Service Health Dashboard</h1>
+    <div class="status">All systems operational — updated a moment ago</div>
+  </header>
+
+  <section class="grid">
+    <div class="card">
+      <div class="label">Requests / min</div>
+      <div class="value">18.4k</div>
+      <div class="trend">+6.2% vs last hour</div>
+    </div>
+    <div class="card">
+      <div class="label">p95 latency</div>
+      <div class="value">142ms</div>
+      <div class="trend">-11ms vs last hour</div>
+    </div>
+    <div class="card">
+      <div class="label">Error rate</div>
+      <div class="value">0.08%</div>
+      <div class="trend">within target</div>
+    </div>
+    <div class="card">
+      <div class="label">Uptime (30d)</div>
+      <div class="value">99.98%</div>
+      <div class="trend">no incidents</div>
+    </div>
+  </section>
+
+  <section class="charts">
+    <div class="chart-card">
+      <h2>Requests by region</h2>
+      <svg id="bar" viewBox="0 0 320 160" role="img" aria-label="Bar chart of requests by region"></svg>
+    </div>
+    <div class="chart-card">
+      <h2>Latency over the last 12 hours</h2>
+      <svg id="line" viewBox="0 0 320 160" role="img" aria-label="Line chart of latency over time"></svg>
+    </div>
+  </section>
+
+  <script>
+    var barData = [42, 58, 31, 49, 66, 38];
+    var lineData = [160, 154, 148, 151, 139, 142, 137, 144, 140, 135, 142, 138];
+
+    var NS = "http://www.w3.org/2000/svg";
+    function el(name, attrs) {
+      var n = document.createElementNS(NS, name);
+      for (var k in attrs) n.setAttribute(k, attrs[k]);
+      return n;
+    }
+
+    (function drawBars() {
+      var svg = document.getElementById("bar");
+      var W = 320, H = 160, pad = 20;
+      var max = Math.max.apply(null, barData.concat([1]));
+      var bw = (W - pad * 2) / barData.length;
+      barData.forEach(function (v, i) {
+        var h = (v / max) * (H - pad * 2);
+        svg.appendChild(el("rect", {
+          x: pad + i * bw + bw * 0.15, y: H - pad - h,
+          width: bw * 0.7, height: h, rx: 3, fill: "var(--accent)"
+        }));
+      });
+      svg.appendChild(el("line", { x1: pad, y1: H - pad, x2: W - pad, y2: H - pad, stroke: "var(--border)" }));
+    })();
+
+    (function drawLine() {
+      var svg = document.getElementById("line");
+      var W = 320, H = 160, pad = 20;
+      var max = Math.max.apply(null, lineData.concat([1]));
+      var step = (W - pad * 2) / Math.max(1, lineData.length - 1);
+      var pts = lineData.map(function (v, i) {
+        return (pad + i * step) + "," + (H - pad - (v / max) * (H - pad * 2));
+      }).join(" ");
+      svg.appendChild(el("polyline", { points: pts, fill: "none", stroke: "var(--good)", "stroke-width": 2.5 }));
+      svg.appendChild(el("line", { x1: pad, y1: H - pad, x2: W - pad, y2: H - pad, stroke: "var(--border)" }));
+    })();
+  </script>
+</body>
+</html>
