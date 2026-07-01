@@ -86,7 +86,8 @@ Then point your agent at the cloned directory.
 
 ## MCP server
 
-The `@cloudgrid-io/mcp` package is published on npm:
+The MCP server is published separately as
+[`@cloudgrid-io/mcp`](https://github.com/cloudgrid-io/mcp):
 
 ```
 npx -y @cloudgrid-io/mcp

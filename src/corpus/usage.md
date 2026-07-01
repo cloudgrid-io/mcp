@@ -1,12 +1,13 @@
 # Using CloudGrid skills and MCP
 
-This repo ships two things that expose the **same** CloudGrid actions — drop, login,
-claim, init, plug, logs, share, feedback, brain:
+Two surfaces expose the **same** CloudGrid actions — drop, login, claim, init,
+plug, logs, share, feedback, brain:
 
-- **Skills** — `SKILL.md` files an agent loads. They trigger from natural language
-  (their `description`) or a slash command.
+- **Skills** — `SKILL.md` files an agent loads (this repo). They trigger from
+  natural language (their `description`) or a slash command.
 - **MCP server** — the same actions as MCP tools, for clients that speak the Model
-  Context Protocol.
+  Context Protocol. Published separately as
+  [`@cloudgrid-io/mcp`](https://github.com/cloudgrid-io/mcp).
 
 Which one you use depends on the client. Pick your client below.
 
