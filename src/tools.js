@@ -13,6 +13,7 @@ import { promisify } from "node:util";
 import { readFile } from "node:fs/promises";
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { basename, dirname, resolve, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { newLoginCode, buildLoginUrl, pollStatusOnce, decodeJwt } from "./auth.js";
 
@@ -125,18 +126,65 @@ function meetsMinVersion(version) {
 // Resolve the bundled CLI from this package's OWN node_modules only — never
 // walk up to parent directories (which may contain stale CLI versions).
 // Returns { entry, version } or null.
-function resolveBundledCli() {
+//
+// `fileURLToPath` (not `new URL(url).pathname`) is required for Windows: on a
+// Windows `file://` URL, `.pathname` is `/C:/Users/.../src` — a leading slash
+// before the drive letter, which is NOT a valid fs path, so `existsSync` fails
+// and the bundled CLI is never found even though the `.mcpb` bundles it.
+// `fileURLToPath` yields a proper `C:\Users\...\src`. macOS/Linux are unaffected.
+//
+// The `deps` seam (moduleUrl + path/fs impls) exists ONLY so the Windows-URL
+// regression test can drive the win32 code path deterministically on a POSIX CI
+// box. Production always uses the real `import.meta.url` and host path/fs.
+export function resolveBundledCli(deps = {}) {
+  const {
+    moduleUrl = import.meta.url,
+    urlToPath = fileURLToPath,
+    pathImpl = { dirname, join },
+    fsExists = existsSync,
+    fsRead = readFileSync,
+  } = deps;
   try {
-    const srcDir = dirname(new URL(import.meta.url).pathname);
-    const pkgPath = join(srcDir, "..", "node_modules", "@cloudgrid-io", "cli", "package.json");
-    if (!existsSync(pkgPath)) return null;
-    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+    const srcDir = pathImpl.dirname(urlToPath(moduleUrl));
+    const pkgPath = pathImpl.join(srcDir, "..", "node_modules", "@cloudgrid-io", "cli", "package.json");
+    if (!fsExists(pkgPath)) return null;
+    const pkg = JSON.parse(fsRead(pkgPath, "utf-8"));
     const bin = pkg.bin && pkg.bin.cloudgrid;
     if (!bin) return null;
-    return { entry: join(dirname(pkgPath), bin), version: pkg.version || null };
+    return { entry: pathImpl.join(pathImpl.dirname(pkgPath), bin), version: pkg.version || null };
   } catch {
     return null;
   }
+}
+
+// Windows `.cmd`/`.bat` shims (cloudgrid.cmd, npx.cmd) cannot be launched by
+// `execFile` without a shell — modern patched Node (CVE-2024-27980) rejects it
+// with EINVAL, and even where it doesn't, ENOENT results because the bare name
+// resolves to a `.cmd`. On win32 we route those through `cmd.exe /d /s /c` with
+// an explicitly quoted command line so args with spaces/quotes stay intact.
+// macOS/Linux never take this branch — they keep the plain execFile path.
+const IS_WIN = process.platform === "win32";
+
+// Quote a single Windows command-line token for cmd.exe. Wrap in double quotes,
+// escape embedded quotes/backslash-before-quote per Windows argv rules, and also
+// caret-escape cmd.exe metacharacters so nothing is interpreted by the shell.
+function winQuoteArg(arg) {
+  const s = String(arg);
+  // Escape backslashes that precede a quote, then the quotes themselves.
+  let inner = s.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\*)$/, "$1$1");
+  inner = `"${inner}"`;
+  // Caret-escape cmd.exe special chars (they live outside the quoted-arg parsing).
+  return inner.replace(/[()%!^"<>&|]/g, "^$&");
+}
+
+// execFile a command that may be a Windows `.cmd` shim, safely on every OS.
+function execMaybeCmd(command, args, options) {
+  if (!IS_WIN) return execFileAsync(command, args, options);
+  const line = [command, ...args].map(winQuoteArg).join(" ");
+  return execFileAsync(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", line], {
+    ...options,
+    windowsVerbatimArguments: true,
+  });
 }
 
 async function runCloudgrid(args, opts = {}) {
@@ -175,11 +223,13 @@ async function runCloudgrid(args, opts = {}) {
     );
   }
 
-  // 2. Global `cloudgrid` on PATH — version-gated
+  // 2. Global `cloudgrid` on PATH — version-gated.
+  //    On Windows the bin is `cloudgrid.cmd`; run it via cmd.exe (execMaybeCmd).
   {
+    const globalBin = IS_WIN ? "cloudgrid.cmd" : "cloudgrid";
     let useGlobal = false;
     try {
-      const { stdout: vOut } = await execFileAsync("cloudgrid", ["--version"], {
+      const { stdout: vOut } = await execMaybeCmd(globalBin, ["--version"], {
         timeout: 5_000,
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -196,7 +246,7 @@ async function runCloudgrid(args, opts = {}) {
     }
     if (useGlobal) {
       try {
-        const { stdout, stderr } = await execFileAsync("cloudgrid", args, execOpts);
+        const { stdout, stderr } = await execMaybeCmd(globalBin, args, execOpts);
         return (stdout || stderr || "").trim() || "Done.";
       } catch (err) {
         throw extract(err);
@@ -206,10 +256,12 @@ async function runCloudgrid(args, opts = {}) {
 
   // 3. Lazy fetch: npx -y @cloudgrid-io/cli@<pinned> <args>
   //    One-time download; npx caches it for subsequent invocations.
+  //    On Windows this is `npx.cmd`, run via cmd.exe (execMaybeCmd) so patched
+  //    Node doesn't EINVAL on the `.cmd` shim.
   console.error("cloudgrid-mcp: fetching the CloudGrid CLI (first use)…");
-  const npx = process.platform === "win32" ? "npx.cmd" : "npx";
+  const npx = IS_WIN ? "npx.cmd" : "npx";
   try {
-    const { stdout, stderr } = await execFileAsync(
+    const { stdout, stderr } = await execMaybeCmd(
       npx,
       ["-y", CLI_NPX_PKG, ...args],
       execOpts,
