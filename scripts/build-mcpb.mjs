@@ -48,6 +48,7 @@ copy("src/index.js");
 copy("src/auth.js");
 copy("src/tools.js");
 copy("src/widgets");
+copy("src/corpus"); // gridctl_fetch reads the bundled corpus (workflows/templates/examples/docs)
 copy("assets/cloudgrid-icon-512.png");
 
 // Install production deps (clean, no dev deps, no scripts to avoid side-effects)
@@ -60,7 +61,7 @@ execFileSync("npm", ["ci", "--omit=dev", "--ignore-scripts"], {
 // The CLI is no longer a normal dependency (keeps npx installs light), but the
 // .mcpb must be offline-complete — install it explicitly into the staging area.
 console.log("\n— npm install @cloudgrid-io/cli (bundle for .mcpb)");
-execFileSync("npm", ["install", "--no-save", "@cloudgrid-io/cli@^0.9.20", "--ignore-scripts"], {
+execFileSync("npm", ["install", "--no-save", "@cloudgrid-io/cli@~0.10.1", "--ignore-scripts"], {
   cwd: stage,
   stdio: "inherit",
 });

@@ -13,7 +13,7 @@
 //   --skills-dir  ../skills     (cloudgrid-io/skills)
 //   --connect-dir ../connect    (cloudgrid-connect-design)
 
-import { copyFileSync, mkdirSync, existsSync } from "node:fs";
+import { copyFileSync, mkdirSync, existsSync, cpSync, rmSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -67,4 +67,29 @@ for (const [src, dest] of copies) {
   ok++;
 }
 
-console.log(`\n${ok} file(s) copied, ${skipped} skipped. Corpus in src/corpus/.`);
+// ── Directory-walk the structured corpus (F1/F2) ─────────────────────────────
+// gridctl_fetch serves workflows / templates / examples deterministically from
+// the bundled corpus. These live in their own subdirectories of src/corpus/ so
+// they don't get chunked into the BM25 docs index (loadCorpus reads only the
+// top-level *.md files). Each directory is snapshotted recursively; the whole
+// subtree is refreshed so deletions in the source propagate. Missing source
+// directories are tolerated — the manager runs the final re-snapshot once
+// Worker A's content lands on skills' main.
+let dirs = 0;
+for (const name of ["workflows", "templates", "examples"]) {
+  const srcDir = resolve(SKILLS, name);
+  const destDir = resolve(CORPUS, name);
+  if (!existsSync(srcDir)) {
+    console.log(`skip  ${name}/ (not found in skills)`);
+    skipped++;
+    continue;
+  }
+  rmSync(destDir, { recursive: true, force: true });
+  cpSync(srcDir, destDir, { recursive: true });
+  console.log(`copy  ${name}/ (directory)`);
+  dirs++;
+}
+
+console.log(
+  `\n${ok} file(s) + ${dirs} director${dirs === 1 ? "y" : "ies"} copied, ${skipped} skipped. Corpus in src/corpus/.`,
+);

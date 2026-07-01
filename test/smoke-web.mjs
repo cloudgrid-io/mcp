@@ -45,29 +45,46 @@ try {
   const toolList = (await client.listTools()).tools;
   const names = toolList.map((t) => t.name).sort();
   console.log("web tools:", names.join(", "));
-  for (const t of ["cloudgrid_drop", "cloudgrid_claim", "cloudgrid_login", "cloudgrid_login_status", "cloudgrid_visibility", "cloudgrid_orgs"]) {
+  // New gridctl_* names (direct-API + Agent Core) on the authed web edition.
+  for (const t of ["gridctl_drop", "gridctl_claim", "gridctl_login", "gridctl_login_status", "gridctl_visibility", "gridctl_orgs", "gridctl_start", "gridctl_fetch"]) {
     check(`exposes ${t}`, names.includes(t));
   }
-  check("does NOT expose CLI-only cloudgrid_init", !names.includes("cloudgrid_init"));
-  check("does NOT expose CLI-only cloudgrid_plug", !names.includes("cloudgrid_plug"));
+  // Deprecated cloudgrid_* aliases still resolve during the migration.
+  for (const t of ["cloudgrid_drop", "cloudgrid_claim", "cloudgrid_login", "cloudgrid_login_status", "cloudgrid_visibility", "cloudgrid_orgs"]) {
+    check(`exposes deprecated alias ${t}`, names.includes(t));
+  }
+  check("does NOT expose CLI-only gridctl_init", !names.includes("gridctl_init"));
+  check("does NOT expose CLI-only gridctl_plug", !names.includes("gridctl_plug"));
+
+  // Agent Core tools are gridctl_* from birth — no cloudgrid_* alias for them.
+  check("no cloudgrid_start alias", !names.includes("cloudgrid_start"));
+  check("no cloudgrid_fetch alias", !names.includes("cloudgrid_fetch"));
 
   // FIX A: web edition drop must NOT have `path` in schema, must have `html`.
   // The schema exclusion is the primary defense; the SDK strips unknown
   // properties via zod, so the runtime guard in the handler is belt-and-
   // suspenders for raw HTTP callers.
-  const dropTool = toolList.find((t) => t.name === "cloudgrid_drop");
+  const dropTool = toolList.find((t) => t.name === "gridctl_drop");
   const dropProps = dropTool?.inputSchema?.properties ?? {};
   check("web drop does NOT have `path` param", !("path" in dropProps));
   check("web drop has `html` param", "html" in dropProps);
   check("web drop `html` desc mentions inline/standalone", (dropProps.html?.description ?? "").includes("standalone"));
 
   const drop = await client.callTool({
-    name: "cloudgrid_drop",
+    name: "gridctl_drop",
     arguments: { html: "<h1>web edition smoke</h1>", anonymous: true },
   });
   const text = drop.content?.[0]?.text ?? "";
   console.log("--- web anonymous drop ---\n" + text);
-  check("anonymous drop over HTTP returned a guest URL", text.includes("guest.cloudgrid.io"));
+  // A 429 means the shared anonymous-drop quota is exhausted — a platform rate
+  // limit, not a broken drop. Skip (don't false-fail) so CI isn't gated on quota;
+  // any OTHER outcome (401, wrong URL, error) still fails the guest-URL check —
+  // preserving the signal that caught the /drop/auto regression in Task 27.
+  if (/HTTP 429|daily anonymous-drop limit|reached the daily/i.test(text)) {
+    console.log("skip anonymous drop over HTTP — rate-limited (429), not a functional failure");
+  } else {
+    check("anonymous drop over HTTP returned a guest URL", text.includes("guest.cloudgrid.io"));
+  }
 } finally {
   try {
     await client?.close();

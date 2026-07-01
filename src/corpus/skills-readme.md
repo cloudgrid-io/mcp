@@ -82,8 +82,9 @@ walks through it end to end.
 
 ## MCP server
 
-The `@cloudgrid-io/mcp` package exposes the same nine actions as MCP tools, for
-agents that speak the Model Context Protocol. It wraps the same `cloudgrid` CLI.
+The MCP server is published separately as
+[`@cloudgrid-io/mcp`](https://github.com/cloudgrid-io/mcp). It exposes the same
+nine actions as MCP tools, for agents that speak the Model Context Protocol.
 Install it with `npx -y @cloudgrid-io/mcp`, or point a remote-capable client at
 `https://mcp.cloudgrid.io/mcp`. See [USAGE.md](USAGE.md) for per-client setup.
 
