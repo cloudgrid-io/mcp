@@ -42,6 +42,21 @@ jobs:
       - run: npm ci
       - run: npm run test:drift-guard
 
+  # Regression guard for the Windows bundled-CLI resolution bug (Task 28): the
+  # bundled CLI must resolve from a Windows-style `file:///C:/...` module URL.
+  # The test injects Windows path semantics so it runs deterministically on the
+  # Linux runner; it fails on the old `new URL().pathname` code and passes on the
+  # `fileURLToPath` fix.
+  win-cli:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run test:win-cli
+
   # API drift guard: the web/local editions call api.cloudgrid.io directly (drop
   # → POST /api/v2/plug, claim → POST /api/v2/entities/:id/pickup). The CLI-verb
   # drift guard above does NOT cover these direct HTTP endpoints, so a
