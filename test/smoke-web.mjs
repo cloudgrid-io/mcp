@@ -76,7 +76,15 @@ try {
   });
   const text = drop.content?.[0]?.text ?? "";
   console.log("--- web anonymous drop ---\n" + text);
-  check("anonymous drop over HTTP returned a guest URL", text.includes("guest.cloudgrid.io"));
+  // A 429 means the shared anonymous-drop quota is exhausted — a platform rate
+  // limit, not a broken drop. Skip (don't false-fail) so CI isn't gated on quota;
+  // any OTHER outcome (401, wrong URL, error) still fails the guest-URL check —
+  // preserving the signal that caught the /drop/auto regression in Task 27.
+  if (/HTTP 429|daily anonymous-drop limit|reached the daily/i.test(text)) {
+    console.log("skip anonymous drop over HTTP — rate-limited (429), not a functional failure");
+  } else {
+    check("anonymous drop over HTTP returned a guest URL", text.includes("guest.cloudgrid.io"));
+  }
 } finally {
   try {
     await client?.close();
