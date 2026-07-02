@@ -27,5 +27,7 @@ build.
    A web app is an inspiration and deploys synchronously, so you get a URL
    right away.
 5. **Return the live share URL.** Give the user the URL that serves the app.
+   For revisions, re-deploy with the entity id from the first deploy — it updates
+   the same share URL, so the user iterates on one link.
 
 Keep the whole flow tight: fetch, adapt, deploy, share.

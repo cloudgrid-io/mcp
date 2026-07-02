@@ -128,7 +128,7 @@ You can install both; they do not conflict.
 
 | Action | What it does |
 |---|---|
-| drop | Share an artifact, get a public URL. No login needed (anonymous, 7-day) or owned if signed in (30-day). |
+| drop | Share an artifact, get a public URL. No login needed (anonymous, claimable) or owned if signed in. Re-drop with the entity id to update the same URL. |
 | login | Sign in to CloudGrid, with or without the CLI. |
 | claim | Claim an anonymous drop into your account; the URL stays the same. |
 | init | Scaffold a new app or agent. |

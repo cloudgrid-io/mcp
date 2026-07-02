@@ -71,10 +71,28 @@ curl -sS -X POST https://api.cloudgrid.io/api/v2/plug \
   -F "artifact=@./index.html;type=text/html"
 ```
 
-The response includes `slug` (the live link is `https://guest.cloudgrid.io/<slug>`)
-and `claim_url` (sign in within 7 days to keep it). This is what the `cloudgrid-drop`
-skill and the `cloudgrid_drop` MCP tool do for you. It is anonymous and serves
-inspirations only; a full app needs the signed-in `plug` flow above.
+The response includes `url` (the live link — use it verbatim), `entity_id`,
+`owner_token` (keep both to update the drop later), and `claim_url` (sign in
+before it expires to keep it). This is what the `cloudgrid-drop` skill and the
+`cloudgrid_drop` MCP tool do for you. It is anonymous and serves inspirations
+only; a full app needs the signed-in `plug` flow above.
+
+## Update your drop in place
+
+Re-plugging with `target_entity_id` updates the SAME entity — same slug, same URL,
+new content. Iterate on one link instead of minting a new one per revision:
+
+```
+curl -sS -X POST https://api.cloudgrid.io/api/v2/plug \
+  -F "target_entity_id=$ENTITY_ID" \
+  -F "owner_token=$OWNER_TOKEN" \
+  -F "artifact=@./index.html;type=text/html"
+```
+
+Signed in, drop the `owner_token` field and send your auth headers instead. Each
+anonymous edit returns a refreshed `owner_token` (store the new one) and resets
+the drop's expiry. Editing an archived or expired drop returns 409
+`EDIT_REJECTED`; omit `target_entity_id` when you actually want a fresh link.
 
 ## Shorter chains
 

@@ -25,16 +25,21 @@ behalf: scaffold, deploy, tail logs, share, read feedback. Everything here is fr
    cloudgrid login
    ```
 
-3. Add the skills. In Claude Code (recommended):
+3. Add the agent-core. In Claude Code (recommended):
 
    ```
    /plugin marketplace add cloudgrid-io/skills
-   /plugin install cloudgrid
+   /plugin install cloudgrid@cloudgrid-skills
    ```
 
-   They show under `/plugin` and `/skills` as `cloudgrid:drop`, `cloudgrid:login`,
-   … — or just say what you want ("drop this HTML to CloudGrid") and the right one
-   triggers.
+   One install wires up everything: the skills, the SessionStart orientation
+   hook, and the CloudGrid MCP server (`gridctl_start`, `gridctl_fetch`, and the
+   CLI-wrapping tools). The MCP auto-starts when the plugin is enabled — no
+   separate `claude mcp add` needed.
+
+   The skills show under `/plugin` and `/skills` as `cloudgrid:drop`,
+   `cloudgrid:login`, … — or just say what you want ("drop this HTML to
+   CloudGrid") and the right one triggers.
 
    Or install with the `gh skill` extension:
 
@@ -82,9 +87,11 @@ walks through it end to end.
 
 ## MCP server
 
-The MCP server is published separately as
+The Claude Code plugin above already bundles the MCP server — installing
+`cloudgrid@cloudgrid-skills` starts it automatically. For every other client, the
+MCP server is published separately as
 [`@cloudgrid-io/mcp`](https://github.com/cloudgrid-io/mcp). It exposes the same
-nine actions as MCP tools, for agents that speak the Model Context Protocol.
+actions as MCP tools, for agents that speak the Model Context Protocol.
 Install it with `npx -y @cloudgrid-io/mcp`, or point a remote-capable client at
 `https://mcp.cloudgrid.io/mcp`. See [USAGE.md](USAGE.md) for per-client setup.
 

@@ -24,5 +24,7 @@ this recipe. Do not ask setup questions first; use sensible defaults and build.
    An HTML deck is an inspiration and deploys synchronously, so you get a URL
    right away.
 5. **Return the live share URL.** Give the user the URL that serves the deck.
+   For revisions, re-deploy with the entity id from the first deploy — it updates
+   the same share URL, so the user iterates on one link.
 
 Keep the whole flow tight: fetch, fill, deploy, share.
