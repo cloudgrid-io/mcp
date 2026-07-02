@@ -13,6 +13,7 @@ import { promisify } from "node:util";
 import { readFile } from "node:fs/promises";
 import { readFileSync, existsSync, statSync, readdirSync } from "node:fs";
 import { basename, dirname, resolve, join } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { newLoginCode, buildLoginUrl, pollStatusOnce, decodeJwt } from "./auth.js";
@@ -293,16 +294,202 @@ function winQuoteArg(arg) {
 }
 
 // execFile a command that may be a Windows `.cmd` shim, safely on every OS.
-function execMaybeCmd(command, args, options) {
-  if (!IS_WIN) return execFileAsync(command, args, options);
+function execMaybeCmd(command, args, options, exec = execFileAsync) {
+  if (!IS_WIN) return exec(command, args, options);
   const line = [command, ...args].map(winQuoteArg).join(" ");
-  return execFileAsync(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", line], {
+  return exec(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", line], {
     ...options,
     windowsVerbatimArguments: true,
   });
 }
 
-async function runCloudgrid(args, opts = {}) {
+// ── Electron-safe Node runtime resolution ─────────────────────────────────────
+//
+// Claude Desktop (and other Electron MCP hosts) run this server inside an
+// Electron utility process, so `process.execPath` is the host's Electron helper
+// binary — NOT a Node interpreter. Spawning it as if it were Node either dies
+// with FATAL "Unable to find helper app" (Claude Desktop's helper binary) or
+// boots a GUI Electron app that hangs until the exec timeout and then reports a
+// fake success. ELECTRON_RUN_AS_NODE=1 only helps when the host's Electron
+// build keeps the runAsNode fuse enabled — Claude Desktop's does NOT (verified:
+// the helper FATALs identically with the variable set). So the bundled-CLI rung
+// must (a) never blindly spawn process.execPath under Electron, (b) prefer a
+// real Node binary probed from common install locations (the utility process
+// PATH is a bare /usr/bin:/bin:/usr/sbin:/sbin on macOS), and (c) use
+// execPath-as-node only after a quick verified run-as-node probe.
+
+const CLI_SHIM = fileURLToPath(new URL("./cli-shim.mjs", import.meta.url));
+
+const NO_NODE_HINT =
+  "No usable Node.js runtime found for spawning the CloudGrid CLI (this MCP " +
+  "host runs on Electron, whose binary cannot execute Node scripts). Install " +
+  "Node.js (https://nodejs.org) or the CloudGrid CLI (npm install -g " +
+  "@cloudgrid-io/cli) and try again.";
+
+// True when `execPath` is a real Node interpreter we can hand a script to.
+function execPathIsRealNode({ execPath, versions, platform }) {
+  if (versions?.electron) return false;
+  const name = basename(execPath).toLowerCase();
+  return platform === "win32" ? name === "node.exe" || name === "node" : name === "node";
+}
+
+// Pick the highest semver-looking entry of a directory (nvm/fnm version dirs).
+function highestVersionEntry(dir, fsReaddir) {
+  try {
+    const versions = fsReaddir(dir)
+      .filter((d) => /^v?\d+\.\d+\.\d+$/.test(d))
+      .sort((a, b) => {
+        const pa = a.replace(/^v/, "").split(".").map(Number);
+        const pb = b.replace(/^v/, "").split(".").map(Number);
+        return pa[0] - pb[0] || pa[1] - pb[1] || pa[2] - pb[2];
+      });
+    return versions.pop() || null;
+  } catch {
+    return null;
+  }
+}
+
+// Candidate real-Node binaries, most likely first. GUI-launched Electron hosts
+// get a bare PATH, so fixed install locations and version-manager dirs are
+// probed explicitly.
+function listNodeCandidates({ platform, env, home, fsReaddir }) {
+  const out = [];
+  const binName = platform === "win32" ? "node.exe" : "node";
+  for (const dir of (env.PATH || "").split(platform === "win32" ? ";" : ":")) {
+    if (dir) out.push(join(dir, binName));
+  }
+  if (platform === "win32") {
+    for (const base of [env.ProgramFiles, env["ProgramFiles(x86)"]]) {
+      if (base) out.push(join(base, "nodejs", "node.exe"));
+    }
+    if (env.NVM_SYMLINK) out.push(join(env.NVM_SYMLINK, "node.exe"));
+    if (env.LOCALAPPDATA) out.push(join(env.LOCALAPPDATA, "Volta", "bin", "node.exe"));
+    return out;
+  }
+  out.push("/usr/local/bin/node", "/opt/homebrew/bin/node", "/usr/bin/node", "/opt/local/bin/node");
+  if (home) {
+    out.push(join(home, ".volta", "bin", "node"));
+    const nvmVersions = join(env.NVM_DIR || join(home, ".nvm"), "versions", "node");
+    const nvmBest = highestVersionEntry(nvmVersions, fsReaddir);
+    if (nvmBest) out.push(join(nvmVersions, nvmBest, "bin", "node"));
+    for (const base of [
+      env.FNM_DIR,
+      join(home, ".local", "share", "fnm"),
+      join(home, "Library", "Application Support", "fnm"),
+      join(home, ".fnm"),
+    ]) {
+      if (!base) continue;
+      out.push(join(base, "aliases", "default", "bin", "node"));
+      const fnmVersions = join(base, "node-versions");
+      const fnmBest = highestVersionEntry(fnmVersions, fsReaddir);
+      if (fnmBest) out.push(join(fnmVersions, fnmBest, "installation", "bin", "node"));
+    }
+  }
+  return out;
+}
+
+// Verify a candidate actually behaves like Node (guards against broken shims
+// and against Electron's fake-success mode where a timed-out GUI boot exits 0).
+async function verifyNodeRuns(exec, command, env) {
+  try {
+    const { stdout } = await exec(command, ["-p", "process.version"], {
+      timeout: 5_000,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return /^v\d+\./.test(String(stdout).trim());
+  } catch {
+    return false;
+  }
+}
+
+// Resolve the Node runtime used to spawn the bundled CLI. Returns
+// { command, kind } or null when no usable runtime exists.
+//
+// The `deps` seam exists ONLY so the Electron regression tests can drive the
+// Electron code paths deterministically on a plain-Node CI box. Production
+// (runCloudgrid) only ever injects the real spawner, so the result is memoized.
+let runtimeCache; // undefined = not yet resolved; null = resolved to "none"
+export async function resolveNodeRuntime(deps = {}) {
+  // Cache unless the environment itself is simulated (`exec` is just the
+  // spawner) — probing spawns children, and the answer cannot change within
+  // one server process.
+  const cacheable = Object.keys(deps).every((k) => k === "exec");
+  if (cacheable && runtimeCache !== undefined) return runtimeCache;
+  const {
+    exec = execFileAsync,
+    execPath = process.execPath,
+    versions = process.versions,
+    platform = process.platform,
+    env = process.env,
+    home = homedir(),
+    fsExists = existsSync,
+    fsReaddir = readdirSync,
+  } = deps;
+
+  let result = null;
+  if (execPathIsRealNode({ execPath, versions, platform })) {
+    result = { command: execPath, kind: "exec-path" };
+  } else {
+    // 1. A real Node binary somewhere on this machine.
+    for (const candidate of listNodeCandidates({ platform, env, home, fsReaddir })) {
+      if (!fsExists(candidate)) continue;
+      if (await verifyNodeRuns(exec, candidate, env)) {
+        result = { command: candidate, kind: "system-node" };
+        break;
+      }
+    }
+    // 2. Last resort: execPath with ELECTRON_RUN_AS_NODE — only if a quick
+    //    probe proves the host's runAsNode fuse is enabled (Claude Desktop's
+    //    is not; vanilla Electron's is).
+    if (!result) {
+      const probeEnv = { ...env, ELECTRON_RUN_AS_NODE: "1" };
+      if (await verifyNodeRuns(exec, execPath, probeEnv)) {
+        result = { command: execPath, kind: "electron-run-as-node" };
+      }
+    }
+  }
+  if (cacheable) runtimeCache = result;
+  return result;
+}
+
+// A step-1 error that means "the runtime never ran the CLI" (fall through to
+// the global-CLI/npx rungs) as opposed to "the CLI ran and reported an error"
+// (surface it).
+function isRuntimeBootFailure(err) {
+  if (!err) return false;
+  if (err.code === "ENOENT" || err.code === "EACCES") return true;
+  const text = `${err.stderr || ""}\n${err.message || ""}`;
+  return text.includes("Unable to find helper app") || /FATAL:.*electron/i.test(text);
+}
+
+// Environment for the global-CLI and npx fallback rungs. GUI-launched Electron
+// hosts hand utility processes a bare PATH (macOS: /usr/bin:/bin:/usr/sbin:/sbin)
+// that misses Homebrew/npm bin dirs, so `cloudgrid`/`npx` would be ENOENT even
+// when installed — append the usual install locations. ELECTRON_RUN_AS_NODE is
+// stripped so it cannot leak through a real-node CLI into anything it spawns.
+function pathAugmentedEnv(env = process.env, platform = process.platform, home = homedir()) {
+  const out = { ...env };
+  delete out.ELECTRON_RUN_AS_NODE;
+  if (platform === "win32") return out;
+  const extras = ["/usr/local/bin", "/opt/homebrew/bin", join(home, ".volta", "bin"), join(home, ".local", "bin")];
+  const parts = (out.PATH || "").split(":").filter(Boolean);
+  for (const dir of extras) {
+    if (!parts.includes(dir)) parts.push(dir);
+  }
+  out.PATH = parts.join(":");
+  return out;
+}
+
+// The `deps` seam mirrors resolveBundledCli's: it exists ONLY so regression
+// tests can spy the exec calls and simulate Electron hosts deterministically.
+// Production always calls this with no deps.
+export async function runCloudgrid(args, opts = {}, deps = {}) {
+  const {
+    exec = execFileAsync,
+    resolveCli = resolveBundledCli,
+    resolveRuntime = resolveNodeRuntime,
+  } = deps;
   const cwd = resolveCwd(opts.cwd);
   const execOpts = {
     maxBuffer: 16 * 1024 * 1024,
@@ -310,6 +497,11 @@ async function runCloudgrid(args, opts = {}) {
     stdio: ["ignore", "pipe", "pipe"],
     ...(cwd ? { cwd } : {}),
   };
+  // PATH-augmented, ELECTRON_RUN_AS_NODE-free env for the fallback rungs.
+  const fallbackEnv = pathAugmentedEnv();
+  // Set when the bundled CLI had to be skipped for lack of a Node runtime, so
+  // the final error names the real cause instead of a raw npx/Electron error.
+  let runtimeHint = null;
 
   const extract = (err) => {
     const detail = [err && err.stdout, err && err.stderr, err && err.message]
@@ -319,18 +511,35 @@ async function runCloudgrid(args, opts = {}) {
     return new Error(detail || "cloudgrid command failed");
   };
 
-  // 1. Bundled CLI — own node_modules only, version-gated
-  const bundled = resolveBundledCli();
+  // 1. Bundled CLI — own node_modules only, version-gated. Runs via
+  //    cli-shim.mjs under a verified Node runtime (see resolveNodeRuntime):
+  //    process.execPath is NOT assumed to be Node, because under Electron MCP
+  //    hosts (Claude Desktop) it is the host's Electron helper binary.
+  //    ELECTRON_RUN_AS_NODE=1 makes an Electron runtime boot as Node and is
+  //    ignored by plain Node; the shim strips it again before the CLI runs and
+  //    fixes commander's Electron argv slicing.
+  const bundled = resolveCli();
   if (bundled && meetsMinVersion(bundled.version)) {
-    try {
-      const { stdout, stderr } = await execFileAsync(
-        process.execPath,
-        [bundled.entry, ...args],
-        execOpts,
-      );
-      return (stdout || stderr || "").trim() || "Done.";
-    } catch (err) {
-      throw extract(err);
+    const runtime = await resolveRuntime({ exec });
+    if (runtime) {
+      try {
+        const { stdout, stderr } = await exec(
+          runtime.command,
+          [CLI_SHIM, bundled.entry, ...args],
+          { ...execOpts, env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } },
+        );
+        return (stdout || stderr || "").trim() || "Done.";
+      } catch (err) {
+        // A CLI-reported error surfaces; a runtime that failed to boot falls
+        // through to the global-CLI/npx rungs instead of killing the chain.
+        if (!isRuntimeBootFailure(err)) throw extract(err);
+        console.error(
+          `cloudgrid-mcp: bundled CLI spawn failed (${err?.code || "runtime boot failure"}); trying global CLI, then npx`,
+        );
+      }
+    } else {
+      runtimeHint = NO_NODE_HINT;
+      console.error(`cloudgrid-mcp: ${NO_NODE_HINT} Trying global CLI, then npx.`);
     }
   } else if (bundled) {
     console.error(
@@ -344,10 +553,16 @@ async function runCloudgrid(args, opts = {}) {
     const globalBin = IS_WIN ? "cloudgrid.cmd" : "cloudgrid";
     let useGlobal = false;
     try {
-      const { stdout: vOut } = await execMaybeCmd(globalBin, ["--version"], {
-        timeout: 5_000,
-        stdio: ["ignore", "pipe", "pipe"],
-      });
+      const { stdout: vOut } = await execMaybeCmd(
+        globalBin,
+        ["--version"],
+        {
+          timeout: 5_000,
+          stdio: ["ignore", "pipe", "pipe"],
+          env: fallbackEnv,
+        },
+        exec,
+      );
       const ver = vOut.trim().match(/(\d+\.\d+\.\d+)/)?.[1];
       if (meetsMinVersion(ver)) {
         useGlobal = true;
@@ -361,7 +576,12 @@ async function runCloudgrid(args, opts = {}) {
     }
     if (useGlobal) {
       try {
-        const { stdout, stderr } = await execMaybeCmd(globalBin, args, execOpts);
+        const { stdout, stderr } = await execMaybeCmd(
+          globalBin,
+          args,
+          { ...execOpts, env: fallbackEnv },
+          exec,
+        );
         return (stdout || stderr || "").trim() || "Done.";
       } catch (err) {
         throw extract(err);
@@ -379,11 +599,14 @@ async function runCloudgrid(args, opts = {}) {
     const { stdout, stderr } = await execMaybeCmd(
       npx,
       ["-y", CLI_NPX_PKG, ...args],
-      execOpts,
+      { ...execOpts, env: fallbackEnv },
+      exec,
     );
     return (stdout || stderr || "").trim() || "Done.";
   } catch (err) {
-    throw extract(err);
+    const failure = extract(err);
+    if (runtimeHint) failure.message = `${runtimeHint}\n\n${failure.message}`;
+    throw failure;
   }
 }
 
@@ -407,8 +630,13 @@ function tryOpenBrowser(url) {
   if (process.env.CLOUDGRID_NO_BROWSER === "1") return;
   const cmd =
     process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+  // Strip ELECTRON_RUN_AS_NODE (present when the server itself runs under
+  // Electron-as-Node) so an Electron-based browser doesn't boot as a headless
+  // Node process instead of opening a window.
+  const env = { ...process.env };
+  delete env.ELECTRON_RUN_AS_NODE;
   try {
-    execFile(cmd, [url], () => {});
+    execFile(cmd, [url], { env }, () => {});
   } catch {
     // ignore — the URL is returned to the user anyway
   }

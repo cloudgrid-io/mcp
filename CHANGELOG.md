@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.7.1
+
+Fixes every CLI-wrapping tool failing (or hanging) in the Claude Desktop
+`.mcpb` — and in any other Electron-based MCP host.
+
+- **Electron-safe bundled-CLI spawning.** Claude Desktop runs the extension
+  inside an Electron utility process, so `process.execPath` is the host's
+  Electron helper binary, not Node. The bundled-CLI rung used to spawn it as if
+  it were Node: on Claude Desktop the child died with FATAL "Unable to find
+  helper app" (surfaced raw as the tool error), and on fuse-enabled Electron
+  hosts it booted a GUI app that hung for the full 10-minute exec timeout and
+  then reported a fake success. The rung now resolves a **verified Node
+  runtime** first (`resolveNodeRuntime`): the real `execPath` when it *is*
+  Node; otherwise a real Node binary probed from common install locations
+  (PATH, `/usr/local/bin`, `/opt/homebrew/bin`, nvm/fnm/volta/MacPorts,
+  `Program Files\nodejs`); otherwise `execPath` under `ELECTRON_RUN_AS_NODE=1`
+  only after a quick probe proves the host's runAsNode fuse is enabled
+  (Claude Desktop's is disabled — verified).
+- **Every bundled-CLI spawn carries `env: { …process.env,
+  ELECTRON_RUN_AS_NODE: "1" }`** (harmless under plain Node) and routes through
+  the new `src/cli-shim.mjs`, which strips the variable again before the CLI
+  runs (so it can't leak into e.g. a browser opened for `cloudgrid login`) and
+  rewrites `argv` so commander parses identically under Electron-as-Node
+  (where `process.versions.electron` is still set and commander would
+  otherwise read the CLI entry path as the command: "unknown command
+  '…/dist/index.js'") and plain Node.
+- **Runtime boot failures fall through** to the global-CLI and npx rungs
+  instead of killing the chain; genuine CLI errors still surface immediately
+  (no double execution). When no Node runtime exists at all, the rung is
+  skipped up front and the final error names the real cause ("No usable
+  Node.js runtime found …") instead of leaking a raw Electron FATAL.
+- **Fallback rungs work from GUI-launched hosts**: their PATH (a bare
+  `/usr/bin:/bin:/usr/sbin:/sbin` in the utility process) is augmented with
+  `/usr/local/bin`, `/opt/homebrew/bin`, `~/.volta/bin`, `~/.local/bin` so a
+  globally installed `cloudgrid` or `npx` is actually found;
+  `ELECTRON_RUN_AS_NODE` is stripped from their env.
+- **Browser-open safety**: `tryOpenBrowser` strips `ELECTRON_RUN_AS_NODE` so an
+  Electron-based browser can't boot as a headless Node process.
+- Windows behavior is unchanged (`.cmd` shims still route through
+  `cmd.exe /d /s /c`; the win-cli regression suite still passes).
+- New regression suite `test/electron-spawn-env.test.mjs`
+  (`npm run test:electron-env`, wired into CI): asserts the spawn env carries
+  `ELECTRON_RUN_AS_NODE=1`, the shim routing, the fall-through/no-double-run
+  semantics, Claude-Desktop-shaped runtime probing, the fake-success probe
+  guard, and the shim's argv/env behavior end-to-end. Fails on the pre-fix
+  code, passes on this one.
+
 ## 0.7.0
 
 Adopts the **unified plug contract** (`POST /api/v2/plug`, MCP tool spec v2): same-URL in-place editing is back, on every surface.

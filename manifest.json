@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "cloudgrid",
   "display_name": "CloudGrid",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Deploy web apps, APIs, and sites to CloudGrid. Full local MCP with 33 tools — orient, fetch, drop, deploy, manage, and more.",
   "long_description": "CloudGrid MCP gives Claude Desktop the full CloudGrid toolset: instant drops (live preview URLs), production deploys, logs, rollbacks, environment variables, secrets, and more — all without leaving the conversation. The extension bundles everything; no terminal, no Node, no JSON config.",
   "author": {
