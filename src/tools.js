@@ -66,6 +66,7 @@ Operating rules:
 4. Always return the live share URL at the end — that is the deliverable.
 5. Minimize questions. Use sensible defaults and build; don't front-load setup questions.
 6. If a signed-in publish fails with a server error, do not fall back to anonymous publishing (it burns the anonymous quota and downgrades ownership); surface the error, use the CLI fallback if offered, or ask the user.
+7. When signed in and the user has more than one grid, do not assume a target — the publish tools will ask; relay the choice to the user and pass the chosen grid.
 
 Deploy is edition-dependent: on the hosted MCP call the drop tool with the HTML; on local MCP / CLI write the file and run the plug tool. An HTML page deploys synchronously, so you get a URL right away.`;
 
@@ -667,6 +668,67 @@ async function fetchUserOrgs(token) {
   }
 }
 
+// ── Shared grid disambiguation (gridctl_drop + gridctl_plug) ──────────────────
+// The stateless "which grid?" ask, used identically by both publish verbs so
+// they never drift. Given the caller's token and a supplied grid, it decides:
+//   - supplied grid matches a membership  → { proceed: true, grid }
+//   - >1 grid and none supplied           → { picker } (a ready-to-return result)
+//   - exactly one grid                    → { single: annotatedOrg } — the caller
+//         decides how to treat a not-ready single grid (drop blocks; plug warns)
+//   - no orgs / listing failed            → { proceed: true } (fall through)
+// User-facing text says "grid" (Gilad's org→grid rename); the structured payload
+// carries `needs_grid` AND the `needs_org`/`orgs`/`org`-slug fields the existing
+// org-picker web widget reads, so the web card keeps working. Stateless — no
+// dependence on prior-call state (ChatGPT Apps SDK reconnects every call).
+export async function resolveGridOrAsk(ctx, { token, suppliedGrid, edition }, deps = {}) {
+  const listOrgs = deps.fetchUserOrgs || fetchUserOrgs;
+  const orgs = await listOrgs(token);
+  const activeOrg = await ctx.getActiveOrg();
+  const matched = suppliedGrid && orgs.find((o) => o.slug === suppliedGrid);
+  if (matched) {
+    // Supplied grid matches — proceed. The agent should already have checked
+    // render_ready and warned the user; we don't block here.
+    return { proceed: true, grid: suppliedGrid };
+  }
+  if (orgs.length > 1) {
+    // No valid grid supplied and multiple grids — ask once. Mark the active
+    // grid so the agent can offer it as the default.
+    const annotated = orgs.map((o) => ({ ...o, is_active: o.slug === activeOrg }));
+    // Sort: active grid first, then ready grids, then not-ready grids.
+    annotated.sort((a, b) => {
+      if (a.is_active !== b.is_active) return b.is_active ? 1 : -1;
+      if (a.render_ready !== b.render_ready) return b.render_ready ? 1 : -1;
+      return 0;
+    });
+    const lines = ["Which grid should this be published to?"];
+    for (const o of annotated) {
+      const tags = [];
+      if (o.is_active) tags.push("your active grid");
+      if (!o.render_ready) tags.push("not set up yet");
+      const suffix = tags.length ? ` (${tags.join(", ")})` : "";
+      lines.push(`  ${o.slug} — ${o.name} (${o.role})${suffix}`);
+    }
+    lines.push("Pass the grid slug in the `grid` parameter.");
+    const readyCount = annotated.filter((o) => o.render_ready).length;
+    if (readyCount === 0) {
+      lines.push("Note: none of your grids are fully set up yet. You can use anonymous: true as a fallback.");
+    }
+    return {
+      picker: {
+        text: lines.join("\n"),
+        // `needs_grid` is the new field; `needs_org`/`orgs` are kept as aliases
+        // so the existing org-picker.html web widget (reads data.orgs) still works.
+        structured: { needs_grid: true, needs_org: true, grids: annotated, orgs: annotated },
+        ...(edition === "web" ? { meta: { "openai/outputTemplate": ORG_PICKER_URI } } : {}),
+      },
+    };
+  }
+  if (orgs.length === 1) {
+    return { single: { ...orgs[0], is_active: orgs[0].slug === activeOrg } };
+  }
+  return { proceed: true };
+}
+
 // After an authenticated web drop, upgrade visibility to "link" so the artifact
 // is shareable and its preview renders without a sign-in wall. Best-effort — a
 // failure here does not fail the drop; the user can always call gridctl_visibility.
@@ -733,9 +795,11 @@ export function resolvePlugUrl(data) {
 
 export async function runDrop(
   ctx,
-  { html, path: filePath, filename, anonymous, org, fresh, entity_id, owner_token },
+  { html, path: filePath, filename, anonymous, org, grid, fresh, entity_id, owner_token },
   deps = {},
 ) {
+  // `grid` is an accepted alias for `org` (Gilad's org→grid rename); `org` still works.
+  const targetGrid = org ?? grid;
   // Defensive: the web edition schema excludes `path`, but if a model still
   // passes one (e.g. from a cached tool description), reject early with a
   // clear explanation.
@@ -779,7 +843,7 @@ export async function runDrop(
   if (anonymous !== true) {
     authToken = await ctx.getToken();
     if (authToken) {
-      orgSlug = org || (await ctx.getActiveOrg());
+      orgSlug = targetGrid || (await ctx.getActiveOrg());
     }
   }
 
@@ -1847,7 +1911,8 @@ export function registerTools(server, ctx) {
         ),
         filename: z.string().optional().describe("Filename to present. Defaults to index.html for inline HTML."),
         anonymous: z.boolean().optional().describe("Force an anonymous drop even if the user is signed in."),
-        org: z.string().optional().describe("Leave unset; the tool will ask the user which org to publish into. Only set this after the user picks from the list the tool returns."),
+        grid: z.string().optional().describe("Leave unset; the tool will ask the user which grid to publish into. Only set this after the user picks from the list the tool returns."),
+        org: z.string().optional().describe("Deprecated alias for `grid` (kept for compatibility). Prefer `grid`."),
         ...dropReplugParams,
       }
     : {
@@ -1855,7 +1920,8 @@ export function registerTools(server, ctx) {
         path: z.string().optional().describe("Path to a local file to upload instead of inline HTML."),
         filename: z.string().optional().describe("Filename to present. Defaults to index.html for inline HTML."),
         anonymous: z.boolean().optional().describe("Force an anonymous drop even if the user is signed in."),
-        org: z.string().optional().describe("Leave unset; the tool will ask the user which org to publish into. Only set this after the user picks from the list the tool returns."),
+        grid: z.string().optional().describe("Leave unset; the tool will ask the user which grid to publish into. Only set this after the user picks from the list the tool returns."),
+        org: z.string().optional().describe("Deprecated alias for `grid` (kept for compatibility). Prefer `grid`."),
         ...dropReplugParams,
       };
 
@@ -1877,13 +1943,20 @@ export function registerTools(server, ctx) {
           value: z.string().describe("Visibility value to pass to gridctl_visibility."),
           label: z.string().describe("Human-readable label."),
         })).optional().describe("Available visibility levels."),
-        needs_org: z.boolean().optional().describe("True when the user must choose an org before dropping."),
+        needs_grid: z.boolean().optional().describe("True when the user must choose a grid before dropping."),
+        needs_org: z.boolean().optional().describe("Deprecated alias of needs_grid (kept so the org-picker widget keeps working)."),
+        grids: z.array(z.object({
+          slug: z.string().describe("Grid slug to pass as the grid parameter."),
+          name: z.string().describe("Human-readable grid name."),
+          role: z.string().describe("User's role in the grid."),
+          is_active: z.boolean().optional().describe("True if this is the user's currently active grid."),
+        })).optional().describe("The user's grids, when a grid choice is needed."),
         orgs: z.array(z.object({
-          slug: z.string().describe("Org slug to pass as the org parameter."),
-          name: z.string().describe("Human-readable org name."),
-          role: z.string().describe("User's role in the org."),
-          is_active: z.boolean().optional().describe("True if this is the user's currently active org."),
-        })).optional().describe("The user's orgs, when org choice is needed."),
+          slug: z.string().describe("Grid slug to pass as the grid parameter."),
+          name: z.string().describe("Human-readable grid name."),
+          role: z.string().describe("User's role in the grid."),
+          is_active: z.boolean().optional().describe("True if this is the user's currently active grid."),
+        })).optional().describe("Deprecated alias of grids (kept so the org-picker widget keeps working)."),
         needs_sign_in: z.boolean().optional().describe("True when sign-in is needed before dropping."),
         login_url: z.string().optional().describe("Sign-in URL when authentication is needed."),
       },
@@ -1918,63 +1991,37 @@ export function registerTools(server, ctx) {
           }
         }
 
-        // Stateless org disambiguation — both editions, when authenticated.
+        // Stateless grid disambiguation — both editions, when authenticated.
         // No dependency on prior-call state so it works even when the client
-        // reconnects on every tool call (ChatGPT Apps SDK behaviour).
+        // reconnects on every tool call (ChatGPT Apps SDK behaviour). `grid` is
+        // accepted as an alias for `org` (Gilad's rename); `org` still works.
         if (input?.anonymous !== true) {
           const token = await ctx.getToken();
           if (token) {
-            const orgs = await fetchUserOrgs(token);
-            const activeOrg = await ctx.getActiveOrg();
-            const suppliedOrg = input?.org;
-            const matchedOrg = suppliedOrg && orgs.find((o) => o.slug === suppliedOrg);
-            if (matchedOrg) {
-              // Supplied org matches — proceed with it. The agent should have
-              // already checked render_ready via gridctl_orgs and warned the
-              // user if this org isn't set up yet. We don't block here.
-              input = { ...(input || {}), org: suppliedOrg };
-            } else if (orgs.length > 1) {
-              // No valid org supplied and multiple orgs — ask once.
-              // Mark the active org so the agent can offer it as the default.
-              const annotated = orgs.map((o) => ({
-                ...o,
-                is_active: o.slug === activeOrg,
-              }));
-              // Sort: active org first, then ready orgs, then not-ready orgs.
-              annotated.sort((a, b) => {
-                if (a.is_active !== b.is_active) return b.is_active ? 1 : -1;
-                if (a.render_ready !== b.render_ready) return b.render_ready ? 1 : -1;
-                return 0;
-              });
-              const lines = ["Which org should this be published to?"];
-              for (const o of annotated) {
-                const tags = [];
-                if (o.is_active) tags.push("your active org");
-                if (!o.render_ready) tags.push("not set up yet");
-                const suffix = tags.length ? ` (${tags.join(", ")})` : "";
-                lines.push(`  ${o.slug} — ${o.name} (${o.role})${suffix}`);
-              }
-              lines.push("Pass the org slug in the org parameter to publish.");
-              const readyCount = annotated.filter((o) => o.render_ready).length;
-              if (readyCount === 0) {
-                lines.push("Note: none of your orgs are fully set up yet. You can use anonymous: true as a fallback.");
-              }
-              return okResult({
-                text: lines.join("\n"),
-                structured: { needs_org: true, orgs: annotated },
-                ...(ctx.edition === "web" ? { meta: { "openai/outputTemplate": ORG_PICKER_URI } } : {}),
-              });
-            } else if (orgs.length === 1) {
-              if (!orgs[0].render_ready) {
-                // Single org but not set up — tell the agent so it can warn
-                // the user and offer anonymous drop as fallback.
-                const annotated = [{ ...orgs[0], is_active: orgs[0].slug === activeOrg, render_ready: false }];
+            const suppliedGrid = input?.grid || input?.org;
+            const decision = await resolveGridOrAsk(ctx, {
+              token,
+              suppliedGrid,
+              edition: ctx.edition,
+            });
+            if (decision.picker) {
+              return okResult(decision.picker);
+            }
+            if (decision.single) {
+              if (!decision.single.render_ready) {
+                // Single grid but not set up — tell the agent so it can warn
+                // the user and offer anonymous drop as fallback. (drop-specific:
+                // drop blocks here; plug proceeds with a warning.)
+                const annotated = [{ ...decision.single, render_ready: false }];
                 return okResult({
-                  text: `Your only org "${orgs[0].slug}" isn't fully set up yet — pages published there may not load. You can drop anonymously (set anonymous: true) or wait until provisioning completes, then re-run.`,
-                  structured: { needs_org: true, org_not_ready: true, orgs: annotated },
+                  text: `Your only grid "${decision.single.slug}" isn't fully set up yet — pages published there may not load. You can drop anonymously (set anonymous: true) or wait until provisioning completes, then re-run.`,
+                  structured: { needs_grid: true, needs_org: true, grid_not_ready: true, org_not_ready: true, grids: annotated, orgs: annotated },
                 });
               }
-              input = { ...(input || {}), org: orgs[0].slug };
+              input = { ...(input || {}), org: decision.single.slug };
+            } else if (decision.grid) {
+              // Supplied grid matched — normalize onto `org` for runDrop.
+              input = { ...(input || {}), org: decision.grid };
             }
           }
         }
@@ -2090,6 +2137,42 @@ export function registerTools(server, ctx) {
     },
     async (input) => {
       try {
+        // Grid-picker parity with gridctl_drop: a signed-in user with >1 grid is
+        // ASKED which grid to publish to on every CREATE. Only for authed creates
+        // (no target_entity_id, not anon). Edits NEVER ask — the grid is fixed by
+        // the entity. Anon proceeds as a Guest-Grid drop. Explicit valid grid
+        // proceeds. A single grid proceeds (with a warning if it isn't set up yet).
+        const isEdit =
+          typeof input?.target_entity_id === "string" && input.target_entity_id.length > 0;
+        if (input?.anon !== true && !isEdit) {
+          const token = await ctx.getToken();
+          if (token) {
+            const decision = await resolveGridOrAsk(ctx, {
+              token,
+              suppliedGrid: input?.grid,
+              edition: ctx.edition,
+            });
+            if (decision.picker) {
+              // Do NOT silently default to the active grid — surface the ask.
+              return okResult(decision.picker);
+            }
+            if (decision.single) {
+              // Proceed into the single grid; warn (don't block) if not set up yet.
+              input = { ...(input || {}), grid: decision.single.slug };
+              if (decision.single.render_ready === false) {
+                const res = await runPlug(ctx, input || {});
+                return okResult({
+                  ...res,
+                  text:
+                    `Warning: your only grid "${decision.single.slug}" isn't fully set up yet — the page may not load until provisioning completes.\n` +
+                    res.text,
+                });
+              }
+            } else if (decision.grid) {
+              input = { ...(input || {}), grid: decision.grid };
+            }
+          }
+        }
         return okResult(await runPlug(ctx, input || {}));
       } catch (err) {
         return fail(err.message);

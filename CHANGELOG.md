@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.7.3
+
+Grid-picker parity: a signed-in user with more than one grid is now ASKED which
+grid to publish to on **every create** — for `gridctl_plug` too, not just
+`gridctl_drop`. Previously `gridctl_plug` silently defaulted to the active grid.
+The ask is stateless (per-call, no session memory), matching drop.
+
+- **Shared helper `resolveGridOrAsk(ctx, {token, suppliedGrid, edition})`.** The
+  stateless grid-disambiguation that lived inline in the `gridctl_drop` handler
+  is extracted into one exported helper that both publish verbs call, so they
+  can't drift again. It returns `{proceed, grid}`, a `{picker}` result, or a
+  `{single}` decision (the caller decides how to treat a not-ready single grid —
+  drop blocks, plug warns). Sorts active-grid-first then ready-first; flags "not
+  set up yet". `gridctl_drop` behavior is unchanged.
+- **`gridctl_plug` now asks.** For authed **creates only** (no `target_entity_id`,
+  not `anon`) with no valid grid and more than one grid → returns the picker
+  instead of silently defaulting to the active grid. Explicit valid grid →
+  proceeds. Single grid → proceeds (warns if it isn't set up yet). Anonymous →
+  proceeds (Guest Grid). **Edits (`target_entity_id`) never ask** — the grid is
+  fixed by the entity, and the grid list isn't even fetched.
+- **Grid naming (org→grid rename).** User-facing text now says "grid" ("Which
+  grid should this be published to?" / "Pass the grid slug in the `grid`
+  parameter."). The structured payload carries `needs_grid` + `grids[]`, and
+  KEEPS `needs_org` + `orgs[]` as aliases so the existing org-picker web widget
+  keeps rendering. `gridctl_drop` now accepts a `grid` param alongside the still-
+  working `org` alias. The picker widget labels read "grid".
+- **Playbook rule** (served by `gridctl_start`): "When signed in and the user has
+  more than one grid, do not assume a target — the publish tools will ask; relay
+  the choice to the user and pass the chosen grid."
+- **Test** `test/grid-picker.test.mjs` (offline, drives the real tool handlers)
+  covers all six cases: plug multi-grid create asks; explicit grid proceeds; edit
+  does NOT ask; single/anon proceed; drop still asks and its `org` alias works.
+
 ## 0.7.2
 
 Self-healing: when the platform's `/plug` create branch trips the known
