@@ -34,6 +34,11 @@ jobs:
       # Offline unified-plug wire-contract test (0.7.0): asserts target_entity_id /
       # owner_token / cloudgrid.yaml-part semantics against a mocked API.
       - run: npm run test:plug-wire
+      # Offline self-healing test (0.7.2): known-code error guidance is mapped
+      # (unknown codes pass through unchanged), the local-edition CLI self-heal
+      # rung fires only for a signed-in SCOPE_INVALID create (not web/anon/edit),
+      # and gridctl_fetch resolves kind:"rule".
+      - run: npm run test:self-healing
 
   drift-guard:
     runs-on: ubuntu-latest
