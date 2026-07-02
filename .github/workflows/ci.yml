@@ -59,6 +59,12 @@ jobs:
           node-version: 20
       - run: npm ci
       - run: npm run test:win-cli
+      # Regression guard for the Claude Desktop .mcpb Electron-spawn bug (Task
+      # 30): bundled-CLI spawns must carry ELECTRON_RUN_AS_NODE=1, route through
+      # cli-shim.mjs, never blindly trust process.execPath under Electron, and
+      # fall through to the global-CLI/npx rungs on runtime boot failure. Fails
+      # on the pre-fix code, passes on the fix.
+      - run: npm run test:electron-env
 
   # API drift guard: the web/local editions call api.cloudgrid.io directly (drop
   # → POST /api/v2/plug, claim → POST /api/v2/entities/:id/pickup). The CLI-verb
