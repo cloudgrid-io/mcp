@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.7.2
+
+Self-healing: when the platform's `/plug` create branch trips the known
+`400 SCOPE_INVALID (scope=personal, visibility=grid)` bug on a signed-in
+create, the MCP no longer flails (retrying permutations, falling back to
+anonymous and burning the daily anon cap into a 429 login-loop). It now
+recovers or steers the agent instead.
+
+- **Smart error guidance** on the direct-API create paths (`runDrop` and the
+  `gridctl_plug` handler). A small, exported pure mapper (`errorGuidance`)
+  appends actionable agent-facing next steps to a **known** set of failures —
+  and only those; unknown errors pass through UNCHANGED (no blanket
+  rewriting):
+  - `400 SCOPE_INVALID` → names the known platform issue. Local edition:
+    "Falling back to the bundled CloudGrid CLI…". Web edition: "Re-plug of an
+    existing entity still works; creating new entities is temporarily affected
+    — do NOT retry with other parameters and do NOT fall back to anonymous."
+  - `429` (anon cap) → keeps the server text and appends "Do not retry today
+    and do not treat this as a sign-in problem. If the user is signed in, use
+    the signed-in path instead of anonymous."
+  - `409` edit-rejected / `401` on edits → concise next-step guidance.
+- **Local-edition CLI self-heal rung.** In the LOCAL edition only, a signed-in
+  CREATE (never an edit, never anonymous) that fails with `400 SCOPE_INVALID`
+  is transparently retried through the bundled CloudGrid CLI (whose wire is
+  unaffected): the in-memory artifacts are written to a temp dir
+  (`fs.mkdtemp` under `os.tmpdir`), `plug <dir> --no-clipboard --no-notify`
+  runs via the existing Electron-safe `runCloudgrid()`, the live URL is parsed
+  from stdout and returned as a normal success (noting the CLI recovery), and
+  the temp dir is always cleaned up.
+- **Playbook rule.** `gridctl_start` now serves an explicit operating rule: "If
+  a signed-in publish fails with a server error, do not fall back to anonymous
+  publishing (it burns the anonymous quota and downgrades ownership); surface
+  the error, use the CLI fallback if offered, or ask the user."
+- **Corpus pipeline** now serves the rules/troubleshooting docs Task 31 adds:
+  `scripts/snapshot-corpus.mjs` also recursively snapshots `rules/` and
+  `troubleshooting/` from `../skills` (missing dirs tolerated — the skills PR
+  may not be merged yet; the manager re-snapshots at integration), and
+  `gridctl_fetch`'s KIND→dir map resolves `kind:"rule"` → `rules/` and
+  `kind:"troubleshooting"` → `troubleshooting/` (both added to the tool's
+  `kind` enum).
+
 ## 0.7.1
 
 Fixes every CLI-wrapping tool failing (or hanging) in the Claude Desktop

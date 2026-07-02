@@ -68,15 +68,16 @@ for (const [src, dest] of copies) {
 }
 
 // ── Directory-walk the structured corpus (F1/F2) ─────────────────────────────
-// gridctl_fetch serves workflows / templates / examples deterministically from
-// the bundled corpus. These live in their own subdirectories of src/corpus/ so
-// they don't get chunked into the BM25 docs index (loadCorpus reads only the
-// top-level *.md files). Each directory is snapshotted recursively; the whole
-// subtree is refreshed so deletions in the source propagate. Missing source
-// directories are tolerated — the manager runs the final re-snapshot once
-// Worker A's content lands on skills' main.
+// gridctl_fetch serves workflows / templates / examples / rules /
+// troubleshooting deterministically from the bundled corpus. These live in
+// their own subdirectories of src/corpus/ so they don't get chunked into the
+// BM25 docs index (loadCorpus reads only the top-level *.md files). Each
+// directory is snapshotted recursively; the whole subtree is refreshed so
+// deletions in the source propagate. Missing source directories are tolerated —
+// rules/ and troubleshooting/ ship in a separate skills PR that may not be
+// merged yet; the manager runs the final re-snapshot at integration.
 let dirs = 0;
-for (const name of ["workflows", "templates", "examples"]) {
+for (const name of ["workflows", "templates", "examples", "rules", "troubleshooting"]) {
   const srcDir = resolve(SKILLS, name);
   const destDir = resolve(CORPUS, name);
   if (!existsSync(srcDir)) {
