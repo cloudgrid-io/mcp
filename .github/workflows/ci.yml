@@ -39,6 +39,10 @@ jobs:
       # rung fires only for a signed-in SCOPE_INVALID create (not web/anon/edit),
       # and gridctl_fetch resolves kind:"rule".
       - run: npm run test:self-healing
+      # Offline grid-picker parity test (0.7.3): gridctl_plug asks "which grid?"
+      # on authed multi-grid creates (like gridctl_drop), never on edits/anon,
+      # and proceeds on an explicit/single grid. Drives the real tool handlers.
+      - run: npm run test:grid-picker
 
   drift-guard:
     runs-on: ubuntu-latest

@@ -34,18 +34,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
   }
 
   function render(data) {
-    if (!data || !data.orgs || data.orgs.length === 0) {
-      root.innerHTML = '<div class="card"><div class="title">No organizations found</div></div>';
+    // `grids` is the current field; fall back to `orgs` for older payloads.
+    var items = (data && (data.grids || data.orgs)) || null;
+    if (!items || items.length === 0) {
+      root.innerHTML = '<div class="card"><div class="title">No grids found</div></div>';
       return;
     }
 
     var html =
       '<div class="card">' +
-        '<div class="title">Choose an organization</div>' +
-        '<div class="subtitle">Which org should this be published to?</div>' +
+        '<div class="title">Choose a grid</div>' +
+        '<div class="subtitle">Which grid should this be published to?</div>' +
         '<div class="orgs">';
-    for (var i = 0; i < data.orgs.length; i++) {
-      var org = data.orgs[i];
+    for (var i = 0; i < items.length; i++) {
+      var org = items[i];
       var notReady = org.render_ready === false;
       html +=
         '<button class="org-btn' + (notReady ? ' not-ready' : '') + '" data-slug="' + esc(org.slug) + '">' +
@@ -71,7 +73,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
           if (input.html) args.html = input.html;
           if (input.filename) args.filename = input.filename;
           if (input.fresh !== undefined) args.fresh = input.fresh;
-          args.org = slug;
+          args.grid = slug;
+          args.org = slug; // alias kept for compatibility
           window.openai.callTool("cloudgrid_drop", args).then(function () {
             // The host will render the new result with the live-result card.
           }).catch(function () {
