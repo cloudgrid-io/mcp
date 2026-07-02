@@ -4,8 +4,9 @@ name: drop
 description: |
   Share an artifact and get a public URL. Use when the user wants to share,
   publish, send, or deploy an HTML page or file, or wants a link for a friend.
-  Works with no login (anonymous, 7-day, claimable later) or signed in (published
-  into the user's org, owned, 30-day). Inspirations only.
+  Works with no login (anonymous, claimable later) or signed in (published
+  into the user's org, owned). Re-plugging updates the same URL in place.
+  Inspirations only.
 argument-hint: "[file]"
 allowed-tools: Bash
 ---
@@ -50,18 +51,19 @@ curl -sS -X POST https://api.cloudgrid.io/api/v2/plug \
 
 The response is JSON (HTTP 201 for an anonymous drop). Read these fields:
 
-- `slug` — the entity's public slug. An anonymous inspiration's live link is
-  `https://guest.cloudgrid.io/<slug>`. The response has no ready-made `url`;
-  compose it from the slug. (Apps/agents would be `https://<slug>.<grid>.cloudgrid.io`,
-  but anonymous drops are always inspirations.)
-- `claim_url` — the link to sign in and keep it past the 7-day expiry.
+- `url` — the live link, composed by the server. Use it verbatim; never compose a
+  URL from the slug yourself.
+- `entity_id` — the durable handle for updating this drop later (see re-plug below).
+- `owner_token` — a JWT proving you made this drop. It lets you re-plug the drop
+  anonymously and doubles as the claim token. Its lifetime matches the drop's
+  expiry (default 7 days). Persist it together with `entity_id` and `url`.
+- `claim_url` — the link to sign in and keep the drop past its expiry.
 - `claim_message` — a ready-to-show nudge to sign in and claim.
 
 ## If the user is signed in
 
 A signed-in user can publish into their own org instead of anonymously — the drop
-is owned, lasts 30 days, and needs no claim. Add their token and org to the same
-request:
+is owned and needs no claim. Add their token and org to the same request:
 
 ```
 JWT=$(jq -r .jwt ~/.cloudgrid/credentials 2>/dev/null)
@@ -71,30 +73,63 @@ curl -sS -X POST https://api.cloudgrid.io/api/v2/plug \
   -F "artifact=@/path/to/index.html;type=text/html"
 ```
 
-A signed-in drop returns HTTP 202 with `slug` + `grid` and no `claim_url` (it is
-already owned). Its live link is `https://<grid>.cloudgrid.io/<slug>` for an
-inspiration. The org is taken from the `X-CloudGrid-Org` header — there is no
+A signed-in drop returns HTTP 202 with `entity_id`, `url`, `slug` + `grid` and no
+`claim_url` (it is already owned). Use the returned `url` as the live link — do
+not compose it. The org is taken from the `X-CloudGrid-Org` header — there is no
 `org_slug` form field. If the user is a member of several orgs and the header is
 missing, the API replies with the list of orgs to choose from. The MCP
 `cloudgrid_drop` tool does this automatically when credentials are present.
 
-## One drop = one entity (no in-place re-drop)
+## Re-plug: update the same URL in place
 
-The unified `/api/v2/plug` endpoint is create-only for this flow: every drop mints
-a NEW entity with a NEW URL. There is no `previous_id` / in-place-update path and no
-`202 unchanged` no-op — those belonged to the retired `/drop/auto` endpoint. To
-publish an update, drop again; you get a fresh link. (To update an existing app in
-place, sign in and use `cloudgrid:plug`, which targets the entity by name.)
+`/api/v2/plug` is a unified create-or-update endpoint. The switch is the
+`target_entity_id` form field:
 
-The MCP `cloudgrid_drop` tool accepts a `fresh` flag for backward compatibility,
-but it is now a no-op — each drop is already a fresh create.
+- **Absent** → create: a new entity, a new URL.
+- **Present** → re-plug: the SAME entity is updated — same slug, same URL, new
+  content. This is how you iterate on one shareable link.
+
+Signed in, re-plug with the entity id and your normal auth headers:
+
+```
+curl -sS -X POST https://api.cloudgrid.io/api/v2/plug \
+  -H "Authorization: Bearer $JWT" -H "X-CloudGrid-Org: $ORG" \
+  -F "target_entity_id=$ENTITY_ID" \
+  -F "artifact=@/path/to/index.html;type=text/html"
+```
+
+Anonymously, prove ownership with the `owner_token` the drop returned:
+
+```
+curl -sS -X POST https://api.cloudgrid.io/api/v2/plug \
+  -F "target_entity_id=$ENTITY_ID" \
+  -F "owner_token=$OWNER_TOKEN" \
+  -F "artifact=@/path/to/index.html;type=text/html"
+```
+
+Rules that matter:
+
+- `entity_id` + `url` (+ `owner_token` when anonymous) are the durable re-plug
+  handle. Persist them after every drop.
+- Every anonymous edit REFRESHES the `owner_token` — store the one from the
+  latest response; the old one is superseded. Each edit also resets the drop's
+  expiry window.
+- Editing an archived or expired drop returns **409 `EDIT_REJECTED`** — it never
+  silently creates a new entity. Drop again (without `target_entity_id`) if the
+  user wants a new link.
+- An anonymous edit without a valid `owner_token` returns **401**.
+- Anonymous edits count against the same daily anonymous cap as creates.
+- Only re-plug when the user is iterating on an existing artifact. If they want a
+  separate new link, omit `target_entity_id` (the MCP `cloudgrid_drop` tool's
+  `fresh` flag does the same: it forces a new entity instead of updating).
 
 ## After the drop
 
-Print the composed `url` (e.g. `https://guest.cloudgrid.io/<slug>`) on its own line,
-by itself, so it can be copied in one go. Then add one line of context: an anonymous
-drop lasts 7 days and can be claimed to keep it; a signed-in drop is already owned.
-Do not bury the URL in prose.
+Print the `url` from the response on its own line, by itself, so it can be copied
+in one go. Then add one line of context: an anonymous drop expires (default 7 days,
+reset on every edit) and can be claimed to keep it; a signed-in drop is already
+owned. Do not bury the URL in prose. Keep `entity_id` (and `owner_token` if
+anonymous) so a follow-up "change X" can re-plug the same URL.
 
 ## Limits and errors
 

@@ -14,7 +14,7 @@ allowed-tools: Bash
 
 Turn an anonymous drop into an owned one. After an anonymous drop, the user has a
 `claim_url` (or token) plus the drop's `entity_id`. Once they sign in, claiming
-transfers ownership to them and extends the expiry from 7 days to 30. Claiming
+transfers ownership to them and resets the expiry window. Claiming
 re-homes the drop into the user's grid, so its public URL changes from
 `guest.cloudgrid.io/<slug>` to `<grid>.cloudgrid.io/<slug>` — share the new link.
 
@@ -26,10 +26,16 @@ skill (or `cloudgrid login` with the CLI) first.
 ## What you need
 
 Two things: the **entity id** of the anonymous drop (the `entity_id` field the drop
-returned), and the **claim token** — the `token` query parameter inside the
-`claim_url` the drop returned, e.g. `https://console.cloudgrid.io/claim?token=<TOKEN>`.
+returned), and the **claim token**. The claim token is the drop's `owner_token` —
+the same JWT used for anonymous re-plugs. It also appears as the `token` query
+parameter inside the `claim_url` the drop returned, e.g.
+`https://console.cloudgrid.io/claim?token=<TOKEN>`.
 A browser that still holds the `cg_anon_session` cookie from the drop can claim
 without a token instead.
+
+Note: every anonymous re-plug (edit) of the drop refreshes the `owner_token` and
+resets the drop's expiry. Always claim with the token from the LATEST drop or
+edit response — an older token may have been superseded.
 
 ## How to run it
 

@@ -34,9 +34,13 @@ npx skills add cloudgrid-io/skills
 
 ```
 /plugin marketplace add cloudgrid-io/skills
+/plugin install cloudgrid@cloudgrid-skills
 ```
 
-The marketplace manifest lives in `.claude-plugin/`.
+The marketplace manifest lives in `.claude-plugin/` (marketplace name:
+`cloudgrid-skills`, plugin name: `cloudgrid`). Installing the plugin bundles the
+skills, the SessionStart orientation hook, and the CloudGrid MCP server — the MCP
+auto-starts when the plugin is enabled, so no separate `claude mcp add` is needed.
 
 ### Codex
 
