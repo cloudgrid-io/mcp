@@ -200,7 +200,8 @@ const MIN_CLI_VERSION = "0.10.1";
 // The drift-guard test imports this and asserts every verb exists in `cloudgrid --help`.
 export const CLI_TOOL_VERBS = {
   cloudgrid_init:     ["init"],
-  cloudgrid_plug:     ["plug"],
+  // cloudgrid_plug is NOT here: gridctl_plug is now a direct-API tool
+  // (POST /api/v2/plug, spec v2 §3), not a CLI wrapper.
   cloudgrid_logs:     ["logs"],
   cloudgrid_share:    ["visibility"],
   cloudgrid_feedback: ["feedback"],
@@ -466,10 +467,14 @@ function looksLikeFullHtml(s) {
 // the public URL hangs off (https://guest.cloudgrid.io/<slug>).
 const GUEST_ORG_SLUG = "guest";
 
-// Compose an entity's public URL from the `/api/v2/plug` response. Unlike the
-// retired `/drop/auto`, `/plug` does NOT return a `url` field — it returns
-// `slug` + `grid` (+ a `detection.kind`) and expects the client to derive the
-// canonical URL, mirroring the platform's `entityUrl()` URL derivation:
+// FALLBACK-ONLY URL composition. Since the unified plug contract (spec v2 /
+// the unified plug spec), `/api/v2/plug` returns a server-composed canonical `url` on every
+// path (create + edit, anon + authed) — flat-arch-aware per grid, matching the
+// host that actually serves. ALWAYS prefer `data.url` (see resolvePlugUrl);
+// this client-side derivation exists only for the rare response where `url`
+// came back empty (the server composes it best-effort). It mirrors the legacy
+// `entityUrl()` rules and is WRONG on flat-arch grids (which serve
+// `<slug>--<grid>.cloudgrid.io`), so it must never be the primary source:
 //   - inspiration (HTML drops): path-based at the org apex
 //       https://<grid>.cloudgrid.io/<slug>
 //   - runtime (app/agent):      subdomain
@@ -488,7 +493,18 @@ function composePlugUrl(data) {
   return `https://${grid}.cloudgrid.io/${slug}`;
 }
 
-async function runDrop(ctx, { html, path: filePath, filename, anonymous, org, fresh }) {
+// The public URL of a `/plug` response: the server-composed `url` verbatim
+// (canonical, flat-arch-aware — the unified plug spec), falling back to client-side composition
+// ONLY when the server left it empty (its composition is best-effort).
+export function resolvePlugUrl(data) {
+  if (typeof data?.url === "string" && data.url.length > 0) return data.url;
+  return composePlugUrl(data);
+}
+
+export async function runDrop(
+  ctx,
+  { html, path: filePath, filename, anonymous, org, fresh, entity_id, owner_token },
+) {
   // Defensive: the web edition schema excludes `path`, but if a model still
   // passes one (e.g. from a cached tool description), reject early with a
   // clear explanation.
@@ -526,44 +542,103 @@ async function runDrop(ctx, { html, path: filePath, filename, anonymous, org, fr
     throw new Error("Provide either `html` (inline content) or `path` (a local file).");
   }
 
-  const headers = {};
+  // The caller's authed identity (unless they force an anonymous drop).
+  let authToken = null;
   let orgSlug = null;
   if (anonymous !== true) {
-    const token = await ctx.getToken();
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
+    authToken = await ctx.getToken();
+    if (authToken) {
       orgSlug = org || (await ctx.getActiveOrg());
-      if (orgSlug) headers["X-CloudGrid-Org"] = orgSlug;
     }
   }
 
-  // Hosted server: attach the trusted-server credential when available.
-  // Falls back gracefully server-side if absent. Only the web edition sets ctx.trustedServer.
-  if (!headers["Authorization"] && ctx.trustedServer?.secret && ctx.trustedServer?.endUserId) {
+  // ── Re-plug targeting (unified plug contract / spec v2) ──────
+  // A `target_entity_id` on the wire UPDATES THAT SAME ENTITY in place — same
+  // entity_id, same slug, same URL, deploy history preserved. Absent → create.
+  // The session remembers the last drop, so a re-drop updates it by default;
+  // `fresh: true` forces a create; an explicit `entity_id` targets any earlier
+  // drop (the durable re-plug handle a stateless caller persisted).
+  if (fresh === true && entity_id) {
+    throw new Error("`fresh: true` forces a new drop — do not pass `entity_id` with it.");
+  }
+  const sessionDrop = ctx.state.lastDrop;
+  let targetId = null;
+  let ownerToken = typeof owner_token === "string" && owner_token.length > 0 ? owner_token : null;
+  if (fresh !== true) {
+    targetId = entity_id || sessionDrop?.entity_id || null;
+    // An anon-minted drop is edited with its OWNER TOKEN (a bearer capability,
+    // the anon owner-token contract). Recover it from session state when not passed.
+    if (targetId && !ownerToken) {
+      if (sessionDrop?.entity_id === targetId && sessionDrop.owner_token) {
+        ownerToken = sessionDrop.owner_token;
+      } else if (ctx.state.lastAnonClaim?.entity_id === targetId && ctx.state.lastAnonClaim.token) {
+        ownerToken = ctx.state.lastAnonClaim.token;
+      }
+    }
+  }
+
+  // Pick the edit wire. An anon-owned (Guest-Grid, unclaimed) drop is edited via
+  // the owner-token wire EVEN IF the caller is signed in — the entity still lives
+  // in the Guest Grid, so an authed edit of it would 404. An authed edit targets
+  // an entity the caller owns in their grid.
+  let mode = "create"; // "create" | "authed-edit" | "anon-edit"
+  if (targetId) {
+    if (ownerToken) {
+      mode = "anon-edit";
+    } else if (authToken) {
+      mode = "authed-edit";
+    } else if (entity_id) {
+      throw new Error(
+        "Re-plugging a drop anonymously needs its owner_token (returned when it was created). " +
+          "Pass owner_token, sign in if you own it, or pass fresh: true to publish a new drop.",
+      );
+    } else {
+      // Session target, but no way to authorize an edit — fall back to create.
+      targetId = null;
+    }
+  }
+  const isAnonymousWire = mode === "anon-edit" || !authToken;
+
+  const headers = {};
+  if (!isAnonymousWire) {
+    headers["Authorization"] = `Bearer ${authToken}`;
+    if (orgSlug) headers["X-CloudGrid-Org"] = orgSlug;
+  }
+
+  // Hosted server: attach the trusted-server credential on EVERY anonymous call
+  // (creates AND owner-token edits — anon edits consume the same daily anon cap,
+  // re-keyed per end user). Falls back gracefully server-side if absent. Only
+  // the web edition sets ctx.trustedServer.
+  if (isAnonymousWire && ctx.trustedServer?.secret && ctx.trustedServer?.endUserId) {
     headers["X-CloudGrid-Trusted-Server-Auth"] = ctx.trustedServer.secret;
     headers["X-CloudGrid-Trusted-Server-End-User"] = ctx.trustedServer.endUserId;
   }
 
-  const isAnonymousCall = !headers["Authorization"];
-
   // Ownership continuity: replay the platform's anon-session cookie across drops in
   // this session, so cookie-class callers can redrop (and claim) what they dropped.
-  if (isAnonymousCall && ctx.state.anonCookie) {
+  if (isAnonymousWire && ctx.state.anonCookie) {
     headers["Cookie"] = ctx.state.anonCookie;
   }
 
   const form = new FormData();
-  // The unified `/plug` create path is the same orchestrator `/drop/auto` used,
-  // but it is CREATE-ONLY for the drop flow: an anonymous caller naming a
-  // `target_entity_id` is rejected 401, and the authed create path mints a NEW
-  // entity. So `/plug` has NO in-place redrop / `previous_id` concept — every
-  // drop creates a fresh entity (new URL). `fresh` is accepted for backward
-  // compatibility but is now a no-op. See PR notes: the in-place-update +
-  // `202 unchanged` no-op semantics from `/drop/auto` are gone with M7.
-  void fresh;
   // The artifact part name is unchanged from `/drop/auto` (`artifact`); the plug
-  // create path treats every non-`cloudgrid.yaml` part as raw artifact bytes.
+  // create path — and the inspiration edit paths — treat every
+  // non-`cloudgrid.yaml` part as raw artifact bytes.
   form.append("artifact", new Blob([bytes], { type }), name);
+  if (mode !== "create") {
+    form.append("target_entity_id", targetId);
+  }
+  if (mode === "anon-edit") {
+    // Anon owner-token contract: ownership is proven by HOLDING the token (a form
+    // field, NOT an Authorization header). The response re-mints it.
+    form.append("owner_token", ownerToken);
+  }
+  if (mode === "authed-edit") {
+    // The authed update path requires a `cloudgrid.yaml` part on the wire
+    // (materializePlugTarball). An inspiration edit ignores its content, so an
+    // empty part satisfies the contract without changing the entity's config.
+    form.append("cloudgrid.yaml", new Blob([""], { type: "text/plain" }), "cloudgrid.yaml");
+  }
   // `/plug` resolves the authed org from the `X-CloudGrid-Org` header (set
   // above), not a form field — so `org_slug` is no longer sent.
 
@@ -584,6 +659,21 @@ async function runDrop(ctx, { html, path: filePath, filename, anonymous, org, fr
   if (!res.ok) {
     const msg = data?.error?.message || data?.message || raw || `HTTP ${res.status}`;
     const hint = data?.error?.details?.[0]?.hint;
+    // An explicit edit NEVER silently creates — surface the reason clearly.
+    if (mode !== "create" && res.status === 409) {
+      throw new Error(
+        `Re-plug rejected (HTTP 409): ${msg} ` +
+          "The drop can no longer be edited in place (expired, archived, claimed, or a deploy is running). " +
+          "Pass fresh: true to publish a new drop instead.",
+      );
+    }
+    if (mode === "anon-edit" && res.status === 401) {
+      throw new Error(
+        `Re-plug rejected (HTTP 401): ${msg} ` +
+          "The owner_token did not authorize this entity (wrong entity, expired with the drop, or already claimed). " +
+          "Pass fresh: true to publish a new drop instead.",
+      );
+    }
     throw new Error(`Drop failed (HTTP ${res.status}): ${msg}${hint ? ` ${hint}` : ""}`);
   }
 
@@ -597,33 +687,59 @@ async function runDrop(ctx, { html, path: filePath, filename, anonymous, org, fr
     .find((c) => c.startsWith("cg_anon_session="));
   if (anonCookie) ctx.state.anonCookie = anonCookie;
 
-  // `/plug` returns no `url`; derive the canonical public URL from slug + grid.
-  const url = composePlugUrl(data);
+  // The server composes the canonical URL; compose client-side only as
+  // a fallback when it came back empty.
+  const url = resolvePlugUrl(data);
+  const isEdit = mode !== "create";
 
-  // Remember the drop for session continuity — any caller class.
+  // The anon owner token: the create response mints it; every anon edit
+  // RE-MINTS it to the reset TTL (replace the stored one — the freshest token
+  // is the one that lives as long as the drop). Same JWT the claim uses.
+  let freshOwnerToken = typeof data.owner_token === "string" && data.owner_token.length > 0
+    ? data.owner_token
+    : null;
+  if (!freshOwnerToken && data.claim_url) {
+    try {
+      freshOwnerToken = new URL(data.claim_url).searchParams.get("token");
+    } catch {
+      freshOwnerToken = null;
+    }
+  }
+
+  // Remember the drop for session continuity — any caller class. The
+  // `{entity_id, owner_token}` pair is the stateless anon re-plug handle.
   if (data.entity_id || url) {
     ctx.state.lastDrop = {
       entity_id: data.entity_id ?? ctx.state.lastDrop?.entity_id ?? null,
       url: url ?? ctx.state.lastDrop?.url ?? null,
+      owner_token: isAnonymousWire
+        ? (freshOwnerToken ?? (mode === "anon-edit" ? ownerToken : null))
+        : null,
     };
   }
 
-  // Authenticated create (202): the drop minted an entity owned by the caller.
-  // `/plug`'s authed branch is reached only when an Authorization header was
-  // sent, so distinguish on the call class rather than a (now-absent) `owned_by`.
-  if (!isAnonymousCall) {
+  // Authenticated wire (create or in-place edit): the entity is owned by the caller.
+  if (!isAnonymousWire) {
     ctx.state.lastAnonClaim = null;
-    const lines = ctx.edition === "web"
-      ? [`Your app is live: ${url}`]
-      : [`Published to your org: ${url}`, "Owned by you."];
     const structured = {
       url,
-      status: "created",
+      status: isEdit ? "updated" : "created",
       owned_by: "authenticated",
+      ...(data.entity_id ? { entity_id: data.entity_id } : {}),
     };
-    if (ctx.edition === "web") {
-      // Default authed web drops to "link" visibility so the URL is shareable
-      // and the console thumbnail renders without a sign-in wall.
+    const lines = [];
+    if (isEdit) {
+      lines.push(`Updated in place: ${url}`);
+      lines.push("Same link, new content. The expiry timer was reset.");
+    } else if (ctx.edition === "web") {
+      lines.push(`Your app is live: ${url}`);
+    } else {
+      lines.push(`Published to your org: ${url}`, "Owned by you.");
+    }
+    if (ctx.edition === "web" && !isEdit) {
+      // Default authed web CREATES to "link" visibility so the URL is shareable
+      // and the console thumbnail renders without a sign-in wall. An edit keeps
+      // the entity's existing visibility untouched.
       if (data.entity_id) {
         await upgradeVisibilityToLink(ctx, data.entity_id, orgSlug);
       }
@@ -637,33 +753,41 @@ async function runDrop(ctx, { html, path: filePath, filename, anonymous, org, fr
     return { text: lines.join("\n"), structured };
   }
 
-  // Anonymous create (201) — Guest-Org inspiration, 7-day expiry, claimable.
-  // `/plug` carries the reward fields (`claim_url` + `claim_message`) and the
-  // real `entity_id`; pickup-by-id is how it is later claimed.
+  // Anonymous wire — Guest-Grid inspiration (create 201, or owner-token edit).
+  // The response carries the reward fields (`claim_url` + `claim_message`), the
+  // real `entity_id`, and the OWNER TOKEN — the bearer capability that
+  // authorizes BOTH a later anonymous re-plug and the claim (pickup-by-id).
   if (data.claim_url || data.entity_id) {
-    let token = null;
-    try {
-      token = data.claim_url ? new URL(data.claim_url).searchParams.get("token") : null;
-    } catch {
-      token = null;
-    }
     ctx.state.lastAnonClaim = {
-      token,
-      entity_id: data.entity_id ?? null,
+      token: freshOwnerToken,
+      entity_id: data.entity_id ?? ctx.state.lastAnonClaim?.entity_id ?? null,
       url,
     };
   }
-  const lines = [ctx.edition === "web" ? `Your app is live: ${url}` : `Live: ${url}`];
+  const lines = [];
+  if (isEdit) {
+    lines.push(`Updated in place: ${url}`);
+    lines.push("Same link, new content. The expiry timer (and owner_token) were refreshed.");
+  } else {
+    lines.push(ctx.edition === "web" ? `Your app is live: ${url}` : `Live: ${url}`);
+  }
   if (data.claim_message) {
     lines.push(data.claim_message);
   } else if (data.claim_url) {
-    lines.push("Sign in, then run gridctl_claim to keep it past 7 days.");
+    lines.push("Sign in, then run gridctl_claim to keep it past the expiry window.");
+  }
+  if (data.entity_id && freshOwnerToken) {
+    lines.push(
+      `Re-plug handle (persist to update or claim this drop in a later session): entity_id=${data.entity_id}`,
+    );
   }
   return {
     text: lines.join("\n"),
     structured: {
       url,
-      status: "created",
+      status: isEdit ? "updated" : "created",
+      ...(data.entity_id ? { entity_id: data.entity_id } : {}),
+      ...(freshOwnerToken ? { owner_token: freshOwnerToken } : {}),
     },
   };
 }
@@ -678,7 +802,10 @@ async function runClaim(ctx, { claim_token, claim_url, entity_id }) {
   // claim now runs through `POST /api/v2/entities/:id/pickup`, which takes the
   // entity id in the PATH and the `claim_token` in the body, and re-homes the
   // Guest-Org inspiration into the caller's grid (ownership transfer). The
-  // anon-session cookie is the token-less alternative auth.
+  // claim token IS the anonymous owner token (Anon owner-token contract: one bearer
+  // capability for both edit and claim); an anon edit re-mints it, and the
+  // session state always holds the freshest one. The anon-session cookie is the
+  // token-less alternative auth.
   let claimToken = claim_token;
   if (!claimToken && claim_url) {
     try {
@@ -691,7 +818,14 @@ async function runClaim(ctx, { claim_token, claim_url, entity_id }) {
 
   // Pickup needs the target entity id in the URL path. Prefer an explicit one,
   // else the entity remembered from this session's anonymous drop.
-  const targetId = entity_id || ctx.state.lastAnonClaim?.entity_id;
+  const targetId =
+    entity_id ||
+    ctx.state.lastAnonClaim?.entity_id ||
+    // The last drop counts only when it is anon-owned (it holds an owner token).
+    (ctx.state.lastDrop?.owner_token ? ctx.state.lastDrop.entity_id : null);
+  if (!claimToken && targetId && ctx.state.lastDrop?.entity_id === targetId) {
+    claimToken = ctx.state.lastDrop.owner_token ?? null;
+  }
   if (!targetId) {
     throw new Error(
       "No drop to claim. Pass entity_id (or drop something anonymously first in this session), " +
@@ -744,6 +878,12 @@ async function runClaim(ctx, { claim_token, claim_url, entity_id }) {
   }
 
   ctx.state.lastAnonClaim = null;
+  // The entity is authed-owned now — the anon owner token is dead weight (a
+  // claimed drop can no longer be edited anonymously). Future re-drops of it
+  // must ride the authed wire.
+  if (ctx.state.lastDrop?.entity_id === targetId) {
+    ctx.state.lastDrop.owner_token = null;
+  }
   const url = data?.url || data?.redirect_url || ctx.state.lastDrop?.url || null;
   const lines = ["Claimed 1, now yours:"];
   lines.push(`${url ?? ""}${data?.new_expires_at ? ` (expires ${data.new_expires_at})` : ""}`.trim());
@@ -756,6 +896,453 @@ async function runClaim(ctx, { claim_token, claim_url, entity_id }) {
   };
 }
 
+
+// ── gridctl_plug — the unified create/re-plug verb (spec v2 §3) ──────────────
+
+// Total upload budget mirrors the server's multipart cap (100 MB).
+const PLUG_MAX_TOTAL_BYTES = 100 * 1024 * 1024;
+const PLUG_MAX_FILES = 2000;
+
+// Directories never worth uploading, regardless of ignore files.
+const PLUG_ALWAYS_SKIP = new Set([".git", "node_modules", ".DS_Store", ".cloudgrid"]);
+
+// Compile one .gitignore/.cloudgridignore pattern into a matcher over
+// repo-relative paths. A pragmatic subset (no negation `!` — those lines are
+// skipped): `#` comments, `*`/`?`/`**` globs, a leading `/` anchors to the
+// root, a trailing `/` matches directories only, and a bare name matches at
+// any depth (standard gitignore semantics for patterns without a slash).
+function compileIgnorePattern(line) {
+  let pat = line.trim();
+  if (!pat || pat.startsWith("#") || pat.startsWith("!")) return null;
+  const dirOnly = pat.endsWith("/");
+  if (dirOnly) pat = pat.slice(0, -1);
+  // A pattern containing a slash is anchored to the root (gitignore rule).
+  const anchored = pat.includes("/");
+  if (pat.startsWith("/")) pat = pat.slice(1);
+  const rx = pat
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*\*/g, " ")
+    .replace(/\*/g, "[^/]*")
+    .replace(/\?/g, "[^/]")
+    .replace(/ /g, ".*");
+  const body = anchored ? `^${rx}` : `(^|/)${rx}`;
+  const re = new RegExp(`${body}(/|$)`);
+  return { re, dirOnly };
+}
+
+function loadIgnoreMatchers(rootDir) {
+  const patterns = [];
+  for (const f of [".gitignore", ".cloudgridignore"]) {
+    try {
+      const p = join(rootDir, f);
+      if (existsSync(p)) {
+        for (const line of readFileSync(p, "utf-8").split("\n")) {
+          const compiled = compileIgnorePattern(line);
+          if (compiled) patterns.push(compiled);
+        }
+      }
+    } catch {
+      /* unreadable ignore file — upload everything */
+    }
+  }
+  return (relPath, isDir) =>
+    patterns.some((p) => (!p.dirOnly || isDir) && p.re.test(relPath));
+}
+
+// Walk a local folder into `[{path, buffer}]` artifacts (repo-relative paths),
+// honoring .gitignore/.cloudgridignore at the root plus the always-skip set.
+// A single file becomes one artifact named by its basename.
+function collectPathArtifacts(srcPath) {
+  const abs = resolve(srcPath);
+  if (!existsSync(abs)) throw new Error(`Path does not exist: ${abs}`);
+  const st = statSync(abs);
+  if (st.isFile()) {
+    return [{ path: basename(abs), buffer: readFileSync(abs) }];
+  }
+  if (!st.isDirectory()) throw new Error(`Not a file or directory: ${abs}`);
+  const isIgnored = loadIgnoreMatchers(abs);
+  const out = [];
+  let total = 0;
+  const walk = (dir, rel) => {
+    for (const nm of readdirSync(dir)) {
+      if (PLUG_ALWAYS_SKIP.has(nm)) continue;
+      const childAbs = join(dir, nm);
+      const childRel = rel ? `${rel}/${nm}` : nm;
+      let cst;
+      try {
+        cst = statSync(childAbs);
+      } catch {
+        continue; // broken symlink etc.
+      }
+      if (isIgnored(childRel, cst.isDirectory())) continue;
+      if (cst.isDirectory()) {
+        walk(childAbs, childRel);
+      } else if (cst.isFile()) {
+        if (out.length >= PLUG_MAX_FILES) {
+          throw new Error(
+            `The folder has more than ${PLUG_MAX_FILES} files after ignores — too large to plug inline. Trim it or add a .cloudgridignore.`,
+          );
+        }
+        total += cst.size;
+        if (total > PLUG_MAX_TOTAL_BYTES) {
+          throw new Error("The upload exceeds the 100MB plug limit. Trim the folder or add a .cloudgridignore.");
+        }
+        out.push({ path: childRel, buffer: readFileSync(childAbs) });
+      }
+    }
+  };
+  walk(abs, "");
+  if (out.length === 0) throw new Error(`Nothing to upload in ${abs} (everything ignored or empty).`);
+  return out;
+}
+
+// Map friendly plug error statuses to actionable messages (spec v2 §3.3).
+function plugErrorMessage(status, code, msg) {
+  const base = `Plug failed (HTTP ${status}${code ? ` ${code}` : ""}): ${msg}`;
+  if (status === 409) {
+    return `${base} — the entity cannot be updated right now (a deploy is in progress, or it is archived/expired/claimed). An explicit re-plug never silently creates; retry later or omit target_entity_id to create a new entity.`;
+  }
+  if (status === 401) {
+    return `${base} — sign in (gridctl_login), or for an anon-minted drop pass its owner_token.`;
+  }
+  if (status === 403) {
+    return `${base} — you lack the role to plug this target. To re-plug someone else's entity, pick it up first (gridctl_pickup / gridctl_claim).`;
+  }
+  if (status === 429) {
+    return `${base} — the daily anonymous cap was reached (anon edits share the create cap). Sign in to publish more, or retry tomorrow.`;
+  }
+  return base;
+}
+
+/**
+ * The unified create/re-plug verb (spec v2 §3). Two intents on one tool, keyed
+ * by `target_entity_id`:
+ *   - absent → CREATE: mint a new entity from the artifact (server detection
+ *     decides the kind unless hinted). Authed → the caller's grid; anon → a
+ *     Guest-Grid drop with a claim_url + owner_token.
+ *   - present → RE-PLUG: update the SAME entity in place (same id, slug, URL,
+ *     history). Authed for entities in your grid; `owner_token` for a drop
+ *     minted anonymously (anon owner-token contract).
+ * Source is `path` (local edition — the folder/file is read and uploaded) XOR
+ * `artifact_files` (hosted — inline file entries).
+ */
+export async function runPlug(ctx, input) {
+  const {
+    path: srcPath,
+    artifact_files,
+    cloudgrid_yaml,
+    target_entity_id,
+    grid,
+    hints,
+    anon,
+    owner_token,
+  } = input || {};
+
+  // ── Source: path XOR artifact_files ────────────────────────────────────────
+  if (srcPath && Array.isArray(artifact_files) && artifact_files.length > 0) {
+    throw new Error("Pass either `path` or `artifact_files`, not both.");
+  }
+  if (ctx.edition === "web" && srcPath) {
+    throw new Error(
+      "The hosted server cannot read local files — pass the source inline via `artifact_files`.",
+    );
+  }
+  let artifacts;
+  if (srcPath) {
+    artifacts = collectPathArtifacts(srcPath);
+  } else if (Array.isArray(artifact_files) && artifact_files.length > 0) {
+    let total = 0;
+    artifacts = artifact_files.map((f) => {
+      if (!f || typeof f.path !== "string" || typeof f.content !== "string") {
+        throw new Error("Each artifact_files entry needs `path` and `content`.");
+      }
+      const buffer = Buffer.from(f.content, f.encoding === "base64" ? "base64" : "utf8");
+      total += buffer.byteLength;
+      if (total > PLUG_MAX_TOTAL_BYTES) {
+        throw new Error("The upload exceeds the 100MB plug limit.");
+      }
+      return { path: f.path, buffer };
+    });
+  } else {
+    throw new Error(
+      ctx.edition === "web"
+        ? "Provide the source via `artifact_files`."
+        : "Provide the source via `path` (a local file or folder) or `artifact_files`.",
+    );
+  }
+
+  const isEdit = typeof target_entity_id === "string" && target_entity_id.length > 0;
+
+  // An inspiration edit content-versions the FIRST uploaded artifact — when a
+  // multi-file folder rides a re-plug, put the primary entry first so the edit
+  // swaps the right file (index.html > any .html > everything else).
+  if (isEdit && artifacts.length > 1) {
+    const prio = (a) =>
+      a.path === "index.html" ? 0 : /\.html?$/i.test(a.path) ? 1 : a.path.startsWith(".") ? 3 : 2;
+    artifacts = artifacts
+      .map((a, i) => ({ a, i }))
+      .sort((x, y) => prio(x.a) - prio(y.a) || x.i - y.i)
+      .map((x) => x.a);
+  }
+
+  // ── Auth wire selection ─────────────────────────────────────────────────────
+  const authToken = anon === true ? null : await ctx.getToken();
+  let ownerToken = typeof owner_token === "string" && owner_token.length > 0 ? owner_token : null;
+  if (isEdit && !ownerToken) {
+    // Recover the owner token from session state when re-plugging the drop this
+    // session made anonymously.
+    if (ctx.state.lastDrop?.entity_id === target_entity_id && ctx.state.lastDrop.owner_token) {
+      ownerToken = ctx.state.lastDrop.owner_token;
+    } else if (
+      ctx.state.lastAnonClaim?.entity_id === target_entity_id &&
+      ctx.state.lastAnonClaim.token
+    ) {
+      ownerToken = ctx.state.lastAnonClaim.token;
+    }
+  }
+  // An anon-minted (Guest-Grid) drop is edited via the owner-token wire even
+  // when signed in — the entity is not in the caller's grid, so an authed edit
+  // of it would 404. Otherwise an edit needs the authed wire.
+  const useAnonWire = isEdit ? Boolean(ownerToken) : !authToken;
+  if (isEdit && !ownerToken && !authToken) {
+    throw new Error(
+      "Re-plugging needs authorization: sign in (gridctl_login) for an entity in your grid, or pass the " +
+        "owner_token that came back when the drop was created anonymously.",
+    );
+  }
+
+  const headers = {};
+  if (!useAnonWire && authToken) {
+    headers["Authorization"] = `Bearer ${authToken}`;
+    // On create, `grid` picks where the entity lands. On re-plug the entity's
+    // home grid is authoritative (it never moves) — but the API still resolves
+    // the caller's membership from this header and requires it to MATCH the
+    // entity's grid, so pass `grid` here too when the target lives outside the
+    // active grid.
+    const orgSlug = grid || (await ctx.getActiveOrg());
+    if (orgSlug) headers["X-CloudGrid-Org"] = orgSlug;
+  }
+  if (useAnonWire && ctx.trustedServer?.secret && ctx.trustedServer?.endUserId) {
+    headers["X-CloudGrid-Trusted-Server-Auth"] = ctx.trustedServer.secret;
+    headers["X-CloudGrid-Trusted-Server-End-User"] = ctx.trustedServer.endUserId;
+  }
+  if (useAnonWire && ctx.state.anonCookie) headers["Cookie"] = ctx.state.anonCookie;
+
+  // ── Wire assembly ───────────────────────────────────────────────────────────
+  const form = new FormData();
+  for (const a of artifacts) {
+    form.append("artifact", new Blob([a.buffer], { type: "application/octet-stream" }), a.path);
+  }
+  if (isEdit) {
+    form.append("target_entity_id", target_entity_id);
+    if (useAnonWire) {
+      form.append("owner_token", ownerToken);
+    } else {
+      // The authed update path requires a `cloudgrid.yaml` part
+      // (materializePlugTarball); an inspiration edit ignores its content.
+      form.append(
+        "cloudgrid.yaml",
+        new Blob([cloudgrid_yaml || ""], { type: "text/plain" }),
+        "cloudgrid.yaml",
+      );
+    }
+  } else if (cloudgrid_yaml) {
+    // On CREATE the manifest rides as a regular artifact file (the create wire
+    // filters a part FIELD-named `cloudgrid.yaml`, but a file named
+    // cloudgrid.yaml lands in the detected source tree).
+    form.append(
+      "artifact",
+      new Blob([cloudgrid_yaml], { type: "text/plain" }),
+      "cloudgrid.yaml",
+    );
+  }
+  if (hints?.kind) {
+    // `kind_hint` is what the create orchestrator reads; `hints_kind` is the
+    // route's structured field on the update path. Send both — each path
+    // ignores the other's.
+    form.append("kind_hint", hints.kind);
+    form.append("hints_kind", hints.kind);
+  }
+  if (hints?.yaml) form.append("hints_yaml", hints.yaml);
+
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/api/v2/plug`, { method: "POST", headers, body: form });
+  } catch (err) {
+    throw new Error(`Could not reach CloudGrid at ${API_BASE}: ${err.message}`);
+  }
+  const raw = await res.text();
+  let data = null;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    /* handled below */
+  }
+  if (!res.ok) {
+    const msg = data?.error?.message || data?.message || raw || `HTTP ${res.status}`;
+    throw new Error(plugErrorMessage(res.status, data?.error?.code, msg));
+  }
+
+  // Anon-session cookie continuity (mirrors runDrop).
+  const setCookies = res.headers.getSetCookie
+    ? res.headers.getSetCookie()
+    : [res.headers.get("set-cookie")].filter(Boolean);
+  const anonCookie = (setCookies || [])
+    .map((c) => (c || "").split(";")[0])
+    .find((c) => c.startsWith("cg_anon_session="));
+  if (anonCookie) ctx.state.anonCookie = anonCookie;
+
+  const url = resolvePlugUrl(data);
+  let freshOwnerToken = typeof data.owner_token === "string" && data.owner_token.length > 0
+    ? data.owner_token
+    : null;
+  if (!freshOwnerToken && data.claim_url) {
+    try {
+      freshOwnerToken = new URL(data.claim_url).searchParams.get("token");
+    } catch {
+      freshOwnerToken = null;
+    }
+  }
+
+  // Session continuity — the same state runDrop keeps.
+  if (data.entity_id || url) {
+    ctx.state.lastDrop = {
+      entity_id: data.entity_id ?? null,
+      url: url ?? null,
+      owner_token: useAnonWire ? (freshOwnerToken ?? ownerToken ?? null) : null,
+    };
+  }
+  if (useAnonWire && (data.claim_url || freshOwnerToken)) {
+    ctx.state.lastAnonClaim = {
+      token: freshOwnerToken,
+      entity_id: data.entity_id ?? null,
+      url,
+    };
+  } else if (!useAnonWire) {
+    ctx.state.lastAnonClaim = null;
+  }
+
+  const structured = {
+    ...(data.entity_id ? { entity_id: data.entity_id } : {}),
+    ...(data.slug ? { slug: data.slug } : {}),
+    grid: data.grid ?? null,
+    ...(url ? { url } : {}),
+    ...(data.poll_url ? { poll_url: data.poll_url } : {}),
+    status: data.status ?? (isEdit ? "updated" : "created"),
+    ...(data.claim_url ? { claim_url: data.claim_url } : {}),
+    ...(data.claim_message ? { claim_message: data.claim_message } : {}),
+    // Spec v2 omits owner_token from the output block — a spec bug (the anon
+    // wire cannot re-plug without it). Included deliberately; flagged upstream.
+    ...(freshOwnerToken ? { owner_token: freshOwnerToken } : {}),
+  };
+
+  const lines = [];
+  lines.push(isEdit ? `Updated in place: ${url}` : `Live: ${url}`);
+  if (data.status === "building" && data.poll_url) {
+    lines.push(`Build dispatched — poll ${data.poll_url} (trace ${data.trace_id ?? "n/a"}).`);
+  }
+  if (data.entity_id) {
+    lines.push(
+      `Re-plug handle: entity_id=${data.entity_id} — persist it (with the url) and pass it back as target_entity_id to update this entity later.`,
+    );
+  }
+  if (data.claim_message) lines.push(data.claim_message);
+  if (isEdit && useAnonWire) {
+    lines.push("The owner_token was re-minted for the reset expiry — replace the stored one.");
+  }
+  return { text: lines.join("\n"), structured };
+}
+
+// ── gridctl_fork / gridctl_download — direct-API verbs (spec v2 §5–6) ────────
+
+async function authedApiCall(ctx, { method, pathName, body, verb }) {
+  const token = await ctx.getToken();
+  if (!token) {
+    throw new Error(`${verb} requires sign-in. Run gridctl_login first.`);
+  }
+  const headers = { Authorization: `Bearer ${token}` };
+  const orgSlug = await ctx.getActiveOrg();
+  if (orgSlug) headers["X-CloudGrid-Org"] = orgSlug;
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  let res;
+  try {
+    res = await fetch(`${API_BASE}${pathName}`, {
+      method,
+      headers,
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+  } catch (err) {
+    throw new Error(`Could not reach CloudGrid at ${API_BASE}: ${err.message}`);
+  }
+  const raw = await res.text();
+  let data = null;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    /* handled below */
+  }
+  if (!res.ok) {
+    const msg = data?.error?.message || data?.message || raw || `HTTP ${res.status}`;
+    const code = data?.error?.code ? ` ${data.error.code}` : "";
+    throw new Error(`${verb} failed (HTTP ${res.status}${code}): ${msg}`);
+  }
+  return data;
+}
+
+// Fork: start a NEW entity from an existing runtime, copy-on-write with lineage.
+async function runFork(ctx, { id, into_org_slug, name, source_version_id }) {
+  const data = await authedApiCall(ctx, {
+    method: "POST",
+    pathName: `/api/v2/runtimes/${encodeURIComponent(id)}/fork`,
+    body: {
+      ...(into_org_slug ? { into_org_slug } : {}),
+      ...(name ? { name } : {}),
+      ...(source_version_id ? { source_version_id } : {}),
+    },
+    verb: "Fork",
+  });
+  const gridSlug = data?.grid_slug ?? data?.org?.slug ?? null;
+  const lines = [
+    `Forked: ${data?.name ?? id} (entity_id=${data?.entity_id ?? "?"})${gridSlug ? ` in grid ${gridSlug}` : ""}`,
+    `Lineage: forked_from=${data?.forked_from ?? "?"}${data?.forked_from_version_id ? ` @ ${data.forked_from_version_id}` : ""}`,
+  ];
+  return {
+    text: lines.join("\n"),
+    structured: {
+      entity_id: data?.entity_id ?? null,
+      name: data?.name ?? null,
+      kind: data?.kind ?? null,
+      grid_slug: gridSlug,
+      forked_from: data?.forked_from ?? null,
+      forked_from_version_id: data?.forked_from_version_id ?? null,
+      current_version_id: data?.current_version_id ?? null,
+    },
+  };
+}
+
+// Download: signed, time-limited (15-minute) source-bundle URLs. No entity is
+// created and no registry state changes.
+async function runDownload(ctx, { id, version }) {
+  const qs = version ? `?version=${encodeURIComponent(version)}` : "";
+  const data = await authedApiCall(ctx, {
+    method: "GET",
+    pathName: `/api/v2/runtimes/${encodeURIComponent(id)}/source${qs}`,
+    verb: "Download",
+  });
+  const services = data?.services && typeof data.services === "object" ? data.services : {};
+  const lines = [`Source bundle URLs for ${data?.name ?? id} (valid ~15 minutes):`];
+  for (const [svc, u] of Object.entries(services)) lines.push(`  ${svc}: ${u}`);
+  if (Object.keys(services).length === 0) lines.push("  (no services returned)");
+  return {
+    text: lines.join("\n"),
+    structured: {
+      entity_id: data?.entity_id ?? null,
+      name: data?.name ?? null,
+      services,
+      domain: data?.domain ?? null,
+    },
+  };
+}
 
 // Change an inspiration's visibility. Authed, direct API — works on the hosted
 // edition where the CLI-wrapping share tool is unavailable. Defaults to the drop
@@ -867,6 +1454,11 @@ export function registerTools(server, ctx) {
   // Drop — both editions, but the input schema is edition-aware: the web
   // edition removes `path` (the cloud server cannot read local files) and
   // strengthens `html` so the model always pastes the full document inline.
+  const dropReplugParams = {
+    fresh: z.boolean().optional().describe("Force a brand-new drop (new URL) even if you already dropped in this session. Default: a re-drop updates the session's drop in place — same URL, new content."),
+    entity_id: z.string().optional().describe("Re-plug a SPECIFIC entity by id (the durable handle a previous drop returned) — updates it in place, same URL. Defaults to this session's last drop."),
+    owner_token: z.string().optional().describe("The owner token of an anonymously-created drop (returned when it was created; refreshed on every anonymous edit). Needed to re-plug or claim it from a new session."),
+  };
   const dropInputSchema = ctx.edition === "web"
     ? {
         html: z.string().optional().describe(
@@ -877,7 +1469,7 @@ export function registerTools(server, ctx) {
         filename: z.string().optional().describe("Filename to present. Defaults to index.html for inline HTML."),
         anonymous: z.boolean().optional().describe("Force an anonymous drop even if the user is signed in."),
         org: z.string().optional().describe("Leave unset; the tool will ask the user which org to publish into. Only set this after the user picks from the list the tool returns."),
-        fresh: z.boolean().optional().describe("Force a new drop even if you already dropped in this session (default: update in place)."),
+        ...dropReplugParams,
       }
     : {
         html: z.string().optional().describe("Inline HTML to publish. A fragment is wrapped into a full document."),
@@ -885,17 +1477,19 @@ export function registerTools(server, ctx) {
         filename: z.string().optional().describe("Filename to present. Defaults to index.html for inline HTML."),
         anonymous: z.boolean().optional().describe("Force an anonymous drop even if the user is signed in."),
         org: z.string().optional().describe("Leave unset; the tool will ask the user which org to publish into. Only set this after the user picks from the list the tool returns."),
-        fresh: z.boolean().optional().describe("Force a new drop even if you already dropped in this session (default: update in place)."),
+        ...dropReplugParams,
       };
 
   reg(
     "gridctl_drop",
     {
-      description: "Publish an HTML page or file to CloudGrid and get a public shareable URL. Use when the user wants to share, publish, send, or 'deploy' an artifact, or wants a link to send a friend. Re-drops in the same session update the existing drop in place — same link, new version; pass fresh: true to force a new one. If signed in, it publishes into the user's org as an owned inspiration (30-day expiry); if not, it drops anonymously (7-day expiry, claimable later). Calls the API directly.",
+      description: "Publish an HTML page or file to CloudGrid and get a public shareable URL. Use when the user wants to share, publish, send, or 'deploy' an artifact, or wants a link to send a friend. Re-drops in the same session UPDATE THE SAME entity in place — same link, new content, expiry reset (pass fresh: true to force a new drop, or entity_id to target a specific earlier drop). If signed in, it publishes into the user's grid as an owned inspiration; if not, it drops anonymously into the Guest Grid, claimable later — the result includes an entity_id + owner_token to persist as the re-plug/claim handle for later sessions. Drops expire per the platform default (7 days) unless claimed/owned; every in-place edit resets the timer. Calls POST /api/v2/plug directly.",
       inputSchema: dropInputSchema,
       outputSchema: {
-        url: z.string().optional().describe("The public URL of the drop."),
+        url: z.string().optional().describe("The public URL of the drop (stable across re-drops of the same entity)."),
         status: z.enum(["created", "updated", "unchanged"]).optional().describe("What happened to the drop."),
+        entity_id: z.string().optional().describe("The entity's durable id — pass back as entity_id to update it in place later."),
+        owner_token: z.string().optional().describe("Anonymous drops only: the bearer owner token for later re-plug/claim. Refreshed on every anonymous edit — always persist the newest one."),
         owned_by: z.string().optional().describe("Ownership class, e.g. 'authenticated'."),
         expires_at: z.string().optional().describe("Expiry timestamp, if any."),
         console_url: z.string().optional().describe("URL to manage all apps in the grid."),
@@ -1016,9 +1610,9 @@ export function registerTools(server, ctx) {
   reg(
     "gridctl_claim",
     {
-      description: "Claim an anonymous drop into the signed-in account, so it becomes owned and stops expiring in 7 days. Use after the user signs in to keep something they dropped anonymously. The public URL does not change. Requires sign-in (gridctl_login). Calls the API directly.",
+      description: "Claim an anonymous drop into the signed-in account, so it becomes owned and stops expiring on the anonymous schedule. Use after the user signs in to keep something they dropped anonymously. The public URL does not change. The claim token IS the drop's owner_token (one bearer capability for both edit and claim — anonymous edits refresh it, so always use the newest). Requires sign-in (gridctl_login). Calls the API directly.",
       inputSchema: {
-        claim_token: z.string().optional().describe("The claim token from an anonymous drop."),
+        claim_token: z.string().optional().describe("The claim/owner token from an anonymous drop (owner_token in the drop result; also embedded in claim_url)."),
         claim_url: z.string().optional().describe("The claim_url from an anonymous drop; the token is read from it."),
         entity_id: z.string().optional().describe("The entity id of the anonymous drop to claim. Defaults to this session's last anonymous drop."),
       },
@@ -1031,6 +1625,157 @@ export function registerTools(server, ctx) {
     async (input) => {
       try {
         return okResult(await runClaim(ctx, input || {}));
+      } catch (err) {
+        return fail(err.message);
+      }
+    },
+  );
+
+  // ── gridctl_plug — the unified create/re-plug verb (spec v2 §3) ────────────
+  // Direct-API on BOTH editions (POST /api/v2/plug). Replaces the former
+  // CLI-wrapping gridctl_plug: create and re-plug are one verb, keyed by
+  // target_entity_id, and work identically on the hosted transport.
+  const plugInputSchema = {
+    ...(ctx.edition === "web"
+      ? {}
+      : {
+          path: z.string().optional().describe(
+            "Local edition: path to the entity folder (or a single file) to upload. A folder is read " +
+            "recursively, honoring .gitignore/.cloudgridignore (plus .git/node_modules always skipped). " +
+            "Mutually exclusive with artifact_files.",
+          ),
+        }),
+    artifact_files: z.array(z.object({
+      path: z.string().describe("Repo-relative path, e.g. index.html or services/web/index.js."),
+      content: z.string().describe("File content. Base64 when encoding is base64, otherwise UTF-8 text."),
+      encoding: z.enum(["utf8", "base64"]).optional().describe("Content encoding. Default utf8."),
+    })).optional().describe(
+      "The source inline, one entry per file — for hosted/no-filesystem transports (an HTML deck, a one-file app)." +
+      (ctx.edition === "web" ? "" : " Prefer `path` on the local edition."),
+    ),
+    cloudgrid_yaml: z.string().optional().describe(
+      "Inline cloudgrid.yaml (the entity manifest). Optional — server auto-detection applies when omitted. " +
+      "On re-plug, a name: change is a warning only; it never renames the entity or moves the URL.",
+    ),
+    target_entity_id: z.string().optional().describe(
+      "Present → RE-PLUG: update this exact entity in place (same entity_id, slug, URL, deploy history). " +
+      "Absent → CREATE a new entity. This is the durable handle a previous plug returned — persist it. " +
+      "Re-plugging an anonymously-created drop needs its owner_token instead of sign-in.",
+    ),
+    grid: z.string().optional().describe(
+      "On create: the grid slug to plug into (omit to use the caller's active grid). On re-plug the entity " +
+      "never moves grids, but pass its home grid here when it differs from your active grid (the API " +
+      "checks your membership in the entity's grid). Anonymous → always the Guest grid.",
+    ),
+    hints: z.object({
+      kind: z.enum(["inspiration", "app", "agent"]).optional().describe("Force the detected kind; omit to let the server auto-detect."),
+      yaml: z.string().optional().describe("An inline cloudgrid.yaml override used as a detection hint."),
+    }).optional().describe("Classification hints for the CREATE path (not entity targeting — that's target_entity_id)."),
+    anon: z.boolean().optional().describe(
+      "Create an anonymous Guest-Grid drop (no auth). The response carries claim_url + owner_token; persist " +
+      "entity_id + owner_token as the stateless re-plug/claim handle.",
+    ),
+    owner_token: z.string().optional().describe(
+      "The owner token of an anonymously-created drop — authorizes an anonymous re-plug (with " +
+      "target_entity_id). Re-minted on every anonymous edit; always persist the newest one from the result.",
+    ),
+  };
+
+  reg(
+    "gridctl_plug",
+    {
+      description:
+        "Surface a creation onto the grid — the unified create/re-plug verb (POST /api/v2/plug). " +
+        "No target_entity_id → CREATE a new entity (inspiration/app/agent, auto-detected or hinted); " +
+        "with target_entity_id → RE-PLUG: update the SAME entity in place — same entity_id, same URL, same " +
+        "deploy history, expiry reset. The returned entity_id + url are the durable re-plug handle; persist " +
+        "them (plus owner_token for anonymous drops) to update the entity in later sessions. " +
+        (ctx.edition === "web"
+          ? "Pass the source inline via artifact_files."
+          : "Pass the source as a local `path` (folder or file) or inline via artifact_files.") +
+        " Note: in-place re-plug currently supports inspirations (HTML/static drops); to rebuild a deployed " +
+        "app/agent, use the CloudGrid CLI (`cloudgrid plug`) in its linked folder.",
+      inputSchema: plugInputSchema,
+      outputSchema: {
+        entity_id: z.string().optional().describe("Globally unique — pass back as target_entity_id to re-plug."),
+        slug: z.string().optional().describe("Grid-scoped slug."),
+        grid: z.string().nullable().optional().describe("Home grid slug; null for an anonymous Guest-Grid drop."),
+        url: z.string().optional().describe("Canonical serving URL (stable across re-plugs; server-composed, flat-arch-aware)."),
+        poll_url: z.string().optional().describe("Deploy status path while building (runtimes only)."),
+        status: z.string().optional().describe("live | building | created | updated …"),
+        claim_url: z.string().optional().describe("Anon create only: sign-in link to claim ownership."),
+        claim_message: z.string().optional().describe("Anon create only: the claim nudge to relay."),
+        owner_token: z.string().optional().describe("Anonymous drops: the bearer owner token (re-plug + claim). Re-minted on every anonymous edit — persist the newest."),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+    },
+    async (input) => {
+      try {
+        return okResult(await runPlug(ctx, input || {}));
+      } catch (err) {
+        return fail(err.message);
+      }
+    },
+  );
+
+  // ── gridctl_fork / gridctl_download — direct-API verbs (spec v2 §5–6) ──────
+  reg(
+    "gridctl_fork",
+    {
+      description:
+        "Start a NEW entity from an existing runtime (copy-on-write, lineage recorded). Lands in the " +
+        "source's home grid by default; cross-grid only for system templates or forkable:'public' sources. " +
+        "Requires sign-in. Calls POST /api/v2/runtimes/:id/fork directly.",
+      inputSchema: {
+        id: z.string().describe("The source runtime: a canonical UUID or <grid-slug>/<entity-slug>."),
+        into_org_slug: z.string().optional().describe("Destination grid slug. Required only when you belong to more than one grid."),
+        name: z.string().optional().describe("Slug for the new entity. Omit to derive one from the source."),
+        source_version_id: z.string().optional().describe("Fork an older version instead of HEAD, e.g. v_a1b2c3d."),
+      },
+      outputSchema: {
+        entity_id: z.string().nullable().describe("The new entity's id."),
+        name: z.string().nullable().describe("The new entity's slug."),
+        kind: z.string().nullable().describe("app | agent | inspiration."),
+        grid_slug: z.string().nullable().describe("The grid the fork landed in."),
+        forked_from: z.string().nullable().describe("Source entity_id."),
+        forked_from_version_id: z.string().nullable().describe("Source version, when a specific one was forked."),
+        current_version_id: z.string().nullable().describe("The fork's current version id."),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+    },
+    async (input) => {
+      try {
+        if (!input?.id) return fail("`id` is required (a canonical UUID or <grid-slug>/<entity-slug>).");
+        return okResult(await runFork(ctx, input));
+      } catch (err) {
+        return fail(err.message);
+      }
+    },
+  );
+
+  reg(
+    "gridctl_download",
+    {
+      description:
+        "Fetch the source bundle last deployed for a runtime: one signed, time-limited (15-minute) read URL " +
+        "per service tarball. No entity is created and no registry state changes. Requires sign-in. Calls " +
+        "GET /api/v2/runtimes/:id/source directly.",
+      inputSchema: {
+        id: z.string().describe("The runtime to download: a canonical UUID or <grid-slug>/<entity-slug>."),
+        version: z.string().optional().describe("Download an older version's bundle instead of HEAD, e.g. v_a1b2c3d."),
+      },
+      outputSchema: {
+        entity_id: z.string().nullable().describe("The runtime's entity id."),
+        name: z.string().nullable().describe("The runtime's slug."),
+        services: z.record(z.string()).describe("Service name → signed read URL (valid ~15 minutes)."),
+        domain: z.string().nullable().optional().describe("The runtime's domain, if any."),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
+    },
+    async (input) => {
+      try {
+        if (!input?.id) return fail("`id` is required (a canonical UUID or <grid-slug>/<entity-slug>).");
+        return okResult(await runDownload(ctx, input));
       } catch (err) {
         return fail(err.message);
       }
@@ -1310,25 +2055,9 @@ export function registerTools(server, ctx) {
     }, { cwdParam: true }),
   );
 
-  regTool(
-    "gridctl_plug",
-    "Build and deploy a directory or URL. Prints the live URL. Wraps `cloudgrid plug`.",
-    {
-      target: z.string().optional().describe("Path or URL. Omit to deploy the entity linked to the current directory."),
-      org: z.string().optional().describe("Pick or override the org."),
-      no_deploy: z.boolean().optional().describe("Register the entity but do not build or deploy."),
-      cwd: z.string().optional().describe("Working directory. The CLI runs in this directory. Defaults to the MCP server's working directory."),
-    },
-    { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
-    cliTool(({ target, org, no_deploy }) => {
-      const args = ["plug"];
-      if (target) args.push(target);
-      if (org) args.push("--org", org);
-      if (no_deploy) args.push("--no-deploy");
-      args.push("--auto", "--no-clipboard", "--no-notify");
-      return args;
-    }, { cwdParam: true }),
-  );
+  // NOTE: gridctl_plug is no longer CLI-wrapping — the unified direct-API verb
+  // (create + re-plug via POST /api/v2/plug) is registered above for BOTH
+  // editions, per spec v2 §3.
 
   regTool(
     "gridctl_logs",

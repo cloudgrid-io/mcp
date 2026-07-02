@@ -1,11 +1,14 @@
-// Redrop smoke: drop → redrop (changed) → redrop (identical) → fresh, through the
-// web edition against the live API. Creates real ephemeral drops (7-day expiry).
+// Redrop smoke: drop → redrop (changed) → fresh, through the web edition
+// against the live API. Creates real ephemeral drops (7-day expiry).
 // Run from mcp-server: node test/smoke-redrop.mjs
 //
-// Hard assertions: every call succeeds; `fresh: true` yields a different URL.
-// The in-place outcome (updated vs fell-back-to-create) is REPORTED, not asserted —
-// it depends on the platform's redrop ownership path being live for this caller
-// class. The client behaviour is correct either way (the server never hard-fails).
+// Unified plug contract (0.7.0 / spec v2): a re-drop in the same session sends
+// `target_entity_id` (+ the anon `owner_token`) and UPDATES THE SAME entity —
+// same slug, same URL, new content ("Updated in place"). `fresh: true` omits
+// the target and mints a NEW entity (different URL).
+//
+// Anon-cap aware: a 429 means the shared daily anonymous cap is exhausted — a
+// platform rate limit, not a functional failure. Each step skips on 429.
 
 import { spawn } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -23,7 +26,10 @@ function check(label, cond) {
   console.log(`${cond ? "ok  " : "FAIL"} ${label}`);
   if (!cond) failures++;
 }
-const urlOf = (r) => (r.content?.[0]?.text ?? "").match(/https:\/\/guest\.cloudgrid\.io\/\S+/)?.[0];
+const textOf = (r) => r.content?.[0]?.text ?? "";
+const urlOf = (r) => textOf(r).match(/https:\/\/guest\.cloudgrid\.io\/\S+/)?.[0];
+const isRateLimited = (r) =>
+  /HTTP 429|daily anonymous-drop limit|reached the daily/i.test(textOf(r));
 
 let client;
 try {
@@ -39,41 +45,48 @@ try {
   await client.connect(new StreamableHTTPClientTransport(new URL(`http://localhost:${PORT}/mcp`)));
 
   const d1 = await client.callTool({
-    name: "cloudgrid_drop",
+    name: "gridctl_drop",
     arguments: { html: "<h1>redrop smoke v1</h1>", anonymous: true, filename: "redropsmoke.html" },
   });
-  const url1 = urlOf(d1);
-  check("1. first drop returned a URL", !!url1 && d1.isError !== true);
+  if (isRateLimited(d1)) {
+    console.log("skip redrop smoke — anon daily cap exhausted (429); nothing to assert");
+  } else {
+    const url1 = urlOf(d1);
+    const s1 = d1.structuredContent ?? {};
+    check("1. first drop returned a URL", !!url1 && d1.isError !== true);
+    check("1. drop returned the entity_id re-plug handle", typeof s1.entity_id === "string" && s1.entity_id.length > 0);
+    check("1. anon drop returned an owner_token", typeof s1.owner_token === "string" && s1.owner_token.length > 0);
 
-  const d2 = await client.callTool({
-    name: "cloudgrid_drop",
-    arguments: { html: "<h1>redrop smoke v2 CHANGED</h1>", anonymous: true, filename: "redropsmoke.html" },
-  });
-  const t2 = d2.content?.[0]?.text ?? "";
-  check("2. redrop succeeded", d2.isError !== true);
-  console.log(
-    t2.includes("Updated in place")
-      ? "    -> UPDATED IN PLACE (platform redrop path live for this caller)"
-      : `    -> fell back to create (new URL ${urlOf(d2)}) — platform ownership path not matching yet`,
-  );
+    const d2 = await client.callTool({
+      name: "gridctl_drop",
+      arguments: { html: "<h1>redrop smoke v2 CHANGED</h1>", anonymous: true, filename: "redropsmoke.html" },
+    });
+    if (isRateLimited(d2)) {
+      console.log("skip in-place assertions — anon daily cap hit on the edit (429)");
+    } else {
+      const url2 = urlOf(d2);
+      const s2 = d2.structuredContent ?? {};
+      check("2. redrop succeeded", d2.isError !== true);
+      check("2. redrop UPDATED IN PLACE (same URL)", !!url2 && url2 === url1);
+      check("2. redrop reports 'Updated in place'", textOf(d2).includes("Updated in place"));
+      check("2. redrop kept the same entity_id", s2.entity_id === s1.entity_id);
+      check(
+        "2. owner_token was refreshed (present after edit)",
+        typeof s2.owner_token === "string" && s2.owner_token.length > 0,
+      );
 
-  const d3 = await client.callTool({
-    name: "cloudgrid_drop",
-    arguments: { html: "<h1>redrop smoke v2 CHANGED</h1>", anonymous: true, filename: "redropsmoke.html" },
-  });
-  check("3. identical redrop succeeded", d3.isError !== true);
-  console.log(
-    (d3.content?.[0]?.text ?? "").includes("No change")
-      ? "    -> 202 no-op (idempotent)"
-      : "    -> not a no-op (fallback or update)",
-  );
-
-  const d4 = await client.callTool({
-    name: "cloudgrid_drop",
-    arguments: { html: "<h1>redrop smoke fresh</h1>", anonymous: true, fresh: true, filename: "redropsmoke.html" },
-  });
-  const url4 = urlOf(d4);
-  check("4. fresh: true returned a NEW URL", !!url4 && url4 !== urlOf(d3) && url4 !== url1);
+      const d3 = await client.callTool({
+        name: "gridctl_drop",
+        arguments: { html: "<h1>redrop smoke fresh</h1>", anonymous: true, fresh: true, filename: "redropsmoke.html" },
+      });
+      if (isRateLimited(d3)) {
+        console.log("skip fresh assertion — anon daily cap hit (429)");
+      } else {
+        const url3 = urlOf(d3);
+        check("3. fresh: true minted a NEW entity (different URL)", !!url3 && url3 !== url1);
+      }
+    }
+  }
 
   await client.close();
 } finally {

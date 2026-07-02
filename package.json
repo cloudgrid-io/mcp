@@ -1,6 +1,6 @@
 {
   "name": "@cloudgrid-io/mcp",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "MCP server for CloudGrid. Three editions: a local stdio server (full toolset), a hosted web server (light, CLI-free toolset), and a public docs server (search_cloudgrid_documentation) over MCP Streamable HTTP.",
   "type": "module",
   "bin": {
@@ -16,6 +16,7 @@
     "start": "node src/index.js",
     "start:web": "node src/web.js",
     "smoke": "node test/smoke.mjs",
+    "test:plug-wire": "node test/plug-wire.test.mjs",
     "test:drift-guard": "node test/drift-guard.mjs",
     "smoke:drop": "node test/smoke-drop.mjs",
     "smoke:login": "node test/smoke-login.mjs",

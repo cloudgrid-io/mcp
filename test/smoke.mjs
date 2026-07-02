@@ -15,6 +15,8 @@ const GRIDCTL = [
   "gridctl_fetch",
   "gridctl_drop",
   "gridctl_claim",
+  "gridctl_fork",
+  "gridctl_download",
   "gridctl_login",
   "gridctl_login_status",
   "gridctl_visibility",
@@ -74,11 +76,27 @@ for (const name of ALIASES) check(`exposes deprecated alias ${name}`, nameSet.ha
 const aliasDrop = tools.find((t) => t.name === "cloudgrid_drop");
 check("cloudgrid_drop alias marked deprecated → gridctl_drop", (aliasDrop?.description ?? "").includes("(deprecated: use gridctl_drop)"));
 
-// Local edition: gridctl_drop must include the `path` parameter.
+// Local edition: gridctl_drop must include the `path` parameter, plus the
+// unified-plug re-plug handles (entity_id / owner_token / fresh).
 const dropTool = tools.find((t) => t.name === "gridctl_drop");
 const dropProps = dropTool?.inputSchema?.properties ?? {};
 check("local drop has `path` param", "path" in dropProps);
 check("local drop has `html` param", "html" in dropProps);
+check("drop has `entity_id` re-plug param", "entity_id" in dropProps);
+check("drop has `owner_token` param", "owner_token" in dropProps);
+check("drop description says re-drops update in place", (dropTool?.description ?? "").includes("in place"));
+
+// gridctl_plug is the unified direct-API create/re-plug verb (spec v2 §3) —
+// no longer a CLI wrapper. Local edition: `path` + `artifact_files` +
+// `target_entity_id`; the old CLI-wrap `target` param is gone.
+const plugTool = tools.find((t) => t.name === "gridctl_plug");
+const plugProps = plugTool?.inputSchema?.properties ?? {};
+check("local plug has `path` param", "path" in plugProps);
+check("plug has `artifact_files` param", "artifact_files" in plugProps);
+check("plug has `target_entity_id` param", "target_entity_id" in plugProps);
+check("plug has `owner_token` param", "owner_token" in plugProps);
+check("plug has `anon` param", "anon" in plugProps);
+check("plug dropped the CLI-wrap `target` param", !("target" in plugProps));
 
 // Agent Core: gridctl_start returns the playbook + presentation workflow; the
 // alias and new tool resolve to the same handler.

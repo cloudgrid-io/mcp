@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.7.0
+
+Adopts the **unified plug contract** (`POST /api/v2/plug`, MCP tool spec v2): same-URL in-place editing is back, on every surface.
+
+- **`gridctl_plug` — the unified create/re-plug verb, now direct-API on BOTH
+  editions** (it previously wrapped `cloudgrid plug`; the hosted edition had no
+  create verb at all). Inputs per spec v2 §3: `path` (local: file or folder,
+  honoring `.gitignore`/`.cloudgridignore`) XOR `artifact_files` (hosted:
+  inline `{path, content, encoding}` entries), plus `cloudgrid_yaml`,
+  `target_entity_id`, `grid` (create-only), `hints.kind`/`hints.yaml`, `anon`,
+  and `owner_token` (spec omits it from both blocks — a spec bug; without it an
+  anonymous caller cannot re-plug. Flagged upstream, included here). Output:
+  `{entity_id, slug, grid, url, poll_url, status, claim_url?, claim_message?,
+  owner_token?}` — `entity_id` + `url` are the durable re-plug handle.
+  In-place re-plug covers **inspirations**; a deployed app/agent rebuild still
+  goes through the CLI (`cloudgrid plug` in the linked folder) — the
+  per-service-tarball update wire is a follow-up.
+- **`gridctl_drop` re-drops update the same entity in place** — same link, new
+  content, expiry reset. The session's drop is targeted by default; `fresh:
+  true` forces a new entity (a real create again, not a no-op); an explicit
+  `entity_id` targets any earlier drop. A rejected edit (409 `EDIT_REJECTED`,
+  401 bad owner token) surfaces clearly and NEVER silently creates.
+- **Anonymous owner token (anon owner-token contract).** An anon create returns
+  `owner_token` — the bearer capability for BOTH later anonymous re-plug and
+  claim. It is re-minted on every anonymous edit (expiry tracks the drop);
+  the MCP replaces the stored one, feeds `gridctl_claim` from it, and returns
+  `{entity_id, owner_token}` so hosted/stateless callers can re-plug in later
+  sessions. An anon-minted drop is edited via the owner-token wire even when
+  the caller is signed in (the entity lives in the Guest Grid until claimed).
+- **Server-composed `url` consumed everywhere** (create + edit, anon + authed) —
+  flat-arch-aware. Client-side composition (`composePlugUrl`) is demoted to a
+  fallback used only when the server left `url` empty.
+- **New direct-API verbs `gridctl_fork` + `gridctl_download`** (spec v2 §5–6):
+  `POST /api/v2/runtimes/:id/fork` and `GET /api/v2/runtimes/:id/source`
+  (signed 15-minute bundle URLs). Authed-only, both editions.
+- **Stale copy fixed**: "every drop creates a fresh entity", "no in-place
+  redrop", "authed 30-day expiry" were all false post-contract — descriptions
+  now state the single cockpit expiry (default 7 days, reset on edit) and the
+  in-place semantics.
+- Trusted-server headers now ride anonymous EDITS too (anon edits consume the
+  same daily anon cap, re-keyed per end user); `upgradeVisibilityToLink` stays
+  (create-only — an edit keeps the entity's visibility).
+- New offline wire-contract test (`npm run test:plug-wire`, in CI) pinning the
+  target/owner-token/yaml-part semantics against a mocked API.
+
 ## 0.6.0
 
 - **Agent Core — orientation + on-demand loading.** Two new tools on the authed
