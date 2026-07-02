@@ -46,7 +46,7 @@ try {
   const names = toolList.map((t) => t.name).sort();
   console.log("web tools:", names.join(", "));
   // New gridctl_* names (direct-API + Agent Core) on the authed web edition.
-  for (const t of ["gridctl_drop", "gridctl_claim", "gridctl_login", "gridctl_login_status", "gridctl_visibility", "gridctl_orgs", "gridctl_start", "gridctl_fetch"]) {
+  for (const t of ["gridctl_drop", "gridctl_claim", "gridctl_plug", "gridctl_fork", "gridctl_download", "gridctl_login", "gridctl_login_status", "gridctl_visibility", "gridctl_orgs", "gridctl_start", "gridctl_fetch"]) {
     check(`exposes ${t}`, names.includes(t));
   }
   // Deprecated cloudgrid_* aliases still resolve during the migration.
@@ -54,7 +54,15 @@ try {
     check(`exposes deprecated alias ${t}`, names.includes(t));
   }
   check("does NOT expose CLI-only gridctl_init", !names.includes("gridctl_init"));
-  check("does NOT expose CLI-only gridctl_plug", !names.includes("gridctl_plug"));
+
+  // gridctl_plug is on the web edition now (spec v2 — the unified direct-API
+  // create/re-plug verb): artifact_files only, no local `path`.
+  const plugTool = toolList.find((t) => t.name === "gridctl_plug");
+  const plugProps = plugTool?.inputSchema?.properties ?? {};
+  check("web plug does NOT have `path` param", !("path" in plugProps));
+  check("web plug has `artifact_files` param", "artifact_files" in plugProps);
+  check("web plug has `target_entity_id` param", "target_entity_id" in plugProps);
+  check("web plug has `owner_token` param", "owner_token" in plugProps);
 
   // Agent Core tools are gridctl_* from birth — no cloudgrid_* alias for them.
   check("no cloudgrid_start alias", !names.includes("cloudgrid_start"));

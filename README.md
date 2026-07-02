@@ -54,8 +54,11 @@ It speaks MCP over stdio. Point any MCP client at the `cloudgrid-mcp` command.
 
 | Tool | Wraps | Notes |
 |---|---|---|
-| `cloudgrid_drop` | `POST /api/v2/drop/auto` | Artifact drop. Anonymous, or owned if signed in. Direct API. |
-| `cloudgrid_claim` | `POST /api/v2/anon-claim` | Claim an anonymous drop into the signed-in account. Direct API. |
+| `gridctl_plug` | `POST /api/v2/plug` | The unified create/re-plug verb: create a new entity, or update the SAME entity in place with `target_entity_id` (same URL). Source via local `path` (local edition) or inline `artifact_files` (both). |
+| `gridctl_drop` | `POST /api/v2/plug` | Artifact drop. Anonymous, or owned if signed in. Re-drops in a session update the same drop in place; anonymous drops return an `entity_id` + `owner_token` re-plug/claim handle. |
+| `gridctl_claim` | `POST /api/v2/entities/:id/pickup` | Claim an anonymous drop into the signed-in account (the claim token IS the drop's owner token). Direct API. |
+| `gridctl_fork` | `POST /api/v2/runtimes/:id/fork` | Start a new entity from an existing runtime (lineage recorded). Needs sign-in. |
+| `gridctl_download` | `GET /api/v2/runtimes/:id/source` | Signed 15-minute source-bundle URLs. Needs sign-in. |
 | `cloudgrid_login` | `GET /auth/login` | Start a CLI-free sign-in; returns a URL to open. Direct API. |
 | `cloudgrid_login_status` | `GET /auth/status` | Finish the sign-in; saves the token to the shared CLI credentials. |
 | `cloudgrid_visibility` | `PATCH /api/v2/inspirations/<id>` | Change who can see a drop (private, space, authenticated, org, link). Needs sign-in. Direct API; also in the web edition. |
@@ -70,7 +73,6 @@ also work in the web edition where no CLI exists. `cloudgrid_login` writes the s
 | Tool | Wraps | Notes |
 |---|---|---|
 | `cloudgrid_init` | `cloudgrid init` | Register an app or agent; optionally seed a web service. |
-| `cloudgrid_plug` | `cloudgrid plug` | Deploy a directory or URL. |
 | `cloudgrid_logs` | `cloudgrid logs` | Snapshot of recent logs. Does not stream. Read-only. |
 | `cloudgrid_share` | `cloudgrid visibility set` | Set visibility, default link. |
 | `cloudgrid_feedback` | `cloudgrid feedback list` | Read the org feedback feed. Read-only. |

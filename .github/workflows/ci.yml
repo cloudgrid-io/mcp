@@ -31,6 +31,9 @@ jobs:
           node-version: 20
       - run: npm ci
       - run: npm run smoke
+      # Offline unified-plug wire-contract test (0.7.0): asserts target_entity_id /
+      # owner_token / cloudgrid.yaml-part semantics against a mocked API.
+      - run: npm run test:plug-wire
 
   drift-guard:
     runs-on: ubuntu-latest
