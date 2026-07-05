@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.9.0
+
+New capability: the **app-with-data** golden path — the first runtime
+(DB-backed) build workflow in the corpus. Case 2 ("build me a to-do list / a
+dashboard that saves data / a form that stores submissions") previously produced
+only a static, in-memory page that lost all data on refresh. This ships the
+missing path to a **real persistent app**: a Next.js + grid-shared Mongo
+runtime. See the support analysis (`37-user-case-support-analysis.md`).
+
+- **New workflow `app-with-data`** (`src/corpus/workflows/app-with-data.md`).
+  Fires on persistence intent (saves/persists data, shared state, accounts,
+  stored submissions, needs a backend/API/database). Edition-gate FIRST: a
+  runtime app needs the LOCAL edition / CLI; hosted is inline-only and is told so
+  and offered a static version. Then: auth + grid → `init` (nextjs) →
+  `requires: [mongodb]` → fetch template + wire `process.env.MONGODB_URL` →
+  optional `grid dev` → deploy `plug` (ASYNC — poll to a live URL) → return the
+  live URL and iterate on the same entity.
+- **New template `templates/app-with-data/`** — a minimal but real, deployable
+  Next.js App Router + `mongodb` driver to-do app: `cloudgrid.yaml`
+  (`requires: [mongodb]`), `package.json` (next/react/mongodb only), `lib/db.js`
+  (cached client from `process.env.MONGODB_URL` with a clear unset guard),
+  `app/api/todos/route.js` (GET/POST/DELETE on a `todos` collection), a page +
+  client form, and a README. No secret or connection string is embedded.
+- **New example `examples/app-with-data/`** — a richer filled reference (a
+  persistent "Team Task Board" with assignee/status and a PATCH move endpoint).
+- **New troubleshooting note `troubleshooting/persistent-apps.md`** — data
+  doesn't persist, `MONGODB_URL` undefined, async deploy seems stuck, and the
+  hosted-edition gate.
+- **PLAYBOOK persistence rule (11).** If the user needs to save data / share
+  state / log in / store submissions, that's a runtime app-with-data, not a
+  static page; local edition only.
+- No new tools or CLI verbs — the runtime path uses the already-wrapped
+  init/env/secrets/plug/status verbs. `readEntryDir` now prefers `index.md` so a
+  multi-file template/example directory resolves deterministically via
+  `gridctl_fetch`.
+
 ## 0.8.4
 
 Robust content handling for `gridctl_drop`/`cloudgrid_drop`: stop silently

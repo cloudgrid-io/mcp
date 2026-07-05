@@ -1,0 +1,11 @@
+# Rename this app. The grid injects MONGODB_URL (and REDIS_URL if you add redis)
+# as environment variables at dev-time and runtime — do NOT set them yourself,
+# and never commit a connection string or secret.
+name: my-app
+services:
+  web:
+    type: nextjs
+    path: /
+requires:
+  - mongodb        # alias: db — the grid provisions shared Mongo and injects MONGODB_URL
+  # - redis: private   # OPTIONAL — uncomment only if the app needs Redis (injects REDIS_URL)
