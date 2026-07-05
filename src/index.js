@@ -11,7 +11,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { registerTools } from "./tools.js";
 import {
   readCredentials,
-  readActiveOrgSlug,
+  readActiveGridSlug,
   writeCredentials,
   credentialsPath,
 } from "./auth.js";
@@ -23,7 +23,7 @@ const ctx = {
   state: { pendingLoginCode: null, lastAnonClaim: null, lastDrop: null, anonCookie: null },
   canOpenBrowser: true,
   getToken: async () => (await readCredentials())?.jwt ?? null,
-  getActiveOrg: async () => await readActiveOrgSlug(),
+  getActiveGrid: async () => await readActiveGridSlug(),
   saveToken: async (jwt) => await writeCredentials(jwt),
   savedLocationNote: () => `Credentials saved to ${credentialsPath()}.`,
 };

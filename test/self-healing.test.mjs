@@ -48,7 +48,7 @@ function makeCtx({ token = null, edition = "local" } = {}) {
     state: { pendingLoginCode: null, lastAnonClaim: null, lastDrop: null, anonCookie: null },
     canOpenBrowser: false,
     getToken: async () => token,
-    getActiveOrg: async () => null,
+    getActiveGrid: async () => null,
     saveToken: async () => ({}),
     savedLocationNote: () => "",
     trustedServer: null,
@@ -175,6 +175,36 @@ try {
   }
 
   // ═══ 3b. CLI self-heal rung — NON-trigger cases (must NOT fire) ════════════
+
+  // 0.8.0 regression guard: a NORMAL authed create now succeeds server-side
+  // (SCOPE_INVALID is durably fixed), so a signed-in local create that returns a
+  // clean 201 must NOT invoke the CLI fallback at all — the self-heal rung stays
+  // dormant on the happy path.
+  {
+    calls.length = 0;
+    replies = [
+      {
+        status: 201,
+        body: {
+          entity_id: "ent-ok",
+          slug: "ok",
+          grid: "atomic",
+          url: "https://ok.atomic.cloudgrid.io",
+          status: "live",
+        },
+      },
+    ];
+    const ctx = makeCtx({ token: "jwt", edition: "local" });
+    const run = makeCliRunner("should not run");
+    const res = await runPlug(
+      ctx,
+      { artifact_files: [{ path: "index.html", content: "<h1>hi</h1>" }] },
+      { run, makeTmp },
+    );
+    check("runPlug normal authed create (201) → CLI NOT invoked (self-heal dormant)", run.invocations.length === 0);
+    check("runPlug normal authed create → returns the direct-API URL", res.structured.url === "https://ok.atomic.cloudgrid.io");
+    check("runPlug normal authed create → NOT marked via=cli-fallback", res.structured.via !== "cli-fallback");
+  }
 
   // web edition → no CLI fallback; the error surfaces with web guidance.
   {

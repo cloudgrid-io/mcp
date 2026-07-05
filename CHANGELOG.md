@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.8.0
+
+Alignment with the platform org→grid rollout and CLI 0.12. No user-facing
+behaviour change — the org→grid migration is dual-live and every alias is still
+honored; this release moves the MCP to the grid-native surface ahead of the
+(undated, post-soak) alias sunset and stops new stderr deprecation noise.
+
+- **CLI pin `~0.10.1` → `~0.12`.** `MIN_CLI_VERSION`, the lazy-npx `CLI_NPX_PKG`,
+  the `.mcpb` bundle install (`scripts/build-mcpb.mjs`), and the drift-guard pin
+  (`test/drift-guard.mjs`) all move to CLI 0.12. The drift guard confirms every
+  wrapped verb and subcommand still resolves against 0.12; no `--json`
+  output-shape changed, so no parsing changed.
+- **Grid-native request header.** Direct-API calls now send `X-CloudGrid-Grid`
+  alongside `X-CloudGrid-Org` with the **same** slug value (never conflicting —
+  differing values would 400 `GRID_HEADER_CONFLICT`). The `-Org` alias is kept in
+  parallel for the soak.
+- **Wrapped CLI flags `--org` → `--grid`.** The `init`, `feedback`, and `pickup`
+  builders now pass `--grid` (CLI 0.12 dropped `--org` on these verbs). `get`
+  already used `--grid`. Stops the per-call deprecation note leaking into wrapped
+  output.
+- **Internal org→grid rename.** `fetchUserOrgs` now reads `data.grids`
+  (dual-emitted, same array as `data.orgs`, with `data.orgs`/bare-array fallback);
+  `getActiveOrg`→`getActiveGrid`, `readActiveOrgSlug`→`readActiveGridSlug` (parses
+  `active_grid_slug` with `active_org_slug` fallback), `ORG_PICKER_*`→
+  `GRID_PICKER_*` JS constants. The `needs_org`/`orgs` structured alias fields and
+  the org-picker widget's `orgs` read are **kept** (the web card depends on them).
+  The picker resource URI/name/filename are unchanged (stable web-card contract).
+- **Self-heal stays dormant on the happy path.** `SCOPE_INVALID` is durably fixed
+  server-side, so a normal signed-in create no longer trips the `plugViaCliFallback`
+  rung. The rung is kept as belt-and-suspenders; a new test asserts a clean authed
+  create (201) succeeds **without** invoking the CLI fallback.
+- **Doc note.** `GRID_AUTH_STALE` (strict-OIDC / org-owned grids) is out of scope —
+  the MCP does not target such grids; a `GRID_AUTH_STALE` response should point the
+  user at Console SSO.
+
 ## 0.7.3
 
 Grid-picker parity: a signed-in user with more than one grid is now ASKED which

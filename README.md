@@ -15,10 +15,17 @@ drop, claim, and login tools.
 
 ## CLI compatibility
 
-MCP 0.5.2 is tested against CLI 0.10.1. The lazy-npx fallback pins
-`@cloudgrid-io/cli@~0.10.1` so a future CLI major with renamed verbs cannot
+MCP 0.8.0 is tested against CLI 0.12. The lazy-npx fallback pins
+`@cloudgrid-io/cli@~0.12` so a future CLI major with renamed verbs cannot
 silently break a released MCP. A CI drift guard (`npm run test:drift-guard`)
 asserts every wrapped verb exists in the CLI help.
+
+### `GRID_AUTH_STALE` is out of scope
+
+Strict-OIDC (org-owned) grids can return `GRID_AUTH_STALE` when the caller's
+session predates an SSO policy change. The MCP does not target such grids and
+does not handle this code: if a `GRID_AUTH_STALE` response is ever seen, point
+the user at Console SSO to re-authenticate — the MCP will not silently retry.
 
 ## Prerequisite
 

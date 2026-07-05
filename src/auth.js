@@ -66,12 +66,16 @@ export async function readCredentials() {
   }
 }
 
-// The CLI's active org slug from ~/.cloudgrid/config.yaml, or null. A minimal
-// line parse — no YAML dependency for one field.
-export async function readActiveOrgSlug() {
+// The CLI's active grid slug from ~/.cloudgrid/config.yaml, or null. A minimal
+// line parse — no YAML dependency for one field. Accepts the grid-native
+// `active_grid_slug` key and falls back to the legacy `active_org_slug` (CLI 0.12
+// still writes the org key; this is forward-compatible with a future rename).
+export async function readActiveGridSlug() {
   try {
     const raw = await readFile(join(cloudgridHome(), "config.yaml"), "utf8");
-    const m = raw.match(/^\s*active_org_slug:\s*(\S+)\s*$/m);
+    const m =
+      raw.match(/^\s*active_grid_slug:\s*(\S+)\s*$/m) ||
+      raw.match(/^\s*active_org_slug:\s*(\S+)\s*$/m);
     return m ? m[1] : null;
   } catch {
     return null;

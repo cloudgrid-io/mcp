@@ -30,9 +30,11 @@ const CONSOLE_URL = "https://console.cloudgrid.io/";
 
 // ── Widget resources (ChatGPT Apps SDK, web edition only) ────────────────────
 const LIVE_RESULT_URI = "ui://cloudgrid/live-result.html";
-const ORG_PICKER_URI = "ui://cloudgrid/org-picker.html";
+// URI/resource-name/filename stay `org-picker` — that's the stable contract the
+// web card is registered under; only the JS identifier moves toward grid.
+const GRID_PICKER_URI = "ui://cloudgrid/org-picker.html";
 const LIVE_RESULT_HTML = readFileSync(new URL("./widgets/live-result.html", import.meta.url), "utf-8");
-const ORG_PICKER_HTML = readFileSync(new URL("./widgets/org-picker.html", import.meta.url), "utf-8");
+const GRID_PICKER_HTML = readFileSync(new URL("./widgets/org-picker.html", import.meta.url), "utf-8");
 const WIDGET_CSP = {
   connectDomains: ["https://*.cloudgrid.io"],
   resourceDomains: ["https://*.cloudgrid.io"],
@@ -194,11 +196,11 @@ function resolveCwd(cwd) {
 }
 
 // Pin the CLI version for the lazy npx fallback so behaviour is reproducible.
-// MCP 0.5.2 is tested against CLI 0.10.1.
-const CLI_NPX_PKG = "@cloudgrid-io/cli@~0.10.1";
+// MCP 0.8.0 is tested against CLI 0.12.
+const CLI_NPX_PKG = "@cloudgrid-io/cli@~0.12";
 
 // Minimum CLI version that supports the verbs and flags the MCP passes.
-const MIN_CLI_VERSION = "0.10.1";
+const MIN_CLI_VERSION = "0.12.0";
 
 // Verb map for the drift guard: each CLI-wrapping tool's top-level verb(s).
 // The drift-guard test imports this and asserts every verb exists in `cloudgrid --help`.
@@ -656,8 +658,16 @@ async function fetchUserOrgs(token) {
     });
     if (!res.ok) return [];
     const data = await res.json();
-    const orgs = Array.isArray(data?.orgs) ? data.orgs : Array.isArray(data) ? data : [];
-    return orgs.map((o) => ({
+    // 0.8.0: read the grid-native `data.grids` (dual-emitted alongside the legacy
+    // `data.orgs`, same array/order). Fall back to `data.orgs`/bare-array during soak.
+    const grids = Array.isArray(data?.grids)
+      ? data.grids
+      : Array.isArray(data?.orgs)
+        ? data.orgs
+        : Array.isArray(data)
+          ? data
+          : [];
+    return grids.map((o) => ({
       slug: o.slug ?? "",
       name: o.name ?? o.slug ?? "",
       role: o.role ?? "member",
@@ -681,19 +691,19 @@ async function fetchUserOrgs(token) {
 // org-picker web widget reads, so the web card keeps working. Stateless — no
 // dependence on prior-call state (ChatGPT Apps SDK reconnects every call).
 export async function resolveGridOrAsk(ctx, { token, suppliedGrid, edition }, deps = {}) {
-  const listOrgs = deps.fetchUserOrgs || fetchUserOrgs;
-  const orgs = await listOrgs(token);
-  const activeOrg = await ctx.getActiveOrg();
-  const matched = suppliedGrid && orgs.find((o) => o.slug === suppliedGrid);
+  const listGrids = deps.fetchUserOrgs || fetchUserOrgs;
+  const grids = await listGrids(token);
+  const activeGrid = await ctx.getActiveGrid();
+  const matched = suppliedGrid && grids.find((o) => o.slug === suppliedGrid);
   if (matched) {
     // Supplied grid matches — proceed. The agent should already have checked
     // render_ready and warned the user; we don't block here.
     return { proceed: true, grid: suppliedGrid };
   }
-  if (orgs.length > 1) {
+  if (grids.length > 1) {
     // No valid grid supplied and multiple grids — ask once. Mark the active
     // grid so the agent can offer it as the default.
-    const annotated = orgs.map((o) => ({ ...o, is_active: o.slug === activeOrg }));
+    const annotated = grids.map((o) => ({ ...o, is_active: o.slug === activeGrid }));
     // Sort: active grid first, then ready grids, then not-ready grids.
     annotated.sort((a, b) => {
       if (a.is_active !== b.is_active) return b.is_active ? 1 : -1;
@@ -719,12 +729,12 @@ export async function resolveGridOrAsk(ctx, { token, suppliedGrid, edition }, de
         // `needs_grid` is the new field; `needs_org`/`orgs` are kept as aliases
         // so the existing org-picker.html web widget (reads data.orgs) still works.
         structured: { needs_grid: true, needs_org: true, grids: annotated, orgs: annotated },
-        ...(edition === "web" ? { meta: { "openai/outputTemplate": ORG_PICKER_URI } } : {}),
+        ...(edition === "web" ? { meta: { "openai/outputTemplate": GRID_PICKER_URI } } : {}),
       },
     };
   }
-  if (orgs.length === 1) {
-    return { single: { ...orgs[0], is_active: orgs[0].slug === activeOrg } };
+  if (grids.length === 1) {
+    return { single: { ...grids[0], is_active: grids[0].slug === activeGrid } };
   }
   return { proceed: true };
 }
@@ -737,7 +747,12 @@ async function upgradeVisibilityToLink(ctx, entityId, orgSlug) {
   if (!token || !entityId) return false;
   try {
     const hdrs = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-    if (orgSlug) hdrs["X-CloudGrid-Org"] = orgSlug;
+    // Send the grid-native header; keep X-CloudGrid-Org in parallel (same value)
+    // during the org→grid soak. Never send conflicting values → 400 GRID_HEADER_CONFLICT.
+    if (orgSlug) {
+      hdrs["X-CloudGrid-Grid"] = orgSlug;
+      hdrs["X-CloudGrid-Org"] = orgSlug;
+    }
     const res = await fetch(`${API_BASE}/api/v2/inspirations/${encodeURIComponent(entityId)}`, {
       method: "PATCH",
       headers: hdrs,
@@ -843,7 +858,7 @@ export async function runDrop(
   if (anonymous !== true) {
     authToken = await ctx.getToken();
     if (authToken) {
-      orgSlug = targetGrid || (await ctx.getActiveOrg());
+      orgSlug = targetGrid || (await ctx.getActiveGrid());
     }
   }
 
@@ -897,7 +912,11 @@ export async function runDrop(
   const headers = {};
   if (!isAnonymousWire) {
     headers["Authorization"] = `Bearer ${authToken}`;
-    if (orgSlug) headers["X-CloudGrid-Org"] = orgSlug;
+    // Grid-native header + X-CloudGrid-Org alias (same slug) during the soak.
+    if (orgSlug) {
+      headers["X-CloudGrid-Grid"] = orgSlug;
+      headers["X-CloudGrid-Org"] = orgSlug;
+    }
   }
 
   // Hosted server: attach the trusted-server credential on EVERY anonymous call
@@ -1161,8 +1180,12 @@ async function runClaim(ctx, { claim_token, claim_url, entity_id }) {
   // The claim re-homes the inspiration into the caller's grid; the platform
   // resolves the destination from the active-org context, so send the org
   // header (the same header every other authed write uses).
-  const orgSlug = await ctx.getActiveOrg();
-  if (orgSlug) headers["X-CloudGrid-Org"] = orgSlug;
+  const orgSlug = await ctx.getActiveGrid();
+  // Grid-native header + X-CloudGrid-Org alias (same slug) during the soak.
+  if (orgSlug) {
+    headers["X-CloudGrid-Grid"] = orgSlug;
+    headers["X-CloudGrid-Org"] = orgSlug;
+  }
   // Replay the anon-session cookie so a cookie-class caller can claim what it
   // dropped, even without a claim token.
   if (ctx.state.anonCookie) headers["Cookie"] = ctx.state.anonCookie;
@@ -1542,8 +1565,12 @@ export async function runPlug(ctx, input, deps = {}) {
     // the caller's membership from this header and requires it to MATCH the
     // entity's grid, so pass `grid` here too when the target lives outside the
     // active grid.
-    const orgSlug = grid || (await ctx.getActiveOrg());
-    if (orgSlug) headers["X-CloudGrid-Org"] = orgSlug;
+    const orgSlug = grid || (await ctx.getActiveGrid());
+    // Grid-native header + X-CloudGrid-Org alias (same slug) during the soak.
+    if (orgSlug) {
+      headers["X-CloudGrid-Grid"] = orgSlug;
+      headers["X-CloudGrid-Org"] = orgSlug;
+    }
   }
   if (useAnonWire && ctx.trustedServer?.secret && ctx.trustedServer?.endUserId) {
     headers["X-CloudGrid-Trusted-Server-Auth"] = ctx.trustedServer.secret;
@@ -1704,8 +1731,12 @@ async function authedApiCall(ctx, { method, pathName, body, verb }) {
     throw new Error(`${verb} requires sign-in. Run gridctl_login first.`);
   }
   const headers = { Authorization: `Bearer ${token}` };
-  const orgSlug = await ctx.getActiveOrg();
-  if (orgSlug) headers["X-CloudGrid-Org"] = orgSlug;
+  const orgSlug = await ctx.getActiveGrid();
+  // Grid-native header + X-CloudGrid-Org alias (same slug) during the soak.
+  if (orgSlug) {
+    headers["X-CloudGrid-Grid"] = orgSlug;
+    headers["X-CloudGrid-Org"] = orgSlug;
+  }
   if (body !== undefined) headers["Content-Type"] = "application/json";
   let res;
   try {
@@ -1800,8 +1831,12 @@ async function runVisibility(ctx, { target, visibility, org }) {
     throw new Error("No target. Pass the entity id, or drop something first in this session.");
   }
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-  const orgSlug = org || (await ctx.getActiveOrg());
-  if (orgSlug) headers["X-CloudGrid-Org"] = orgSlug;
+  const orgSlug = org || (await ctx.getActiveGrid());
+  // Grid-native header + X-CloudGrid-Org alias (same slug) during the soak.
+  if (orgSlug) {
+    headers["X-CloudGrid-Grid"] = orgSlug;
+    headers["X-CloudGrid-Org"] = orgSlug;
+  }
   let res;
   try {
     res = await fetch(`${API_BASE}/api/v2/inspirations/${encodeURIComponent(id)}`, {
@@ -1879,14 +1914,14 @@ export function registerTools(server, ctx) {
       }],
     }));
 
-    server.registerResource("cloudgrid-org-picker", ORG_PICKER_URI, {
+    server.registerResource("cloudgrid-org-picker", GRID_PICKER_URI, {
       description: "Org picker card — lets the user choose which organization to publish into.",
       mimeType: "text/html;profile=mcp-app",
     }, async () => ({
       contents: [{
-        uri: ORG_PICKER_URI,
+        uri: GRID_PICKER_URI,
         mimeType: "text/html;profile=mcp-app",
-        text: ORG_PICKER_HTML,
+        text: GRID_PICKER_HTML,
         _meta: { ui: { csp: WIDGET_CSP } },
       }],
     }));
@@ -2366,16 +2401,17 @@ export function registerTools(server, ctx) {
       if (!token) {
         return fail("You are not signed in. Run gridctl_login first.");
       }
-      const orgs = await fetchUserOrgs(token);
-      if (orgs.length === 0) {
-        return okResult({ text: "No organizations found.", structured: { orgs: [] } });
+      const grids = await fetchUserOrgs(token);
+      if (grids.length === 0) {
+        // Structured output stays `orgs` (its declared schema); user text says grid.
+        return okResult({ text: "No grids found.", structured: { orgs: [] } });
       }
-      const activeOrg = await ctx.getActiveOrg();
-      const annotated = orgs.map((o) => ({
+      const activeGrid = await ctx.getActiveGrid();
+      const annotated = grids.map((o) => ({
         ...o,
-        is_active: o.slug === activeOrg,
+        is_active: o.slug === activeGrid,
       }));
-      // Sort: active org first, then ready orgs, then not-ready orgs.
+      // Sort: active grid first, then ready grids, then not-ready grids.
       annotated.sort((a, b) => {
         if (a.is_active !== b.is_active) return b.is_active ? 1 : -1;
         if (a.render_ready !== b.render_ready) return b.render_ready ? 1 : -1;
@@ -2383,15 +2419,16 @@ export function registerTools(server, ctx) {
       });
       const lines = annotated.map((o) => {
         const tags = [];
-        if (o.is_active) tags.push("your active org");
+        if (o.is_active) tags.push("your active grid");
         if (!o.render_ready) tags.push("not set up yet");
         const suffix = tags.length ? ` (${tags.join(", ")})` : "";
         return `${o.slug} — ${o.name} (${o.role})${suffix}`;
       });
       const readyCount = annotated.filter((o) => o.render_ready).length;
       if (readyCount === 0 && annotated.length > 0) {
-        lines.push("\nNone of your orgs are fully set up yet. You can use an anonymous drop as a fallback, or wait until provisioning completes.");
+        lines.push("\nNone of your grids are fully set up yet. You can use an anonymous drop as a fallback, or wait until provisioning completes.");
       }
+      // Structured output stays `orgs` (its declared schema); user text says grid.
       return okResult({ text: lines.join("\n"), structured: { orgs: annotated } });
     },
   );
@@ -2439,7 +2476,7 @@ export function registerTools(server, ctx) {
         signedIn = false;
       }
       try {
-        activeGrid = (await ctx.getActiveOrg()) ?? null;
+        activeGrid = (await ctx.getActiveGrid()) ?? null;
       } catch {
         activeGrid = null;
       }
@@ -2512,7 +2549,8 @@ export function registerTools(server, ctx) {
       if (type) args.push("--type", type);
       if (description) args.push("--description", description);
       if (dir) args.push("--dir", dir);
-      if (org) args.push("--org", org);
+      // CLI 0.12 dropped `--org` in favour of `--grid` (same slug).
+      if (org) args.push("--grid", org);
       return args;
     }, { cwdParam: true }),
   );
@@ -2563,7 +2601,8 @@ export function registerTools(server, ctx) {
       const args = ["feedback", "list"];
       if (since) args.push("--since", since);
       if (limit) args.push("--limit", String(limit));
-      if (org) args.push("--org", org);
+      // CLI 0.12 dropped `--org` in favour of `--grid` (same slug).
+      if (org) args.push("--grid", org);
       return args;
     }),
   );
@@ -2670,8 +2709,8 @@ export function registerTools(server, ctx) {
     cliTool(({ name, target_dir, grid, version, force, no_bind }) => {
       const args = ["pickup", name];
       if (target_dir) args.push(target_dir);
-      // The CLI's pickup --help exposes `--org <slug>` (legacy naming) for the grid.
-      if (grid) args.push("--org", grid);
+      // CLI 0.12's pickup exposes `--grid <slug>` (was legacy `--org`).
+      if (grid) args.push("--grid", grid);
       if (version) args.push("--version", version);
       if (force) args.push("--force");
       if (no_bind) args.push("--no-bind");
