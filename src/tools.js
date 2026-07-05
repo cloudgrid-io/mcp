@@ -69,6 +69,7 @@ Operating rules:
 5. Minimize questions. Use sensible defaults and build; don't front-load setup questions.
 6. If a signed-in publish fails with a server error, do not fall back to anonymous publishing (it burns the anonymous quota and downgrades ownership); surface the error, use the CLI fallback if offered, or ask the user.
 7. When signed in and the user has more than one grid, do not assume a target — the publish tools will ask; relay the choice to the user and pass the chosen grid.
+8. When a build/deploy fails unexpectedly, offer to report it to the CloudGrid team — only with the user's explicit consent (ask first). Send just the error + the failed request by default (call gridctl_report), and never send the whole conversation unless the user agrees (include_conversation). Respect privacy.
 
 Deploy is edition-dependent: on the hosted MCP call the drop tool with the HTML; on local MCP / CLI write the file and run the plug tool. An HTML page deploys synchronously, so you get a URL right away.`;
 
@@ -1132,6 +1133,128 @@ export async function runDrop(
   };
 }
 
+// ── Consent-gated error reporting (Task 34 / 0.8.1) ──────────────────────────
+// Key names that look like they carry a secret. Mirrors the server's
+// SECRET_KEY_PATTERNS (packages/api/src/routes/errors.ts) so the MCP scrubs the
+// same shapes client-side — defense-in-depth on top of the server redaction.
+const REPORT_SECRET_KEY_PATTERNS = [
+  /password/i,
+  /secret/i,
+  /token/i,
+  /api[_-]?key/i,
+  /auth/i,
+  /credential/i,
+  /private[_-]?key/i,
+  /access[_-]?key/i,
+];
+
+// Light client-side scrub of obviously secret-looking values in the report
+// context. Redacts values under secret-looking KEYS; leaves everything else
+// intact (the server does the authoritative redaction). Bounded depth so a
+// pathological object can't loop.
+export function scrubReportContext(obj, depth = 0) {
+  if (depth > 5 || obj === null || typeof obj !== "object") return obj;
+  if (Array.isArray(obj)) return obj.map((item) => scrubReportContext(item, depth + 1));
+  const out = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const isSecret = REPORT_SECRET_KEY_PATTERNS.some((re) => re.test(key));
+    out[key] = isSecret ? "[REDACTED]" : scrubReportContext(value, depth + 1);
+  }
+  return out;
+}
+
+// Send a consent-gated bug report to the CloudGrid team. The agent calls this
+// ONLY after the user explicitly agrees (see errorGuidance + the PLAYBOOK rule).
+// Posts to POST /api/v2/errors/feedback with {app:"mcp", message, context,
+// node_version, platform}. Authed → Bearer; anon+web → the trusted-server
+// headers (works once Gilad opens the endpoint; until then a 401 degrades to a
+// friendly "sign in to report"). Never throws — always returns friendly text.
+export async function runReport(ctx, { message, context, include_conversation } = {}) {
+  const summary = typeof message === "string" ? message.trim() : "";
+  if (!summary) {
+    return okResult({
+      text: "Nothing to report — provide a short `message` describing what failed.",
+      structured: { status: "skipped" },
+    });
+  }
+
+  // Belt-and-suspenders scrub before the value ever leaves the process.
+  const safeContext =
+    context && typeof context === "object" ? scrubReportContext(context) : undefined;
+  // The full conversation is NEVER included unless the agent explicitly set the
+  // flag (which the PLAYBOOK gates on the user's explicit yes). This tool only
+  // records the flag alongside the report so intent is auditable — it does not
+  // itself have the transcript.
+  const body = {
+    app: "mcp",
+    message: summary.slice(0, 5000),
+    context: safeContext,
+    node_version: process.version,
+    platform: process.platform,
+    ...(include_conversation === true ? { include_conversation: true } : {}),
+  };
+
+  // Auth: signed-in → Bearer; anon + web edition → trusted-server headers.
+  const headers = { "content-type": "application/json" };
+  let token = null;
+  try {
+    token = await ctx.getToken();
+  } catch {
+    token = null;
+  }
+  let usedTrustedServer = false;
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  } else if (ctx.trustedServer?.secret && ctx.trustedServer?.endUserId) {
+    // Web edition anon path — works ONCE the endpoint accepts the trusted-server
+    // credential (Gilad-side change). Until then the server 401s and we degrade.
+    headers["X-CloudGrid-Trusted-Server-Auth"] = ctx.trustedServer.secret;
+    headers["X-CloudGrid-Trusted-Server-End-User"] = ctx.trustedServer.endUserId;
+    usedTrustedServer = true;
+  }
+
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/api/v2/errors/feedback`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    return okResult({
+      text: `Couldn't reach the CloudGrid team right now (${err.message}). Nothing was sent — you can try again later.`,
+      structured: { status: "error" },
+    });
+  }
+
+  if (res.status === 201 || res.ok) {
+    return okResult({
+      text: "Reported to the CloudGrid team — thank you.",
+      structured: { status: "recorded" },
+    });
+  }
+  if (res.status === 429) {
+    return okResult({
+      text: "Already reported a lot recently; try again later.",
+      structured: { status: "rate_limited" },
+    });
+  }
+  if (res.status === 401) {
+    // Anon reporting isn't accepted yet (needs the Gilad-side endpoint change);
+    // degrade gracefully rather than erroring.
+    return okResult({
+      text: usedTrustedServer || !token
+        ? "Sign in to send a report to the CloudGrid team (gridctl_login), then try again."
+        : "That didn't authorize a report. Sign in again (gridctl_login) and retry.",
+      structured: { status: "unauthorized" },
+    });
+  }
+  return okResult({
+    text: "Couldn't send the report to the CloudGrid team right now. Nothing else was sent — you can try again later.",
+    structured: { status: "error" },
+  });
+}
+
 async function runClaim(ctx, { claim_token, claim_url, entity_id }) {
   const token = await ctx.getToken();
   if (!token) {
@@ -1394,8 +1517,32 @@ export function errorGuidance({ status, code, edition, isEdit, isAnon, signedIn 
   if (status === 403) {
     return "You lack the role to plug this target. To re-plug someone else's entity, pick it up first (gridctl_pickup / gridctl_claim).";
   }
+  // ── Consent-gated report offer (Task 34) ──────────────────────────────────
+  // GENUINE bugs only: a build/deploy failure, any 5xx, INTERNAL_ERROR, or an
+  // unknown/unmapped error. Everything above (429 rate-limit, needs_grid picker,
+  // 401 sign-in prompts, 409 EDIT_REJECTED, 403) is an EXPECTED condition, not a
+  // bug — those returned already and never reach here, so they never get the
+  // offer. The offer tells the agent to ask permission first and never send the
+  // full conversation without an explicit yes.
+  const isServerError = typeof status === "number" && status >= 500;
+  const isInternalError = code === "INTERNAL_ERROR";
+  const isBuildFailure = code === "BUILD_FAILED" || code === "DEPLOY_FAILED";
+  if (isServerError || isInternalError || isBuildFailure) {
+    return REPORT_OFFER;
+  }
+  // A 4xx with an unknown/unmapped code is a client-side condition (validation,
+  // bad input), not a server bug — pass through unchanged so callers don't
+  // rewrite it or wrongly offer to report it.
   return null;
 }
+
+// The consent-gated report affordance appended to genuine-bug guidance. It
+// instructs the agent to get explicit permission before calling gridctl_report,
+// and to never send the whole conversation without an explicit yes.
+export const REPORT_OFFER =
+  "If this looks like a CloudGrid bug, ASK the user for permission to report it to the CloudGrid team, " +
+  "then call gridctl_report with the error + the failed request context. " +
+  "Do NOT report without an explicit yes, and do NOT include the full conversation unless the user explicitly agrees.";
 
 // Map friendly plug error statuses to actionable messages (spec v2 §3.3).
 // Appends errorGuidance() for known codes; unknown codes pass through as the
@@ -2524,6 +2671,62 @@ export function registerTools(server, ctx) {
         );
       }
       return okResult({ text: content, structured: { name, kind, content } });
+    },
+  );
+
+  // ── Consent-gated error reporting (Task 34) ───────────────────────────────
+  // Both editions. The agent calls this ONLY after the user explicitly agrees
+  // to report a genuine failure (the errorGuidance offer + the PLAYBOOK rule
+  // gate on consent). Posts the error + failed-request context to the CloudGrid
+  // team; the full conversation is never sent unless include_conversation is
+  // explicitly set true (which the agent only does on an explicit yes).
+  reg(
+    "gridctl_report",
+    {
+      description:
+        "Report a genuine CloudGrid failure to the CloudGrid team — ONLY with the user's explicit consent. When a build/deploy or platform call fails unexpectedly, ASK the user first; call this only after they say yes. Send a short `message` (what failed) plus `context` (the tool, inputs, grid, original request, error code/detail). By default it does NOT include the conversation — set include_conversation:true ONLY if the user explicitly agreed to send the chat. Obvious secrets in context are scrubbed before sending. Never sends anything the user didn't agree to.",
+      inputSchema: {
+        message: z
+          .string()
+          .describe("Short summary of what failed (required). Do not paste the whole conversation here."),
+        context: z
+          .object({
+            tool: z.string().optional().describe("The CloudGrid tool that failed, e.g. gridctl_drop."),
+            inputs: z.any().optional().describe("The failing inputs (e.g. the HTML/args). Keep it minimal; secrets are scrubbed."),
+            grid: z.string().optional().describe("The grid/org slug involved, if any."),
+            original_request: z.string().optional().describe("What the user asked for, in one line."),
+            error_code: z.string().optional().describe("The server error code, e.g. INTERNAL_ERROR."),
+            error_detail: z.string().optional().describe("The error message / detail surfaced to the agent."),
+          })
+          .partial()
+          .optional()
+          .describe("The failed-request context. Secret-looking values are scrubbed client-side and again server-side."),
+        include_conversation: z
+          .boolean()
+          .optional()
+          .describe("Default false. Set true ONLY if the user explicitly agreed to include the full conversation."),
+      },
+      outputSchema: {
+        status: z
+          .enum(["recorded", "rate_limited", "unauthorized", "error", "skipped"])
+          .describe("Outcome of the report."),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+    },
+    async (input) => {
+      try {
+        return await runReport(ctx, {
+          message: input?.message,
+          context: input?.context,
+          include_conversation: input?.include_conversation === true,
+        });
+      } catch (err) {
+        // Belt-and-suspenders: never throw noisily out of a report attempt.
+        return okResult({
+          text: "Couldn't send the report to the CloudGrid team right now. You can try again later.",
+          structured: { status: "error" },
+        });
+      }
     },
   );
 

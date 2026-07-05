@@ -119,9 +119,9 @@ try {
   check("409 → guidance present", /cannot be updated right now/.test(errorGuidance({ status: 409, isEdit: true }) || ""));
   check("401 edit → guidance mentions authorization", /did not authorize|Sign in/.test(errorGuidance({ status: 401, isEdit: true }) || ""));
 
-  // UNKNOWN codes pass through unchanged (null).
+  // UNKNOWN 4xx codes pass through unchanged (null) — they're client-side
+  // conditions, not bugs, so no rewriting and no report offer.
   check("unknown 400 code → null (pass through unchanged)", errorGuidance({ status: 400, code: "SOME_NEW_ERROR" }) === null);
-  check("unknown 500 → null (pass through unchanged)", errorGuidance({ status: 500 }) === null);
   check("plain 400 with no code → null", errorGuidance({ status: 400 }) === null);
 
   // ═══ 2. parseCliPlugUrl ════════════════════════════════════════════════════
