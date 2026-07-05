@@ -1,6 +1,10 @@
 ---
 name: web-app
-when: The user wants to build a small interactive web app, tool, calculator, or mini single-page application.
+when: calculator, converter, generator, timer, quiz, interactive tool, mini-app, single-page tool, widget — anything computed client-side with no saved data.
+needs: none
+deploy: inspiration
+editions: all
+capabilities_note: static — no infrastructure, state lives only in memory. Publishes as an inspiration (instant, works on hosted) via gridctl_drop.
 summary: Fetch the web-app template, adapt its markup and inline JS to the user's tool, deploy it, and return the live share URL.
 ---
 

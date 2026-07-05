@@ -11,5 +11,9 @@ services:
   web:
     type: nextjs
     path: /
+# Canonical capability (metadata): this app needs a database.
+# When #1527 lands (deployer honors needs:), replace requires: with:
+#   needs:
+#     database: true
 requires:
   - mongodb

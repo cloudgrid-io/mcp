@@ -1,0 +1,10 @@
+# static — deploys as an inspiration (instant, works on hosted) via gridctl_drop;
+# this yaml is only for plugging it as an OWNED static runtime (async, local
+# edition only). To publish the page, prefer gridctl_drop, not grid plug.
+#
+# needs: {}  # none — static, no infrastructure
+name: landing-page
+services:
+  web:
+    type: static
+    path: /

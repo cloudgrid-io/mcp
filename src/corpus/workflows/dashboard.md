@@ -1,6 +1,10 @@
 ---
 name: dashboard
-when: The user wants to build a dashboard showing metrics, status, or KPIs with cards and charts.
+when: dashboard, metrics, KPIs, stats page, status board, charts, analytics view — display-only (static data baked in).
+needs: none
+deploy: inspiration
+editions: all
+capabilities_note: static — no infrastructure, data is baked into the page. Publishes as an inspiration (instant, works on hosted) via gridctl_drop.
 summary: Fetch the dashboard template, fill it with the user's metrics and inline charts, deploy it, and return the live share URL.
 ---
 
