@@ -7,7 +7,7 @@
 //   3. HTML returned inline in content AND structuredContent.html; bytes set; truncated past 1.5MB.
 //   4. Non-200 → graceful fail (no throw).
 //   5. Defaults: no inputs + a session lastDrop → fetches lastDrop.url.
-//   6. Alias cloudgrid_source registered and behaves identically to gridctl_source.
+//   6. Only gridctl_source is registered — the deprecated cloudgrid_source alias is gone (0.10.0).
 //   7. Playbook (gridctl_start) contains the new rule; drop/plug descriptions contain the new clause.
 // Run: node test/source-fetch.test.mjs
 
@@ -218,22 +218,26 @@ try {
   check("defaults to session lastDrop.url", fetchCalls[0]?.url === "https://guest.cloudgrid.io/abc");
   check("defaults echo session entity_id", def.structured.entity_id === "e9");
 
-  // ── 6 + 7. Registered handlers / alias / playbook / descriptions ───────────
+  // ── 6 + 7. Registered handlers / no alias / playbook / descriptions ────────
   const server = makeServer();
   registerTools(server, makeCtx({ lastDrop: null }));
 
   check("gridctl_source registered", typeof server.handlers.gridctl_source === "function");
-  check("cloudgrid_source alias registered", typeof server.handlers.cloudgrid_source === "function");
-
-  // alias behaves identically to the primary tool.
-  reset();
-  replies = [{ status: 200, body: "<html>alias</html>" }, { status: 200, body: "<html>alias</html>" }];
-  const viaPrimary = await server.handlers.gridctl_source({ url: "https://acme.cloudgrid.io/a" });
-  const viaAlias = await server.handlers.cloudgrid_source({ url: "https://acme.cloudgrid.io/a" });
+  // 0.10.0: the deprecated cloudgrid_source alias is gone.
+  check("cloudgrid_source alias NOT registered", server.handlers.cloudgrid_source === undefined);
+  const cloudgridHandlers = Object.keys(server.handlers).filter((n) => n.startsWith("cloudgrid_"));
   check(
-    "alias behaves identically (same structuredContent.html)",
-    viaPrimary.structuredContent.html === viaAlias.structuredContent.html &&
-      viaAlias.structuredContent.html === "<html>alias</html>",
+    `no registered handler starts with cloudgrid_ (found: ${cloudgridHandlers.join(", ") || "none"})`,
+    cloudgridHandlers.length === 0,
+  );
+
+  // the primary tool still fetches inline HTML.
+  reset();
+  replies = [{ status: 200, body: "<html>primary</html>" }];
+  const viaPrimary = await server.handlers.gridctl_source({ url: "https://acme.cloudgrid.io/a" });
+  check(
+    "gridctl_source returns inline HTML",
+    viaPrimary.structuredContent.html === "<html>primary</html>",
   );
 
   // handler wraps a thrown error as a graceful { isError:true } result (no throw).

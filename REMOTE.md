@@ -53,9 +53,9 @@ sticky-session ingress for more.
 A hosted server cannot read a local credentials file, so each session signs in
 through the server:
 
-1. `cloudgrid_login` returns the sign-in URL (no browser auto-open on a server).
+1. `gridctl_login` returns the sign-in URL (no browser auto-open on a server).
 2. The user completes Google sign-in.
-3. `cloudgrid_login_status` polls and holds the token in the session.
+3. `gridctl_login_status` polls and holds the token in the session.
 
 Anonymous drop needs no sign-in and works immediately.
 
@@ -78,7 +78,7 @@ The web edition implements the MCP authorization spec — metadata discovery,
 dynamic client registration, and the PKCE authorization-code flow — as a bridge
 over CloudGrid's existing sign-in. A client that completes the connect sends a
 Bearer on its MCP requests, and that token becomes the session's identity (drops
-publish into the user's org; claims work). The in-tool `cloudgrid_login` remains
+publish into the user's org; claims work). The in-tool `gridctl_login` remains
 as the fallback.
 
 - `MCP_PUBLIC_URL` — this server's public origin (default `https://mcp.cloudgrid.io`),

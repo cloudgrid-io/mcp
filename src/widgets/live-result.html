@@ -124,7 +124,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
           var statusEl = document.getElementById("vis-status");
           if (statusEl) statusEl.textContent = "Updating\u2026";
           if (!window.openai || !window.openai.callTool) return;
-          window.openai.callTool("cloudgrid_visibility", { visibility: vis }).then(function (res) {
+          window.openai.callTool("gridctl_visibility", { visibility: vis }).then(function (res) {
             var newVis = res && res.structuredContent && res.structuredContent.visibility;
             if (newVis) {
               data.current_visibility = newVis;

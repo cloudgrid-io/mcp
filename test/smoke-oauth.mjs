@@ -141,7 +141,7 @@ try {
       requestInit: { headers: { Authorization: `Bearer ${tok.access_token}` } },
     }),
   );
-  const drop = await client.callTool({ name: "cloudgrid_drop", arguments: { html: "<h1>authed</h1>" } });
+  const drop = await client.callTool({ name: "gridctl_drop", arguments: { html: "<h1>authed</h1>" } });
   check("authed drop reports Your app is live (web edition)", (drop.content?.[0]?.text ?? "").includes("Your app is live"));
   check("authed drop composed the live URL from slug + grid", (drop.content?.[0]?.text ?? "").includes("https://e2e-bot.cloudgrid.io/mock-1"));
   check("upstream drop received the OAuth Bearer", dropAuthHeader === `Bearer ${FAKE_JWT}`);
@@ -149,7 +149,7 @@ try {
   // Each `/plug` drop is a fresh create (the unified plug is create-only — there
   // is no in-place redrop / `previous_id` on this path), so a second drop never
   // sends a `previous_id` part. The artifact part name is still `artifact`.
-  await client.callTool({ name: "cloudgrid_drop", arguments: { html: "<h1>authed v2</h1>" } });
+  await client.callTool({ name: "gridctl_drop", arguments: { html: "<h1>authed v2</h1>" } });
   check("second authed drop sends NO previous_id (plug is create-only)", dropBodies.length >= 2 && !dropBodies[1].includes('name="previous_id"'));
   check("drop sends the artifact part", dropBodies[0].includes('name="artifact"'));
   await client.close();

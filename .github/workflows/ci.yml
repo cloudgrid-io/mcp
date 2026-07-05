@@ -55,7 +55,7 @@ jobs:
       # the fetch URL (explicit url > session lastDrop > grid+slug > fail), enforces
       # the *.cloudgrid.io SSRF guard (no fetch off-list, redirects included),
       # returns HTML inline + structuredContent.html/bytes/truncated, fails
-      # gracefully on non-200, and the cloudgrid_source alias + playbook/drop/plug
+      # gracefully on non-200, and the gridctl_source tool + playbook/drop/plug
       # guidance are wired. Mocks global fetch.
       - run: npm run test:source
       # Offline app-with-data test (0.9.0): the first runtime (DB-backed) build
