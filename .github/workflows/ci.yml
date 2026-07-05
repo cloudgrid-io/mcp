@@ -66,6 +66,13 @@ jobs:
       # internally consistent (requires: [mongodb], reads process.env.MONGODB_URL,
       # no hardcoded connection string/secret).
       - run: npm run test:app-with-data
+      # Offline self-describing templates test (0.11.0): the 6 workflows carry
+      # enriched when:/needs:/deploy:/editions:/capabilities_note: frontmatter, the
+      # capability-map fetches as a doc, each static template dir has a reference
+      # cloudgrid.yaml (type: static) + index.md, app-with-data keeps active
+      # requires: [mongodb] with only a COMMENTED canonical needs:, and NO template
+      # yaml has active needs: AND requires: together (validator-rejected combo).
+      - run: npm run test:self-describing
 
   drift-guard:
     runs-on: ubuntu-latest

@@ -53,9 +53,19 @@ services:
   web:
     type: nextjs
     path: /
+# Canonical capability (metadata): this app needs a database.
+# When #1527 lands (deployer honors needs:), replace requires: with:
+#   needs:
+#     database: true
 requires:
   - mongodb
 ```
+
+> **Capability:** this template's canonical need is `database: true` (see the
+> commented block above and the capability-map). The deployed yaml keeps
+> `requires: [mongodb]` because only `requires:` injects `MONGODB_URL` today
+> (#1527); `needs:` and `requires:` cannot co-exist active in the same yaml, so
+> the canonical `needs:` is shown only as a comment until the deployer honors it.
 
 ## services/web/package.json
 

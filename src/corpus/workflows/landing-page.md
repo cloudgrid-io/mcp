@@ -1,6 +1,10 @@
 ---
 name: landing-page
-when: The user wants to build a landing page, marketing page, or product page for something.
+when: landing page, marketing page, product page, hero page, coming-soon, waitlist, pricing page, portfolio, link-in-bio, event page.
+needs: none
+deploy: inspiration
+editions: all
+capabilities_note: static — no infrastructure. Publishes as an inspiration (instant, works on hosted) via gridctl_drop.
 summary: Fetch the landing-page template, fill it with the user's content, deploy it, and return the live share URL.
 ---
 

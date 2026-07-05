@@ -1,6 +1,10 @@
 ---
 name: presentation
-when: The user wants to build a presentation, slide deck, or set of slides about a topic.
+when: slides, deck, pitch, presentation, slideshow.
+needs: none
+deploy: inspiration
+editions: all
+capabilities_note: static — no infrastructure. Publishes as an inspiration (instant, works on hosted) via gridctl_drop.
 summary: Fetch the deck template, fill it with the user's content, deploy it, and return the live share URL.
 ---
 

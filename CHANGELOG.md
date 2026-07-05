@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.11.0
+
+Self-describing templates + a capability map, so any LLM can match a user request
+to the right template and know its capabilities — the way Superpowers matches a
+skill's `when:`. Enriches the 6 existing corpus templates; no deploy-behavior
+change (static templates still deploy as instant inspirations; app-with-data
+still deploys via `requires: [mongodb]`).
+
+- **Workflow frontmatter** — landing-page, web-app, dashboard, report,
+  presentation, and app-with-data now carry expanded `when:` intent triggers plus
+  canonical `needs:` / `deploy:` / `editions:` / `capabilities_note:` metadata.
+  Static workflows declare `needs: none`, `deploy: inspiration`, `editions: all`;
+  app-with-data declares `needs: database`, `deploy: runtime`, `editions: local`.
+- **Reference `cloudgrid.yaml` per template** — each static template dir
+  (landing-page, web-app, dashboard, report, deck) gains a reference
+  `cloudgrid.yaml` (`type: static`) with a header comment noting it deploys as an
+  inspiration via `gridctl_drop` and the yaml is only for owning it as a static
+  runtime; plus an `index.md` sidecar. `gridctl_fetch("template", …)` still
+  returns the fillable HTML (index.html wins), so the instant-inspiration path is
+  unchanged. app-with-data's yaml adds a COMMENTED canonical `needs: {database:
+  true}` block above the still-active `requires: [mongodb]` (the two cannot both
+  be active — the validator rejects it; `requires:` is the only thing that
+  injects `MONGODB_URL` today, per #1527).
+- **Capability map** — new `src/corpus/capability-map.md`, fetchable via
+  `gridctl_fetch("doc", "capability-map")`: an intent→template→needs→deploy→edition
+  table plus the full `needs:` vocabulary (all 9 + the cron service type) with
+  today-vs-pending-#1527 injection status.
+- **Playbook** — `gridctl_start` gains a rule pointing at the capability-map and
+  the workflow `when:` triggers for choosing what to build.
+- **Tests** — new `test:self-describing` guards the enriched frontmatter fields,
+  the capability-map fetch, the static reference yamls, and that NO template
+  `cloudgrid.yaml` has an active `needs:` AND `requires:` together (only a
+  commented `needs:` alongside active `requires:` is allowed).
+
 ## 0.10.0
 
 Removed the deprecated `cloudgrid_*` tool aliases — tools are `gridctl_*` only.

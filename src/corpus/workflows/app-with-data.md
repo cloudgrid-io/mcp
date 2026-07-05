@@ -1,6 +1,10 @@
 ---
 name: app-with-data
-when: The user wants an app that SAVES or PERSISTS data, shares state across users/sessions, has accounts/login, stores submissions, or needs a backend/API/database — e.g. a to-do list, a CRUD dashboard, a form that stores entries, a guestbook.
+when: to-do, task list, notes app, guestbook, CRUD app, form that SAVES/STORES submissions, anything that SAVES or PERSISTS data or shares state across users/sessions, sign-in/accounts, a backend/API/database — e.g. a to-do list, a CRUD dashboard, a form that stores entries, a guestbook. Needs a database → runtime → local edition.
+needs: database
+deploy: runtime
+editions: local
+capabilities_note: persistent — needs a database (Mongo). Runtime app, async build, local edition only. Canonical need is `database: true` (metadata); the deployed yaml uses `requires: [mongodb]` until #1527 lands.
 summary: Build a real persistent Next.js + Mongo runtime app on the grid — edition-gate first, scaffold, put the app under services/web/, wire process.env.MONGODB_URL lazily, declare requires:[mongodb] (not needs:), deploy async, poll to a live URL.
 ---
 

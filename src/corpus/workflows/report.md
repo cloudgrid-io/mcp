@@ -1,6 +1,10 @@
 ---
 name: report
-when: The user wants to build a report, one-pager, brief, or write-up with sections and data.
+when: report, one-pager, summary, brief, whitepaper, case study, formatted document.
+needs: none
+deploy: inspiration
+editions: all
+capabilities_note: static — no infrastructure. Publishes as an inspiration (instant, works on hosted) via gridctl_drop.
 summary: Fetch the report template, fill it with the user's content, deploy it, and return the live share URL.
 ---
 
