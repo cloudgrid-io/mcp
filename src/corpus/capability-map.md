@@ -8,7 +8,10 @@ template by its `when:` triggers, adopt that template's `needs:`, then deploy:
 - **anything needing `needs:` → runtime** (async build, **local edition** only)
   via `gridctl_plug` on a linked folder.
 
-Fetch this doc any time with `gridctl_fetch("doc", "capability-map")`.
+Fetch this doc any time with `gridctl_fetch("doc", "capability-map")`. For the full
+cloudgrid.yaml schema (every field, the `needs:` injection table, the
+requires-vs-needs caveat, validation rules), fetch the companion reference:
+`gridctl_fetch("doc", "cloudgrid-yaml")`.
 
 ## The 6 templates
 
@@ -29,7 +32,8 @@ users/sessions, log in, or store submissions → it is persistent → `app-with-
 
 `needs:` is a MAP declaring infrastructure capabilities. Values are `true` or an
 engine hint. Cron is NOT a need — it is a **service type** (`type: cron` with
-`schedule` + `timezone`). See the cloudgrid.yaml reference §5, §12, §14.
+`schedule` + `timezone`). See the full cloudgrid.yaml reference §5–§6 via
+`gridctl_fetch("doc", "cloudgrid-yaml")`.
 
 | `needs:` key | Provides | Injected env var(s) | Status |
 |---|---|---|---|
