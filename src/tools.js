@@ -80,6 +80,7 @@ Operating rules:
 6. If a signed-in publish fails with a server error, do not fall back to anonymous publishing (it burns the anonymous quota and downgrades ownership); surface the error, use the CLI fallback if offered, or ask the user.
 7. When signed in and the user has more than one grid, do not assume a target — the publish tools will ask; relay the choice to the user and pass the chosen grid.
 8. When a build/deploy fails unexpectedly, offer to report it to the CloudGrid team — only with the user's explicit consent (ask first). Send just the error + the failed request by default (call gridctl_report), and never send the whole conversation unless the user agrees (include_conversation). Respect privacy.
+9. To modify an existing drop when you don't already have its HTML in context, first call gridctl_source to fetch the current HTML, apply your change, then call gridctl_drop/gridctl_plug with target_entity_id (the drop's entity_id) to update the SAME URL in place. Do not ask the user to paste the HTML back.
 
 Deploy is edition-dependent: on the hosted MCP call the drop tool with the HTML; on local MCP / CLI write the file and run the plug tool. An HTML page deploys synchronously, so you get a URL right away.`;
 
@@ -2089,6 +2090,114 @@ async function runVisibility(ctx, { target, visibility, org }) {
   };
 }
 
+// Max HTML we'll return inline from runSource. Past this, we return the first
+// slice with truncated:true — a re-plug needs the complete document, so a
+// truncated body is a signal the drop is likely multi-file rather than a single
+// editable HTML document.
+const SOURCE_MAX_BYTES = 1_500_000;
+
+// Reject anything whose host is not `*.cloudgrid.io` (apex `cloudgrid.io`
+// included). SSRF guard for runSource: we only ever fetch live CloudGrid drops
+// server-side, never arbitrary hosts. Returns true when the host is allowed.
+function isCloudgridHost(hostname) {
+  const h = String(hostname || "").toLowerCase();
+  return h === "cloudgrid.io" || h.endsWith(".cloudgrid.io");
+}
+
+// Fetch a drop's/inspiration's current deployed HTML inline as text so an agent
+// that lost the content can edit it and re-plug in place. Resolves the fetch URL
+// (explicit url → session lastDrop → composed grid+slug), enforces the
+// `*.cloudgrid.io` SSRF guard, caps the body at SOURCE_MAX_BYTES, and fails
+// gracefully on a non-200. Uses the global `fetch` seam so tests can mock it.
+export async function runSource(ctx, { entity_id, url, grid, slug } = {}) {
+  const last = ctx.state.lastDrop;
+  // Resolution order: explicit url → session lastDrop.url (if entity_id matches
+  // or no entity_id was given) → composePlugUrl(grid, slug) → fail.
+  let target = null;
+  if (typeof url === "string" && url.length > 0) {
+    target = url;
+  } else if (last?.url && (!entity_id || last.entity_id === entity_id)) {
+    target = last.url;
+  } else if (grid && slug) {
+    // Inspirations/HTML drops are path-based at the org apex.
+    target = composePlugUrl({ slug, grid });
+  }
+  if (!target) {
+    throw new Error(
+      "I don't have this drop's URL — pass the url (e.g. https://<grid>.cloudgrid.io/<slug>) or grid+slug.",
+    );
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(target);
+  } catch {
+    throw new Error(`Not a valid URL: ${target}`);
+  }
+  if (parsed.protocol !== "https:" || !isCloudgridHost(parsed.hostname)) {
+    throw new Error(
+      `Refusing to fetch ${target}: source retrieval is limited to https://*.cloudgrid.io drops.`,
+    );
+  }
+
+  const resolvedUrl = parsed.toString();
+  let res;
+  try {
+    res = await fetch(resolvedUrl, {
+      method: "GET",
+      redirect: "follow",
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (err) {
+    throw new Error(`Could not reach the live drop at ${resolvedUrl}: ${err.message}`);
+  }
+
+  // A redirect must not escape the allow-list (fetch follows automatically; the
+  // final response URL is the one we actually read).
+  if (res.url && res.url !== resolvedUrl) {
+    let finalHost;
+    try { finalHost = new URL(res.url).hostname; } catch { finalHost = ""; }
+    if (!isCloudgridHost(finalHost)) {
+      throw new Error(
+        `Refusing to follow a redirect off CloudGrid (${res.url}): source retrieval is limited to https://*.cloudgrid.io.`,
+      );
+    }
+  }
+
+  if (!res.ok) {
+    // Graceful fail — never throw a raw fetch error at the model.
+    throw new Error(
+      `Couldn't read the live drop (HTTP ${res.status}). It may be expired, private, or claimed.`,
+    );
+  }
+
+  const buf = Buffer.from(await res.arrayBuffer());
+  const totalBytes = buf.length;
+  const truncated = totalBytes > SOURCE_MAX_BYTES;
+  const html = (truncated ? buf.subarray(0, SOURCE_MAX_BYTES) : buf).toString("utf-8");
+
+  const lines = [
+    `Current source for ${resolvedUrl} (${totalBytes} bytes) — edit this and re-plug with target_entity_id to update the same URL:`,
+  ];
+  if (truncated) {
+    lines.push(
+      "(too large to return in full; re-plug needs the complete document — consider that this drop may be multi-file)",
+    );
+  }
+  lines.push("", html);
+
+  return {
+    text: lines.join("\n"),
+    structured: {
+      url: resolvedUrl,
+      entity_id: entity_id ?? last?.entity_id ?? null,
+      bytes: totalBytes,
+      truncated,
+      html,
+    },
+  };
+}
+
 // ── Registration ───────────────────────────────────────────────────────────────
 // Registers the tools onto `server`. ctx.edition decides whether the CLI-wrapping
 // tools are included (they need a local machine).
@@ -2186,7 +2295,7 @@ export function registerTools(server, ctx) {
   reg(
     "gridctl_drop",
     {
-      description: "Publish an HTML page or file to CloudGrid and get a public shareable URL. Use when the user wants to share, publish, send, or 'deploy' an artifact, or wants a link to send a friend. Re-drops in the same session UPDATE THE SAME entity in place — same link, new content, expiry reset (pass fresh: true to force a new drop, or entity_id to target a specific earlier drop). If signed in, it publishes into the user's grid as an owned inspiration; if not, it drops anonymously into the Guest Grid, claimable later — the result includes an entity_id + owner_token to persist as the re-plug/claim handle for later sessions. Drops expire per the platform default (7 days) unless claimed/owned; every in-place edit resets the timer. Calls POST /api/v2/plug directly.",
+      description: "Publish an HTML page or file to CloudGrid and get a public shareable URL. Use when the user wants to share, publish, send, or 'deploy' an artifact, or wants a link to send a friend. Re-drops in the same session UPDATE THE SAME entity in place — same link, new content, expiry reset (pass fresh: true to force a new drop, or entity_id to target a specific earlier drop). If signed in, it publishes into the user's grid as an owned inspiration; if not, it drops anonymously into the Guest Grid, claimable later — the result includes an entity_id + owner_token to persist as the re-plug/claim handle for later sessions. Drops expire per the platform default (7 days) unless claimed/owned; every in-place edit resets the timer. If you want to edit an existing drop but no longer have its HTML, call gridctl_source first to retrieve it, then re-plug with target_entity_id. Calls POST /api/v2/plug directly.",
       inputSchema: dropInputSchema,
       outputSchema: {
         url: z.string().optional().describe("The public URL of the drop (stable across re-drops of the same entity)."),
@@ -2378,7 +2487,9 @@ export function registerTools(server, ctx) {
           ? "Pass the source inline via artifact_files."
           : "Pass the source as a local `path` (folder or file) or inline via artifact_files.") +
         " Note: in-place re-plug currently supports inspirations (HTML/static drops); to rebuild a deployed " +
-        "app/agent, use the CloudGrid CLI (`cloudgrid plug`) in its linked folder.",
+        "app/agent, use the CloudGrid CLI (`cloudgrid plug`) in its linked folder." +
+        " If you want to edit an existing drop but no longer have its HTML, call gridctl_source first to " +
+        "retrieve it, then re-plug with target_entity_id.",
       inputSchema: plugInputSchema,
       outputSchema: {
         entity_id: z.string().optional().describe("Globally unique — pass back as target_entity_id to re-plug."),
@@ -2496,6 +2607,42 @@ export function registerTools(server, ctx) {
       try {
         if (!input?.id) return fail("`id` is required (a canonical UUID or <grid-slug>/<entity-slug>).");
         return okResult(await runDownload(ctx, input));
+      } catch (err) {
+        return fail(err.message);
+      }
+    },
+  );
+
+  // Source — both editions. Fetches a drop's current deployed HTML inline so an
+  // agent that lost the content can edit it and re-plug in place.
+  reg(
+    "gridctl_source",
+    {
+      description:
+        "Retrieve the CURRENT deployed HTML of an inspiration/drop inline as text, so you can edit it and " +
+        "re-plug the SAME URL when you no longer have its source in context (e.g. the user asks to 'change the " +
+        "color' of a drop you made earlier). Defaults to this session's last drop; otherwise pass the public " +
+        "url (or grid+slug). Works for single-document HTML drops/inspirations (the common case). For " +
+        "multi-file or runtime (app/agent) deploys, use gridctl_download (signed tarball URLs) instead. " +
+        "Fetches the public *.cloudgrid.io URL server-side; read-only, creates nothing.",
+      inputSchema: {
+        entity_id: z.string().optional().describe("The drop's durable id. Defaults to this session's last drop."),
+        url: z.string().optional().describe("The public URL of the drop (e.g. https://<grid>.cloudgrid.io/<slug>). Defaults to this session's last drop URL."),
+        grid: z.string().optional().describe("Grid slug — used only to construct the URL when neither url nor session state is available."),
+        slug: z.string().optional().describe("Entity slug — used with grid to construct the URL when neither url nor session state is available."),
+      },
+      outputSchema: {
+        url: z.string().describe("The URL that was fetched."),
+        entity_id: z.string().nullable().describe("The drop's entity id (echoed from input/session, if known)."),
+        bytes: z.number().describe("Total size of the live document in bytes."),
+        truncated: z.boolean().describe("True if the body exceeded 1.5MB and was cut — the drop may be multi-file."),
+        html: z.string().describe("The current deployed HTML (truncated to 1.5MB when oversized)."),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
+    },
+    async (input) => {
+      try {
+        return okResult(await runSource(ctx, input || {}));
       } catch (err) {
         return fail(err.message);
       }

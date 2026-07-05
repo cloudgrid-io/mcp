@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.8.3
+
+Added `gridctl_source`/`cloudgrid_source`: fetch a drop's current HTML inline so
+agents can edit and re-plug in place (fixes the ChatGPT "change the color"
+dead-end where the agent had lost the HTML).
+
+- **New tool `gridctl_source` (+ deprecated `cloudgrid_source` alias), both
+  editions.** Retrieves the current deployed HTML of an inspiration/drop inline
+  as text. Inputs (all optional): `entity_id`, `url`, `grid`+`slug`. Resolution
+  order for the fetch URL: explicit `url` → session `lastDrop.url` → composed
+  `grid`+`slug` → graceful fail. SSRF-guarded to `https://*.cloudgrid.io` (a
+  non-matching host — including a redirect off CloudGrid — is refused, no fetch
+  performed), 15s timeout, 1.5MB size cap (`truncated:true` past the cap), and a
+  graceful fail on a non-200 (expired/private/claimed). Read-only; creates
+  nothing. For multi-file/runtime deploys it points the agent at
+  `gridctl_download` (tarball) instead.
+- **Playbook rule.** `gridctl_start` now instructs agents: to modify an existing
+  drop when the HTML isn't in context, call `gridctl_source` first, edit, then
+  re-plug with `target_entity_id` to update the same URL — never ask the user to
+  paste the HTML back.
+- **Drop/plug guidance.** `gridctl_drop`/`gridctl_plug` descriptions now note
+  that if you want to edit an existing drop but no longer have its HTML, call
+  `gridctl_source` first, then re-plug with `target_entity_id`.
+
 ## 0.8.2
 
 Align `gridctl_report` with the existing CLI error reporter, and attribute every

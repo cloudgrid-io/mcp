@@ -18,6 +18,7 @@ const GRIDCTL = [
   "gridctl_claim",
   "gridctl_fork",
   "gridctl_download",
+  "gridctl_source",
   "gridctl_login",
   "gridctl_login_status",
   "gridctl_visibility",

@@ -51,6 +51,13 @@ jobs:
       # appended for 5xx/INTERNAL_ERROR/build-deploy failures but NOT for
       # 429/needs_grid/401/409 EDIT_REJECTED.
       - run: npm run test:error-reporting
+      # Offline inline source-fetch test (Task 35 / 0.8.3): gridctl_source resolves
+      # the fetch URL (explicit url > session lastDrop > grid+slug > fail), enforces
+      # the *.cloudgrid.io SSRF guard (no fetch off-list, redirects included),
+      # returns HTML inline + structuredContent.html/bytes/truncated, fails
+      # gracefully on non-200, and the cloudgrid_source alias + playbook/drop/plug
+      # guidance are wired. Mocks global fetch.
+      - run: npm run test:source
 
   drift-guard:
     runs-on: ubuntu-latest
