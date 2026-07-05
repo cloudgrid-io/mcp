@@ -1,7 +1,7 @@
 ---
 name: app-with-data
 when: The user wants an app that SAVES or PERSISTS data, shares state across users/sessions, has accounts/login, stores submissions, or needs a backend/API/database — e.g. a to-do list, a CRUD dashboard, a form that stores entries, a guestbook.
-summary: Build a real persistent Next.js + Mongo runtime app on the grid — edition-gate first, scaffold, wire process.env.MONGODB_URL from the template, deploy async, poll to a live URL.
+summary: Build a real persistent Next.js + Mongo runtime app on the grid — edition-gate first, scaffold, put the app under services/web/, wire process.env.MONGODB_URL lazily, declare requires:[mongodb] (not needs:), deploy async, poll to a live URL.
 ---
 
 # Workflow: app-with-data
@@ -39,25 +39,47 @@ Persistent apps are owned entities.
 
 ## 3. Scaffold
 
-`gridctl_init` an app `<name>` with `--type nextjs` (the default; use `node` for
-an API-only service). This writes `cloudgrid.yaml` plus the service folder.
+`gridctl_init` an app `<name>` (the default `--type` is fine). `init` creates
+the entity + `.cloudgrid/link.json` and writes a `cloudgrid.yaml` with an EMPTY
+`services: {}`. `plug` needs a linked directory, so run `init` FIRST.
+
+You then do two things: (a) write the app under **`services/web/`**, and (b) fill
+in `cloudgrid.yaml` to the shape below (`services.web` + `requires: [mongodb]`).
 
 ## 4. Add the datastore + wire Mongo
 
-1. Ensure `cloudgrid.yaml` declares the store the app needs:
+1. Set `cloudgrid.yaml` to declare the `web` service and the store it needs.
+   **App code MUST live under `services/<name>/`** — `path:` is the URL mount,
+   NOT the filesystem path. A service named `web` → the CLI looks for
+   `services/web/`; app files at the repo root fail with
+   `Error: Service directory not found: …/services/web`.
    ```yaml
+   name: my-app
+   services:
+     web:
+       type: nextjs
+       path: /
    requires:
      - mongodb        # alias: db
      # - redis: private   # OPTIONAL — add only if the app needs Redis
    ```
+   **Declare the datastore with `requires: [mongodb]` (NOT `needs:`)** — see the
+   yaml comment in the template. The CLI warns `requires:` is deprecated, but the
+   deployer only injects `MONGODB_URL` from `requires:`; `needs:` builds fine but
+   injects NO DB connection (every request 500s). Keep `requires:` until the
+   deployer honors `needs:`.
 2. Fetch the template for the Mongo wiring + CRUD shape:
    `gridctl_fetch("template", "app-with-data")`. It is a minimal, real
-   Next.js + `mongodb`-driver to-do app: a cached client in `lib/db.js`, an
-   App-Router GET/POST/DELETE route on a `todos` collection, and a page.
+   Next.js + `mongodb`-driver to-do app under `services/web/`: a lazy client in
+   `services/web/lib/db.js`, an App-Router GET/POST/DELETE route on a `todos`
+   collection, and a page.
 3. Adapt it to the user's app (rename the collection, change the fields, adjust
    the UI). **Read the database from `process.env.MONGODB_URL`** — the grid
    injects that env var at dev-time and runtime. Never hardcode a connection
    string; never commit a secret.
+   - **Put the DB connection behind a lazy getter — never read
+     `process.env.MONGODB_URL` at module top level, or `next build` fails** (the
+     module is imported for route analysis before the grid injects the var).
    - (Optional) fetch `gridctl_fetch("example", "app-with-data")` for a slightly
      richer filled reference to imitate.
 

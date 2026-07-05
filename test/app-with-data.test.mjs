@@ -8,6 +8,13 @@
 // Run: node test/app-with-data.test.mjs
 
 import { fetchCorpus, registerTools } from "../src/tools.js";
+import { readFileSync, existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+const TEMPLATE_DIR = fileURLToPath(
+  new URL("../src/corpus/templates/app-with-data/", import.meta.url),
+);
+const read = (rel) => readFileSync(TEMPLATE_DIR + rel, "utf-8");
 
 let failures = 0;
 function check(label, cond) {
@@ -81,9 +88,56 @@ check(
 );
 check("template has a clear unset guard", /MONGODB_URL is not set/.test(template));
 
+// ── 3b. On-disk template layout: services/<name>/, lazy DB, requires-not-needs ─
+// The deployable app code MUST live under services/web/ (path: is the URL mount,
+// not the filesystem path). Root-level app files fail "Service directory not
+// found: …/services/web". Verified live by the manager (Task 39 / analysis 37).
+check(
+  "template app code lives under services/web/",
+  existsSync(TEMPLATE_DIR + "services/web/package.json") &&
+    existsSync(TEMPLATE_DIR + "services/web/lib/db.js") &&
+    existsSync(TEMPLATE_DIR + "services/web/app/page.js") &&
+    existsSync(TEMPLATE_DIR + "services/web/app/api/todos/route.js"),
+);
+check(
+  "template does NOT keep app code at the root",
+  !existsSync(TEMPLATE_DIR + "package.json") &&
+    !existsSync(TEMPLATE_DIR + "lib/db.js") &&
+    !existsSync(TEMPLATE_DIR + "app/page.js"),
+);
+
+const yamlFile = read("cloudgrid.yaml");
+check("cloudgrid.yaml uses requires: (present)", /^requires:/m.test(yamlFile));
+check(
+  "cloudgrid.yaml does NOT use needs: as a key (guards against 'fixing' the deprecation)",
+  !/^\s*needs:/m.test(yamlFile),
+);
+check("cloudgrid.yaml requires mongodb", /requires:\s*\n\s*-\s*mongodb/.test(yamlFile));
+
+// db.js must read MONGODB_URL LAZILY — the reference must be inside a function,
+// never at module top level (a top-level read fails `next build`).
+const dbFile = read("services/web/lib/db.js");
+check("services/web/lib/db.js references process.env.MONGODB_URL", /process\.env\.MONGODB_URL/.test(dbFile));
+{
+  // Strip comment lines, then flag any process.env.MONGODB_URL that appears
+  // before the first function/arrow boundary (i.e. at module scope).
+  const firstFn = dbFile.search(/\bfunction\b|=>\s*{|=>\s*\(/);
+  const beforeFn = firstFn === -1 ? dbFile : dbFile.slice(0, firstFn);
+  const beforeFnCode = beforeFn
+    .split("\n")
+    .filter((l) => !l.trim().startsWith("//"))
+    .join("\n");
+  check(
+    "services/web/lib/db.js does NOT read process.env.MONGODB_URL at module top level",
+    !/process\.env\.MONGODB_URL/.test(beforeFnCode),
+  );
+}
+
 // ── 4. Example: same stack, richer ──────────────────────────────────────────
 check("example reads process.env.MONGODB_URL", /process\.env\.MONGODB_URL/.test(example));
 check("example declares requires: [mongodb]", /requires:[\s\S]*mongodb/.test(example));
+check("example uses the services/web/ layout", /services\/web\//.test(example));
+check("example does NOT use needs: as a yaml key", !/^\s*needs:/m.test(example));
 
 // ── 5. Intent appears in gridctl_start menu + playbook rule ─────────────────
 const server = makeServer();

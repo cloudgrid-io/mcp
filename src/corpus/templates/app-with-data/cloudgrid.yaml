@@ -1,11 +1,15 @@
-# Rename this app. The grid injects MONGODB_URL (and REDIS_URL if you add redis)
-# as environment variables at dev-time and runtime — do NOT set them yourself,
-# and never commit a connection string or secret.
+# Rename this app. The grid injects MONGODB_URL (and REDIS_URL if you add a cache)
+# as environment variables at runtime — do NOT set them yourself, and never commit
+# a connection string or secret.
+#
+# NOTE: use `requires:` (NOT `needs:`). The CLI warns that `requires:` is deprecated,
+# but the deployer currently only injects MONGODB_URL from `requires:` — migrating to
+# `needs:` builds fine but injects NO database connection (every request 500s).
+# Keep `requires:` until CloudGrid's deployer honors `needs:`.
 name: my-app
 services:
   web:
     type: nextjs
     path: /
 requires:
-  - mongodb        # alias: db — the grid provisions shared Mongo and injects MONGODB_URL
-  # - redis: private   # OPTIONAL — uncomment only if the app needs Redis (injects REDIS_URL)
+  - mongodb
