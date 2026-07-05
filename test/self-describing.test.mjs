@@ -9,11 +9,10 @@
 //   3. Each static template dir has a reference cloudgrid.yaml (type: static)
 //      and an index.md that mentions it; the fillable HTML is still what
 //      gridctl_fetch("template", …) returns (index.html wins — no regression).
-//   4. app-with-data yaml still declares requires: [mongodb], carries only a
-//      COMMENTED canonical needs: block, and never an active needs:.
+//   4. app-with-data yaml declares the canonical active needs: {database: true}
+//      and NO active requires: (the deprecated v1 alias).
 //   5. GUARD: no template cloudgrid.yaml has an active needs: AND requires:
-//      together (the validator rejects the combo). A commented needs: alongside
-//      an active requires: is allowed.
+//      together (the validator rejects the combo).
 //   6. The PLAYBOOK / gridctl_start points at the capability-map.
 // Run: node test/self-describing.test.mjs
 
@@ -88,7 +87,7 @@ for (const name of STATIC_WORKFLOWS) {
     ["database", "cache", "kv", "queue", "pubsub", "vector", "object_storage", "disk", "ai"]
       .every((n) => cap.includes(n)));
   check("capability-map notes cron is a service type, not a need", /cron/.test(cap) && /service type/i.test(cap));
-  check("capability-map notes today-vs-#1527 status", /#1527/.test(cap) && /[Tt]oday/.test(cap));
+  check("capability-map notes needs: injects (with #1527 historical note)", /#1527/.test(cap) && /[Tt]oday/.test(cap) && /[Ii]njects via `needs:`/.test(cap));
   check("capability-map states the static→inspiration / needs→runtime rule",
     /inspiration/i.test(cap) && /runtime/i.test(cap) && /local edition/i.test(cap));
 }
@@ -111,14 +110,12 @@ for (const dir of STATIC_DIRS) {
     typeof fetched === "string" && fetched.trimStart().startsWith("<"));
 }
 
-// ── 4. app-with-data yaml: active requires:, only a COMMENTED needs: ─────────
+// ── 4. app-with-data yaml: active canonical needs:, NO active requires: ──────
 {
   const yaml = read("templates/app-with-data/cloudgrid.yaml");
-  check("app-with-data yaml has active requires: [mongodb]",
-    /^requires:/m.test(yaml) && /-\s*mongodb/.test(yaml));
-  check("app-with-data yaml has NO active needs: (only a comment)", !/^\s*needs:/m.test(yaml));
-  check("app-with-data yaml SHOWS the canonical needs: as a comment",
-    /#\s*needs:/.test(yaml) && /database:\s*true/.test(yaml));
+  check("app-with-data yaml has active needs: {database: true}",
+    /^needs:/m.test(yaml) && /database:\s*true/.test(yaml));
+  check("app-with-data yaml has NO active requires: (deprecated v1 alias)", !/^\s*requires:/m.test(yaml));
 }
 
 // ── 5. GUARD: no template yaml has active needs: AND requires: together ──────

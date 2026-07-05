@@ -63,23 +63,23 @@ jobs:
       # troubleshooting resolve via fetchCorpus and the real gridctl_fetch handler,
       # the intent shows in the gridctl_start menu, the PLAYBOOK carries the
       # persistence rule, the workflow gates the hosted edition, and the template is
-      # internally consistent (requires: [mongodb], reads process.env.MONGODB_URL,
-      # no hardcoded connection string/secret).
+      # internally consistent (active needs: {database: true}, reads
+      # process.env.DATABASE_MONGODB_URL, no hardcoded connection string/secret).
       - run: npm run test:app-with-data
-      # Offline self-describing templates test (0.11.0): the 6 workflows carry
+      # Offline self-describing templates test (0.11.0+): the 6 workflows carry
       # enriched when:/needs:/deploy:/editions:/capabilities_note: frontmatter, the
       # capability-map fetches as a doc, each static template dir has a reference
-      # cloudgrid.yaml (type: static) + index.md, app-with-data keeps active
-      # requires: [mongodb] with only a COMMENTED canonical needs:, and NO template
-      # yaml has active needs: AND requires: together (validator-rejected combo).
+      # cloudgrid.yaml (type: static) + index.md, app-with-data uses active
+      # needs: {database: true} with NO active requires:, and NO template yaml has
+      # active needs: AND requires: together (validator-rejected combo).
       - run: npm run test:self-describing
-      # Offline canonical cloudgrid.yaml reference test (0.11.1): the corpus doc
+      # Offline canonical cloudgrid.yaml reference test (0.11.1+): the corpus doc
       # cloudgrid-yaml fetches via fetchCorpus + the real gridctl_fetch handler,
       # carries the full needs: vocabulary + injected env var names + validation
-      # rules + a full example, the requires-vs-needs caveat (#1527), and the DB
-      # example uses active requires: [mongodb] with only a COMMENTED canonical
-      # needs: — GUARDING that no yaml block shows active needs: AND requires:
-      # together. Also asserts the PLAYBOOK + capability-map cross-links.
+      # rules + a full example, the needs-vs-requires note (#1527 fixed), and the DB
+      # example uses active needs: {database: true} with NO active requires: —
+      # GUARDING that no yaml block shows active needs: AND requires: together.
+      # Also asserts the PLAYBOOK + capability-map cross-links.
       - run: npm run test:canonical-yaml
 
   drift-guard:

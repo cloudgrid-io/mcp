@@ -2,8 +2,8 @@
 // (DB-backed) build workflow in the corpus. Asserts the new workflow/template/
 // example resolve via the REAL fetchCorpus seam and the REAL registered tool
 // handlers, that the intent shows up in the gridctl_start menu, that the
-// template is internally consistent (valid YAML shape, requires: [mongodb],
-// reads process.env.MONGODB_URL, no hardcoded connection string/secret), and
+// template is internally consistent (valid YAML shape, needs: {database: true},
+// reads process.env.DATABASE_MONGODB_URL, no hardcoded connection string/secret), and
 // that the PLAYBOOK carries the persistence rule and the workflow gates hosted.
 // Run: node test/app-with-data.test.mjs
 
@@ -68,16 +68,17 @@ check(
   /hosted/i.test(workflow) && /local edition/i.test(workflow) && /static/i.test(workflow),
 );
 check("workflow says runtime deploy is async / poll", /async/i.test(workflow) && /poll/i.test(workflow));
-check("workflow tells the DB to be read from process.env.MONGODB_URL", /process\.env\.MONGODB_URL/.test(workflow));
+check("workflow tells the DB to be read from process.env.DATABASE_MONGODB_URL", /process\.env\.DATABASE_MONGODB_URL/.test(workflow));
 
 // ── 3. Template internal consistency ─────────────────────────────────────────
 // cloudgrid.yaml parses (as bundled in the template dir) and declares mongodb.
 const yaml = fetchCorpus("template", "app-with-data"); // the index.md bundle
-check("template declares requires: [mongodb]", /requires:\s*\n\s*-\s*mongodb/.test(yaml) || /requires:[\s\S]*mongodb/.test(yaml));
+check("template declares needs: {database: true}", /needs:\s*\n\s*database:\s*true/.test(yaml));
+check("template does NOT use active requires:", !/^\s*requires:/m.test(yaml));
 check("template services.web is nextjs", /type:\s*nextjs/.test(yaml));
 
 // DB code references the injected env var and hardcodes NO connection string.
-check("template DB code reads process.env.MONGODB_URL", /process\.env\.MONGODB_URL/.test(template));
+check("template DB code reads process.env.DATABASE_MONGODB_URL", /process\.env\.DATABASE_MONGODB_URL/.test(template));
 check(
   "template embeds NO real mongodb connection string",
   !/mongodb(\+srv)?:\/\//.test(template.replace(/`mongodb/g, "")),
@@ -86,7 +87,7 @@ check(
   "template embeds no obvious secret",
   !/password\s*[:=]\s*["'][^"']+["']/i.test(template) && !/secret\s*[:=]\s*["'][^"']+["']/i.test(template),
 );
-check("template has a clear unset guard", /MONGODB_URL is not set/.test(template));
+check("template has a clear unset guard", /DATABASE_MONGODB_URL is not set/.test(template));
 
 // ── 3b. On-disk template layout: services/<name>/, lazy DB, requires-not-needs ─
 // The deployable app code MUST live under services/web/ (path: is the URL mount,
@@ -107,20 +108,21 @@ check(
 );
 
 const yamlFile = read("cloudgrid.yaml");
-check("cloudgrid.yaml uses requires: (present)", /^requires:/m.test(yamlFile));
+check("cloudgrid.yaml uses active needs: (present)", /^needs:/m.test(yamlFile));
 check(
-  "cloudgrid.yaml does NOT use needs: as a key (guards against 'fixing' the deprecation)",
-  !/^\s*needs:/m.test(yamlFile),
+  "cloudgrid.yaml does NOT use active requires: (canonical needs:, no deprecated alias)",
+  !/^\s*requires:/m.test(yamlFile),
 );
-check("cloudgrid.yaml requires mongodb", /requires:\s*\n\s*-\s*mongodb/.test(yamlFile));
+check("cloudgrid.yaml needs database: true", /needs:\s*\n\s*database:\s*true/.test(yamlFile));
 
-// db.js must read MONGODB_URL LAZILY — the reference must be inside a function,
-// never at module top level (a top-level read fails `next build`).
+// db.js must read the DB env var LAZILY — the reference must be inside a
+// function, never at module top level (a top-level read fails `next build`).
 const dbFile = read("services/web/lib/db.js");
-check("services/web/lib/db.js references process.env.MONGODB_URL", /process\.env\.MONGODB_URL/.test(dbFile));
+check("services/web/lib/db.js references process.env.DATABASE_MONGODB_URL", /process\.env\.DATABASE_MONGODB_URL/.test(dbFile));
+check("services/web/lib/db.js falls back to the legacy MONGODB_URL", /process\.env\.MONGODB_URL/.test(dbFile));
 {
-  // Strip comment lines, then flag any process.env.MONGODB_URL that appears
-  // before the first function/arrow boundary (i.e. at module scope).
+  // Strip comment lines, then flag any process.env.*_URL that appears before the
+  // first function/arrow boundary (i.e. at module scope).
   const firstFn = dbFile.search(/\bfunction\b|=>\s*{|=>\s*\(/);
   const beforeFn = firstFn === -1 ? dbFile : dbFile.slice(0, firstFn);
   const beforeFnCode = beforeFn
@@ -128,16 +130,16 @@ check("services/web/lib/db.js references process.env.MONGODB_URL", /process\.env
     .filter((l) => !l.trim().startsWith("//"))
     .join("\n");
   check(
-    "services/web/lib/db.js does NOT read process.env.MONGODB_URL at module top level",
-    !/process\.env\.MONGODB_URL/.test(beforeFnCode),
+    "services/web/lib/db.js does NOT read the DB connection string at module top level",
+    !/process\.env\.(DATABASE_MONGODB_URL|MONGODB_URL)/.test(beforeFnCode),
   );
 }
 
 // ── 4. Example: same stack, richer ──────────────────────────────────────────
-check("example reads process.env.MONGODB_URL", /process\.env\.MONGODB_URL/.test(example));
-check("example declares requires: [mongodb]", /requires:[\s\S]*mongodb/.test(example));
+check("example reads process.env.DATABASE_MONGODB_URL", /process\.env\.DATABASE_MONGODB_URL/.test(example));
+check("example declares active needs: {database: true}", /needs:\s*\n\s*database:\s*true/.test(example));
 check("example uses the services/web/ layout", /services\/web\//.test(example));
-check("example does NOT use needs: as a yaml key", !/^\s*needs:/m.test(example));
+check("example does NOT use active requires:", !/^\s*requires:/m.test(example));
 
 // ── 5. Intent appears in gridctl_start menu + playbook rule ─────────────────
 const server = makeServer();

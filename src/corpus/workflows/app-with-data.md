@@ -4,8 +4,8 @@ when: to-do, task list, notes app, guestbook, CRUD app, form that SAVES/STORES s
 needs: database
 deploy: runtime
 editions: local
-capabilities_note: persistent — needs a database (Mongo). Runtime app, async build, local edition only. Canonical need is `database: true` (metadata); the deployed yaml uses `requires: [mongodb]` until #1527 lands.
-summary: Build a real persistent Next.js + Mongo runtime app on the grid — edition-gate first, scaffold, put the app under services/web/, wire process.env.MONGODB_URL lazily, declare requires:[mongodb] (not needs:), deploy async, poll to a live URL.
+capabilities_note: persistent — needs a database (Mongo). Runtime app, async build, local edition only. Declare the canonical `needs: { database: true }`; the deployer injects DATABASE_MONGODB_URL (+legacy MONGODB_URL).
+summary: Build a real persistent Next.js + Mongo runtime app on the grid — edition-gate first, scaffold, put the app under services/web/, wire process.env.DATABASE_MONGODB_URL (legacy MONGODB_URL fallback) lazily, declare needs:{database:true} (not requires:), deploy async, poll to a live URL.
 ---
 
 # Workflow: app-with-data
@@ -48,7 +48,7 @@ the entity + `.cloudgrid/link.json` and writes a `cloudgrid.yaml` with an EMPTY
 `services: {}`. `plug` needs a linked directory, so run `init` FIRST.
 
 You then do two things: (a) write the app under **`services/web/`**, and (b) fill
-in `cloudgrid.yaml` to the shape below (`services.web` + `requires: [mongodb]`).
+in `cloudgrid.yaml` to the shape below (`services.web` + `needs: { database: true }`).
 
 ## 4. Add the datastore + wire Mongo
 
@@ -63,27 +63,28 @@ in `cloudgrid.yaml` to the shape below (`services.web` + `requires: [mongodb]`).
      web:
        type: nextjs
        path: /
-   requires:
-     - mongodb        # alias: db
-     # - redis: private   # OPTIONAL — add only if the app needs Redis
+   needs:
+     database: true
+     # cache: true      # OPTIONAL — add only if the app needs Redis
    ```
-   **Declare the datastore with `requires: [mongodb]` (NOT `needs:`)** — see the
-   yaml comment in the template. The CLI warns `requires:` is deprecated, but the
-   deployer only injects `MONGODB_URL` from `requires:`; `needs:` builds fine but
-   injects NO DB connection (every request 500s). Keep `requires:` until the
-   deployer honors `needs:`.
+   **Declare the datastore with `needs: { database: true }`** — this is the
+   canonical shape. The deployer provisions Mongo and injects
+   `DATABASE_MONGODB_URL` (plus the legacy `MONGODB_URL` alias) at dev-time and
+   runtime. `requires:` is the deprecated v1 alias; don't author new yaml with it,
+   and never set `needs:` and `requires:` together (the validator rejects it).
 2. Fetch the template for the Mongo wiring + CRUD shape:
    `gridctl_fetch("template", "app-with-data")`. It is a minimal, real
    Next.js + `mongodb`-driver to-do app under `services/web/`: a lazy client in
    `services/web/lib/db.js`, an App-Router GET/POST/DELETE route on a `todos`
    collection, and a page.
 3. Adapt it to the user's app (rename the collection, change the fields, adjust
-   the UI). **Read the database from `process.env.MONGODB_URL`** — the grid
-   injects that env var at dev-time and runtime. Never hardcode a connection
-   string; never commit a secret.
-   - **Put the DB connection behind a lazy getter — never read
-     `process.env.MONGODB_URL` at module top level, or `next build` fails** (the
-     module is imported for route analysis before the grid injects the var).
+   the UI). **Read the database from `process.env.DATABASE_MONGODB_URL`** (falling
+   back to the legacy `process.env.MONGODB_URL`) — the grid injects those env vars
+   at dev-time and runtime. Never hardcode a connection string; never commit a
+   secret.
+   - **Put the DB connection behind a lazy getter — never read the connection
+     string at module top level, or `next build` fails** (the module is imported
+     for route analysis before the grid injects the var).
    - (Optional) fetch `gridctl_fetch("example", "app-with-data")` for a slightly
      richer filled reference to imitate.
 
@@ -96,7 +97,9 @@ and sanity-check before deploying. Don't require it.
 
 - API keys / secrets → `gridctl_secrets`.
 - Non-secret config → `gridctl_env`.
-- Do **NOT** set `MONGODB_URL` or `REDIS_URL` yourself — the grid injects them.
+- Do **NOT** set the DB/cache connection vars yourself (`DATABASE_MONGODB_URL`,
+  `CACHE_REDIS_URL`, or their legacy `MONGODB_URL` / `REDIS_URL` aliases) — the
+  grid injects them.
 
 ## 7. Deploy (async)
 

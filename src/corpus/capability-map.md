@@ -37,31 +37,30 @@ engine hint. Cron is NOT a need — it is a **service type** (`type: cron` with
 
 | `needs:` key | Provides | Injected env var(s) | Status |
 |---|---|---|---|
-| `database: true` | MongoDB primary datastore | `DATABASE_MONGODB_URL` (+legacy `MONGODB_URL`) | **Today via `requires: [mongodb]`** — `needs:` pending #1527 |
-| `cache: true` | Redis, LRU eviction | `CACHE_REDIS_URL` (+legacy `REDIS_URL`) | **Today via `requires: [redis]`** — `needs:` pending #1527 |
-| `kv: true` | Redis, no eviction | `KV_REDIS_URL` | Pending #1527 |
-| `queue: true` | Redis durable job queue | `QUEUE_REDIS_URL` | Pending #1527 |
-| `pubsub: true` | Redis pub/sub broadcast | `PUBSUB_REDIS_URL` | Pending #1527 |
-| `vector: pgvector` | pgvector embeddings DB | `VECTOR_PGVECTOR_URL` (+legacy `PGVECTOR_URL`) | Pending #1527 |
-| `object_storage: true` | GCS bucket | `OBJECT_STORAGE_GCS_BUCKET`, `OBJECT_STORAGE_GCS_REGION` | Pending #1527 |
-| `disk: true` | Persistent filesystem at `/data` | `DISK_PATH` | Pending #1527 |
-| `ai: true` | AI Gateway access | `AI_GATEWAY_URL` | **Today** (AI Gateway) |
+| `database: true` | MongoDB primary datastore | `DATABASE_MONGODB_URL` (+legacy `MONGODB_URL`) | **Injects via `needs:`** |
+| `cache: true` | Redis, LRU eviction | `CACHE_REDIS_URL` (+legacy `REDIS_URL`) | **Injects via `needs:`** |
+| `kv: true` | Redis, no eviction | `KV_REDIS_URL` | Injects via `needs:` |
+| `queue: true` | Redis durable job queue | `QUEUE_REDIS_URL` | Injects via `needs:` |
+| `pubsub: true` | Redis pub/sub broadcast | `PUBSUB_REDIS_URL` | Injects via `needs:` |
+| `vector: pgvector` | pgvector embeddings DB | `VECTOR_PGVECTOR_URL` (+legacy `PGVECTOR_URL`) | **Injects via `needs:`** |
+| `object_storage: true` | GCS bucket | `OBJECT_STORAGE_GCS_BUCKET`, `OBJECT_STORAGE_GCS_REGION` | Injects via `needs:` |
+| `disk: true` | Persistent filesystem at `/data` | `DISK_PATH` | Injects via `needs:` |
+| `ai: true` | AI Gateway access | `AI_GATEWAY_URL` | Injects via `needs:` |
 | `type: cron` (service) | Scheduled job (`schedule`, `timezone`) | — | Service type, not a need |
 
-### Injection status — today vs pending #1527
+### Injection status
 
-- **Injects TODAY:** `database` and `cache` — but ONLY via the deprecated
-  `requires:` field (`requires: [mongodb]` → `MONGODB_URL`; `requires: [redis]`
-  → `REDIS_URL`). `needs:`-based provisioning does NOT inject anything on the
-  live deployer yet (bug #1527). `ai` (AI Gateway) is available today.
-- **Pending #1527:** `needs:`-based provisioning for everything — `vector`,
-  `queue`, `pubsub`, `kv`, `object_storage`, `disk`, and `needs: database` /
-  `needs: cache` once the deployer honors `needs:`.
+- **`needs:` injects the connection env vars today.** `needs: { database: true }`
+  → `DATABASE_MONGODB_URL` (+legacy `MONGODB_URL`); `needs: { cache: true }` →
+  `CACHE_REDIS_URL` (+legacy `REDIS_URL`); `needs: { vector: pgvector }` →
+  `VECTOR_PGVECTOR_URL`; and so on across the nine needs. Author `needs:`.
+  (*Historical note: the deployer once did not inject from `needs:` — platform
+  bug #1527, now fixed and verified live.*)
+- **`requires:` is the deprecated v1 alias.** Don't author new yaml with it.
 - **`needs:` and `requires:` cannot both be active** in one yaml — the validator
-  rejects the combination ("use one or the other"). So a DB template ships
-  `requires: [mongodb]` active with the canonical `needs: { database: true }`
-  shown only as a **comment** (and declared in the workflow frontmatter as
-  metadata), flipping to `needs:` when #1527 lands.
+  rejects the combination ("use one or the other"). So a DB template ships the
+  canonical `needs: { database: true }` active, with NO `requires:` (and declares
+  `needs: database` in the workflow frontmatter as metadata).
 
 ## How to choose
 
