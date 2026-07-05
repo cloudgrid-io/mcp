@@ -88,6 +88,7 @@ Operating rules:
 8. When a build/deploy fails unexpectedly, offer to report it to the CloudGrid team — only with the user's explicit consent (ask first). Send just the error + the failed request by default (call gridctl_report), and never send the whole conversation unless the user agrees (include_conversation). Respect privacy.
 9. To modify an existing drop when you don't already have its HTML in context, first call gridctl_source to fetch the current HTML, apply your change, then call gridctl_drop/gridctl_plug with target_entity_id (the drop's entity_id) to update the SAME URL in place. Do not ask the user to paste the HTML back.
 10. Publishing a heavy or local file: in the local edition use the path parameter so it is read from disk (no inline size limit); never base64-encode HTML and never pass a file path (or an @-prefixed path) as html. If a drop looks empty, use gridctl_source to check what was actually published, then re-plug with the real HTML/path and target_entity_id.
+11. Persistence check: if the user needs to SAVE data, share state across users/sessions, log in, or store submissions, that's a runtime app-with-data (Mongo-backed), NOT a static page — static templates keep state only in memory and lose it on refresh. Use the app-with-data workflow. This requires the LOCAL edition (Claude Desktop/Code or the CLI); on the hosted edition, tell the user persistence isn't available there and offer a static version.
 
 Deploy is edition-dependent: on the hosted MCP call the drop tool with the HTML; on local MCP / CLI write the file and run the plug tool. An HTML page deploys synchronously, so you get a URL right away.`;
 
@@ -124,6 +125,7 @@ function readEntryDir(dirUrl) {
   });
   const pick =
     files.find((n) => n === "index.html") ||
+    files.find((n) => n === "index.md") ||
     files.find((n) => n.endsWith(".html")) ||
     files.find((n) => n.endsWith(".md")) ||
     (files.length === 1 ? files[0] : null);

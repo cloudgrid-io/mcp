@@ -58,6 +58,14 @@ jobs:
       # gracefully on non-200, and the cloudgrid_source alias + playbook/drop/plug
       # guidance are wired. Mocks global fetch.
       - run: npm run test:source
+      # Offline app-with-data test (0.9.0): the first runtime (DB-backed) build
+      # path. Asserts the app-with-data workflow/template/example + persistent-apps
+      # troubleshooting resolve via fetchCorpus and the real gridctl_fetch handler,
+      # the intent shows in the gridctl_start menu, the PLAYBOOK carries the
+      # persistence rule, the workflow gates the hosted edition, and the template is
+      # internally consistent (requires: [mongodb], reads process.env.MONGODB_URL,
+      # no hardcoded connection string/secret).
+      - run: npm run test:app-with-data
 
   drift-guard:
     runs-on: ubuntu-latest
