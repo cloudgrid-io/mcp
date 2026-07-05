@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.12.0
+
+Add two new runtime build archetypes, authored in `cloudgrid-io/skills` and
+snapshotted into the corpus. Both are DB-backed runtime builds (like
+`app-with-data`), live-verified buildable. Additive; no deploy-behavior change.
+
+- **New archetype `api-service`** (node + database) — a plain Node `http`
+  service (`type: node`) serving a REST `/items` resource backed by grid-shared
+  Mongo. Reads `process.env.DATABASE_MONGODB_URL || process.env.MONGODB_URL`
+  lazily inside a getter (a module-top read crashes node startup); listens on
+  `process.env.PORT || 8080`; clear JSON errors, no secrets. Ships a workflow,
+  template tree (`services/api/`), and a filled "Notes API" example.
+- **New archetype `ai-app`** (ai + database — chatbot) — a Next.js App Router
+  chatbot that calls the grid AI gateway via `@cloudgrid-io/ai`
+  `createClient().chat({ messages })` (zero-config in-grid identity, no API key)
+  and persists the exchange to Mongo (lazy DB read). Declares
+  `needs: { ai: true, database: true }`. Ships a workflow, template tree
+  (`services/web/`), and a filled "Trip Planner Bot" example. No vector/RAG — that
+  variant is held on platform issue #1545.
+- **`capability-map.md`** — snapshot picks up the two new rows plus a
+  "held / pending platform" note for scheduled-task (#1543) and ai-app RAG/vector
+  (#1545), so the LLM knows they are coming but not yet buildable.
+- **Tests** — new offline `test:archetypes` (`test/archetypes.test.mjs`): asserts
+  both archetypes' workflow/template/example resolve via `fetchCorpus` + the real
+  `gridctl_fetch` handler, both appear in the `gridctl_start` menu, and each
+  template is internally consistent (active canonical `needs:`, no active
+  `requires:`, lazy DB read, no hardcoded connection string/secret, correct AI
+  call shape). GUARDS that neither template declares `needs: vector` (#1545) or a
+  cron service (#1543). Wired into CI.
+
 ## 0.11.2
 
 Flip the corpus to canonical `needs:` now that the deployer injects from it

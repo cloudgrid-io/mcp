@@ -13,7 +13,7 @@ cloudgrid.yaml schema (every field, the `needs:` injection table, the
 requires-vs-needs caveat, validation rules), fetch the companion reference:
 `gridctl_fetch("doc", "cloudgrid-yaml")`.
 
-## The 6 templates
+## The 8 templates
 
 | Intent (match on `when:`) | Template | `needs:` | Deploy | Edition |
 |---|---|---|---|---|
@@ -23,10 +23,24 @@ requires-vs-needs caveat, validation rules), fetch the companion reference:
 | report, one-pager, summary, brief, whitepaper, case study, formatted document | `report` | none | inspiration (instant) | all |
 | slides, deck, pitch, presentation, slideshow | `presentation` (dir: `deck`) | none | inspiration (instant) | all |
 | to-do, task list, notes app, guestbook, CRUD app, a form that SAVES/STORES submissions, anything that PERSISTS data or shares state across users/sessions, sign-in/accounts | `app-with-data` | `database: true` | runtime (async, poll) | local |
+| REST API, backend for X, API endpoint(s), CRUD API, JSON API, webhook receiver — a backend/service that stores data and isn't a full web UI | `api-service` | `database: true` | runtime (async, poll) | local |
+| chatbot, AI assistant, Q&A bot, conversational app, support bot, ask-me-anything, an app that talks to an LLM / generates text with AI | `ai-app` | `ai: true, database: true` | runtime (async, poll) | local |
 
 **Rule of thumb:** if the app must SAVE/remember data, share state across
-users/sessions, log in, or store submissions → it is persistent → `app-with-data`
-(runtime, local edition). Otherwise a static template deploys instantly anywhere.
+users/sessions, log in, or store submissions → it is persistent → runtime, local
+edition. Pick by shape: a full web UI → `app-with-data`; a plain backend/JSON API
+(no UI) → `api-service`; an app that talks to an LLM → `ai-app` (adds `ai:`).
+Otherwise a static template deploys instantly anywhere.
+
+## Held / pending platform (not yet buildable)
+
+Two more archetypes are designed but blocked on platform work — the LLM should
+know they are coming but must NOT author them yet:
+
+| Intent | Would need | Status |
+|---|---|---|
+| scheduled task, cron job, "run every day/hour", periodic worker | a `type: cron` service (`schedule`, `timezone`) | **HELD** — platform issue #1543 (cron entities crash the online-check). Do not build. |
+| RAG chatbot, "answer over my own docs", semantic search, retrieval-augmented Q&A | `ai-app` + `needs: { vector: pgvector }` | **HELD** — platform issue #1545 (pgvector crashes the deploy). Ship the plain `ai-app` (no vector) for now. |
 
 ## The full `needs:` vocabulary (the whole menu)
 
@@ -65,8 +79,9 @@ engine hint. Cron is NOT a need — it is a **service type** (`type: cron` with
 ## How to choose
 
 1. Read the request; match it against the workflow `when:` triggers above.
-2. Adopt that template's `needs:`. Persistence → `database`. (Future: scheduled →
-   `cron` service; semantic search / RAG → `vector` + `ai`.)
+2. Adopt that template's `needs:`. Persistence → `database` (`app-with-data` or
+   `api-service`); talks to an LLM → `ai: true` + `database` (`ai-app`). (Held for
+   now: scheduled → a `cron` service, #1543; RAG → `vector: pgvector`, #1545.)
 3. Static (`needs: none`) → publish as an inspiration with `gridctl_drop`
    (instant, any edition). Anything with a `needs:` → runtime, local edition,
    `gridctl_plug` a linked folder, then poll to a live URL.
