@@ -25,6 +25,16 @@ export const API_BASE = (process.env.CLOUDGRID_API_URL || "https://api.cloudgrid
   "",
 );
 
+// This MCP server's version — mirrors the CLI's cli_version in a report's origin.
+// Read once from package.json; never throw (a report must never fail on this).
+export const MCP_VERSION = (() => {
+  try {
+    return JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8")).version;
+  } catch {
+    return "unknown";
+  }
+})();
+
 const ANON_HTML_MAX_BYTES = 2_000_000;
 const CONSOLE_URL = "https://console.cloudgrid.io/";
 
@@ -1165,11 +1175,27 @@ export function scrubReportContext(obj, depth = 0) {
 
 // Send a consent-gated bug report to the CloudGrid team. The agent calls this
 // ONLY after the user explicitly agrees (see errorGuidance + the PLAYBOOK rule).
-// Posts to POST /api/v2/errors/feedback with {app:"mcp", message, context,
-// node_version, platform}. Authed → Bearer; anon+web → the trusted-server
-// headers (works once Gilad opens the endpoint; until then a 401 degrades to a
-// friendly "sign in to report"). Never throws — always returns friendly text.
-export async function runReport(ctx, { message, context, include_conversation } = {}) {
+//
+// Matches the CLI reporter (packages/cli error-reporter.ts → client.reportError):
+// POST /api/v2/errors with the CLI payload shape
+//   { type:'error', category, app, message, stack?, context, trace_id?,
+//     failed_step?, http_status?, cli_version, node_version, platform }
+// so CLI + MCP reports land uniformly in the `errors` collection.
+//
+// Source attribution (Gilad's ask): every report says WHERE it came from —
+// source (mcp-stdio | mcp-hosted), client (the calling agent from MCP clientInfo),
+// platform, mcp_version. Sent BOTH as top-level fields AND mirrored in
+// `context.origin`. The POST /errors handler only persists known top-level keys
+// (it drops unknown ones), and `context` is stored + secret-stripped server-side,
+// so `context.origin` is the durable carrier — belt-and-suspenders.
+//
+// Auth: signed-in → Bearer; anon+web → the trusted-server headers (works once the
+// endpoint accepts the credential; until then a 401 degrades to "sign in to
+// report"). Honors CLOUDGRID_TELEMETRY=off (matches the CLI). Never throws.
+export async function runReport(
+  ctx,
+  { message, context, include_conversation, category, trace_id, failed_step, http_status } = {},
+) {
   const summary = typeof message === "string" ? message.trim() : "";
   if (!summary) {
     return okResult({
@@ -1178,19 +1204,69 @@ export async function runReport(ctx, { message, context, include_conversation } 
     });
   }
 
-  // Belt-and-suspenders scrub before the value ever leaves the process.
-  const safeContext =
-    context && typeof context === "object" ? scrubReportContext(context) : undefined;
+  // Privacy escape hatch — no telemetry when explicitly disabled (matches the CLI
+  // reporter's CLOUDGRID_TELEMETRY=off). Consent still gates the call regardless;
+  // this is the belt-and-suspenders global opt-out. Nothing leaves the process.
+  if (process.env.CLOUDGRID_TELEMETRY === "off") {
+    return okResult({
+      text: "Error reporting is disabled (CLOUDGRID_TELEMETRY=off) — nothing was sent.",
+      structured: { status: "disabled" },
+    });
+  }
+
+  // ── Source attribution ──────────────────────────────────────────────────────
+  // source: mcp-stdio (local edition) | mcp-hosted (web edition).
+  const source = ctx.edition === "web" ? "mcp-hosted" : "mcp-stdio";
+  // client: the calling agent captured from the MCP clientInfo at initialize.
+  // Falls back to "unknown" — a report must never fail on missing client info.
+  const ci = ctx.state?.client;
+  const client =
+    ci && ci.name
+      ? ci.version
+        ? `${ci.name} ${ci.version}`
+        : String(ci.name)
+      : "unknown";
+  const platform = `${process.platform} ${process.arch}`;
+
+  // Belt-and-suspenders scrub before the value ever leaves the process. The
+  // origin block is authored by us (not user/agent input), so it is appended
+  // AFTER the scrub — it carries no secrets and must survive verbatim.
+  const scrubbed =
+    context && typeof context === "object" ? scrubReportContext(context) : {};
+  const safeContext = {
+    ...scrubbed,
+    origin: {
+      source,
+      client,
+      platform,
+      mcp_version: MCP_VERSION,
+    },
+  };
+
   // The full conversation is NEVER included unless the agent explicitly set the
   // flag (which the PLAYBOOK gates on the user's explicit yes). This tool only
   // records the flag alongside the report so intent is auditable — it does not
   // itself have the transcript.
   const body = {
+    type: "error",
+    // category: default "mcp" (or the failing tool name the agent passes).
+    category: typeof category === "string" && category.trim() ? category.trim() : "mcp",
     app: "mcp",
     message: summary.slice(0, 5000),
     context: safeContext,
+    // Diagnostic pivots (match the CLI) — only when the agent forwards them.
+    ...(typeof trace_id === "string" && trace_id ? { trace_id } : {}),
+    ...(typeof failed_step === "string" && failed_step ? { failed_step } : {}),
+    ...(typeof http_status === "number" && Number.isFinite(http_status) ? { http_status } : {}),
+    // Attribution, ALSO top-level (persisted once the handler accepts these keys;
+    // context.origin is the fallback until then).
+    source,
+    client,
+    platform,
+    // cli_version stays null for MCP-originated reports; mcp_version carries our
+    // version in context.origin (the CLI-analog lives there).
+    cli_version: null,
     node_version: process.version,
-    platform: process.platform,
     ...(include_conversation === true ? { include_conversation: true } : {}),
   };
 
@@ -1215,7 +1291,7 @@ export async function runReport(ctx, { message, context, include_conversation } 
 
   let res;
   try {
-    res = await fetch(`${API_BASE}/api/v2/errors/feedback`, {
+    res = await fetch(`${API_BASE}/api/v2/errors`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
@@ -2705,10 +2781,26 @@ export function registerTools(server, ctx) {
           .boolean()
           .optional()
           .describe("Default false. Set true ONLY if the user explicitly agreed to include the full conversation."),
+        category: z
+          .string()
+          .optional()
+          .describe("Optional category, e.g. the failing tool name (\"deploy\"). Defaults to \"mcp\"."),
+        trace_id: z
+          .string()
+          .optional()
+          .describe("The server's trace/deploy id from the failed response, if any (helps support pivot to the trace)."),
+        failed_step: z
+          .string()
+          .optional()
+          .describe("The server-side pipeline step that failed, if known."),
+        http_status: z
+          .number()
+          .optional()
+          .describe("The HTTP status of the final failed request, if applicable."),
       },
       outputSchema: {
         status: z
-          .enum(["recorded", "rate_limited", "unauthorized", "error", "skipped"])
+          .enum(["recorded", "rate_limited", "unauthorized", "error", "skipped", "disabled"])
           .describe("Outcome of the report."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
@@ -2719,6 +2811,10 @@ export function registerTools(server, ctx) {
           message: input?.message,
           context: input?.context,
           include_conversation: input?.include_conversation === true,
+          category: input?.category,
+          trace_id: input?.trace_id,
+          failed_step: input?.failed_step,
+          http_status: input?.http_status,
         });
       } catch (err) {
         // Belt-and-suspenders: never throw noisily out of a report attempt.

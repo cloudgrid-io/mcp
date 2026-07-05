@@ -1,10 +1,14 @@
-// Unit tests for consent-gated error reporting (Task 34 / 0.8.1).
+// Unit tests for consent-gated error reporting (Task 34 / 0.8.1, 34b / 0.8.2).
 //
-// Three offline surfaces:
-//   1. runReport() — posts {app:"mcp", message, context, node_version, platform}
-//      to /api/v2/errors/feedback. Authed → Bearer; anon+web → trusted-server
-//      headers. include_conversation defaults false. 429/401/error → friendly
-//      text, never throws. Obvious secrets in context are scrubbed client-side.
+// Offline surfaces:
+//   1. runReport() — posts the CLI reporter's shape { type:"error", category,
+//      app, message, context, trace_id?, failed_step?, http_status?, cli_version,
+//      node_version, platform:"<platform> <arch>" } to /api/v2/errors (0.8.2:
+//      was /errors/feedback). Source attribution (source/client/platform/
+//      mcp_version) is sent BOTH top-level AND mirrored in context.origin.
+//      Authed → Bearer; anon+web → trusted-server headers. include_conversation
+//      defaults false. CLOUDGRID_TELEMETRY=off suppresses the POST. 429/401/error
+//      → friendly text, never throws. Secrets in context are scrubbed client-side.
 //   2. scrubReportContext() — redacts secret-looking KEYS, leaves the rest.
 //   3. errorGuidance() report offer — appended on 5xx / INTERNAL_ERROR /
 //      build-deploy failures ONLY; NOT on 429 / needs_grid / 409 EDIT_REJECTED /
@@ -17,6 +21,7 @@ import {
   scrubReportContext,
   errorGuidance,
   REPORT_OFFER,
+  MCP_VERSION,
 } from "../src/tools.js";
 
 let failures = 0;
@@ -45,10 +50,10 @@ globalThis.fetch = async (url, opts = {}) => {
   });
 };
 
-function makeCtx({ token = null, edition = "local", trustedServer = null } = {}) {
+function makeCtx({ token = null, edition = "local", trustedServer = null, client } = {}) {
   return {
     edition,
-    state: {},
+    state: client === undefined ? {} : { client },
     getToken: async () => token,
     getActiveGrid: async () => null,
     trustedServer,
@@ -72,27 +77,80 @@ try {
     check("scrub redacts secret inside arrays", scrubbed.list[0].secret === "[REDACTED]" && scrubbed.list[0].label === "y");
   }
 
-  // ═══ 2. runReport — authed happy path posts the correct body ═══════════════
+  // ═══ 2. runReport — authed happy path posts the CLI shape + attribution ════
   {
     calls = [];
     replies = [{ status: 201, body: { status: "recorded" } }];
-    const ctx = makeCtx({ token: "jwt-abc", edition: "local" });
+    const ctx = makeCtx({
+      token: "jwt-abc",
+      edition: "local",
+      client: { name: "claude-code", version: "1.2.3" },
+    });
     const res = await runReport(ctx, {
       message: "deploy failed",
       context: { tool: "gridctl_drop", error_code: "INTERNAL_ERROR", api_key: "sk-secret" },
+      trace_id: "trace-9",
+      failed_step: "build",
+      http_status: 500,
     });
     const c = calls[0];
-    check("authed report POSTs to /api/v2/errors/feedback", /\/api\/v2\/errors\/feedback$/.test(c.url) && c.method === "POST");
+    const plat = `${process.platform} ${process.arch}`;
+    // 0.8.2: repointed off /errors/feedback to the CLI's /errors endpoint.
+    check("authed report POSTs to /api/v2/errors (not /feedback)", /\/api\/v2\/errors$/.test(c.url) && c.method === "POST");
     check("authed report sends Bearer token", c.headers["Authorization"] === "Bearer jwt-abc");
-    check("authed report body has app:mcp", c.body.app === "mcp");
-    check("authed report body has message", c.body.message === "deploy failed");
-    check("authed report body has node_version", c.body.node_version === process.version);
-    check("authed report body has platform", c.body.platform === process.platform);
-    check("authed report body forwards context.tool", c.body.context.tool === "gridctl_drop");
-    check("authed report scrubs secret keys in context before sending", c.body.context.api_key === "[REDACTED]");
-    check("authed report does NOT set include_conversation by default", c.body.include_conversation === undefined);
-    check("authed report success → recorded", res.structuredContent.status === "recorded");
-    check("authed report success → thank-you text", /thank you/i.test(res.content[0].text));
+    // CLI payload shape.
+    check("body type:'error'", c.body.type === "error");
+    check("body category defaults to 'mcp'", c.body.category === "mcp");
+    check("body has app:mcp", c.body.app === "mcp");
+    check("body has message", c.body.message === "deploy failed");
+    check("body has node_version", c.body.node_version === process.version);
+    check("body platform is '<platform> <arch>'", c.body.platform === plat);
+    check("body cli_version is null for MCP", c.body.cli_version === null);
+    check("body forwards trace_id", c.body.trace_id === "trace-9");
+    check("body forwards failed_step", c.body.failed_step === "build");
+    check("body forwards http_status", c.body.http_status === 500);
+    check("body forwards context.tool", c.body.context.tool === "gridctl_drop");
+    check("scrubs secret keys in context before sending", c.body.context.api_key === "[REDACTED]");
+    check("does NOT set include_conversation by default", c.body.include_conversation === undefined);
+    // Source attribution — top-level.
+    check("top-level source = mcp-stdio (local)", c.body.source === "mcp-stdio");
+    check("top-level client = name+version", c.body.client === "claude-code 1.2.3");
+    check("top-level platform present", c.body.platform === plat);
+    // Source attribution — mirrored in context.origin (the durable carrier).
+    check("context.origin.source = mcp-stdio", c.body.context.origin.source === "mcp-stdio");
+    check("context.origin.client = name+version", c.body.context.origin.client === "claude-code 1.2.3");
+    check("context.origin.platform present", c.body.context.origin.platform === plat);
+    check("context.origin.mcp_version = MCP_VERSION", c.body.context.origin.mcp_version === MCP_VERSION);
+    check("success → recorded", res.structuredContent.status === "recorded");
+    check("success → thank-you text", /thank you/i.test(res.content[0].text));
+  }
+
+  // ═══ 2a. web edition → source mcp-hosted; category override honored ════════
+  {
+    calls = [];
+    replies = [{ status: 201, body: { status: "recorded" } }];
+    const ctx = makeCtx({
+      token: "jwt",
+      edition: "web",
+      client: { name: "ChatGPT", version: "0.9" },
+    });
+    await runReport(ctx, { message: "x", category: "deploy" });
+    const c = calls[0];
+    check("web edition source = mcp-hosted (top-level)", c.body.source === "mcp-hosted");
+    check("web edition source = mcp-hosted (context.origin)", c.body.context.origin.source === "mcp-hosted");
+    check("category override honored", c.body.category === "deploy");
+    check("web client attributed", c.body.context.origin.client === "ChatGPT 0.9");
+  }
+
+  // ═══ 2a2. missing clientInfo → client falls back to 'unknown' ══════════════
+  {
+    calls = [];
+    replies = [{ status: 201, body: { status: "recorded" } }];
+    const ctx = makeCtx({ token: "jwt", edition: "local" }); // no client stashed
+    await runReport(ctx, { message: "x" });
+    const c = calls[0];
+    check("missing clientInfo → top-level client 'unknown'", c.body.client === "unknown");
+    check("missing clientInfo → context.origin.client 'unknown'", c.body.context.origin.client === "unknown");
   }
 
   // ═══ 2b. include_conversation only when explicitly true ════════════════════
@@ -163,6 +221,52 @@ try {
     const res = await runReport(ctx, { message: "   " });
     check("empty message → skipped", res.structuredContent.status === "skipped");
     check("empty message → no wire call", calls.length === 0);
+  }
+
+  // ═══ 2g. CLOUDGRID_TELEMETRY=off → no POST, disabled status ════════════════
+  {
+    calls = [];
+    replies = [{ status: 201, body: { status: "recorded" } }];
+    const prev = process.env.CLOUDGRID_TELEMETRY;
+    process.env.CLOUDGRID_TELEMETRY = "off";
+    const ctx = makeCtx({ token: "jwt", client: { name: "claude-code" } });
+    const res = await runReport(ctx, { message: "boom" });
+    if (prev === undefined) delete process.env.CLOUDGRID_TELEMETRY;
+    else process.env.CLOUDGRID_TELEMETRY = prev;
+    check("TELEMETRY=off → no wire call", calls.length === 0);
+    check("TELEMETRY=off → disabled status", res.structuredContent.status === "disabled");
+    check("TELEMETRY=off → 'disabled' text", /disabled/i.test(res.content[0].text));
+  }
+
+  // ═══ 2h. clientInfo capture via a mocked MCP SDK server ════════════════════
+  // Mirrors index.js/web.js: on `oninitialized`, stash getClientVersion() into
+  // ctx.state.client. Uses a mock Server so no real transport/handshake is needed.
+  {
+    const ctx = { edition: "local", state: {} };
+    // Mock of the SDK's inner Server: settable oninitialized + getClientVersion().
+    const mockServer = {
+      oninitialized: null,
+      _clientVersion: { name: "cursor", version: "0.42" },
+      getClientVersion() {
+        return this._clientVersion;
+      },
+    };
+    // The wiring index.js/web.js perform:
+    mockServer.oninitialized = () => {
+      try {
+        ctx.state.client = mockServer.getClientVersion() ?? null;
+      } catch {
+        ctx.state.client = null;
+      }
+    };
+    check("client not captured before initialize", ctx.state.client === undefined);
+    mockServer.oninitialized(); // simulate the SDK firing the initialized notification
+    check("clientInfo captured after initialize", ctx.state.client?.name === "cursor" && ctx.state.client?.version === "0.42");
+    // And it flows through to a report's origin.
+    calls = [];
+    replies = [{ status: 201, body: { status: "recorded" } }];
+    await runReport({ ...ctx, getToken: async () => "jwt", getActiveGrid: async () => null }, { message: "boom" });
+    check("captured client attributed in report", calls[0].body.context.origin.client === "cursor 0.42");
   }
 
   // ═══ 3. errorGuidance report offer — GENUINE bugs get it ═══════════════════

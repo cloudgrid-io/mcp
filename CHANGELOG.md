@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.8.2
+
+Align `gridctl_report` with the existing CLI error reporter, and attribute every
+report's origin (where it came from, which agent, which platform). 0.8.1 posted
+to the wrong endpoint (`/errors/feedback` — that's user feedback); this fixes it
+to match the CLI and adds source attribution so CLI + MCP reports land uniformly.
+
+- **Repointed to `POST /api/v2/errors`** (was `/errors/feedback`) with the CLI
+  reporter's payload shape: `{ type:"error", category, app, message, stack?,
+  context, trace_id?, failed_step?, http_status?, cli_version, node_version,
+  platform }`. `platform` is now `` `${process.platform} ${process.arch}` `` (e.g.
+  `darwin arm64`), matching the CLI. New optional tool inputs `category`,
+  `trace_id`, `failed_step`, `http_status` let the agent forward the diagnostics
+  from the failed result; `category` defaults to `"mcp"`.
+- **Source attribution.** Every report now says WHERE it came from — sent BOTH as
+  top-level fields AND mirrored in `context.origin` (belt-and-suspenders: the
+  `POST /errors` handler drops unknown top-level keys, but stores + secret-strips
+  `context`, so `context.origin` is the durable carrier):
+  - `source`: `"mcp-stdio"` (local edition) | `"mcp-hosted"` (web edition).
+  - `client`: the calling agent (name + version) from the MCP `clientInfo`
+    captured at initialize (e.g. `claude-code`, `ChatGPT`, `cursor`), or
+    `"unknown"` if unavailable.
+  - `platform`: `` `${process.platform} ${process.arch}` ``.
+  - `mcp_version`: this server's version (the CLI's `cli_version` analog; top-level
+    `cli_version` stays `null` for MCP-originated reports).
+
+  Example origin: `mcp-hosted · ChatGPT · darwin arm64 · mcp 0.8.2`.
+- **`clientInfo` captured at initialize (both editions).** `server.server.oninitialized`
+  stashes `server.server.getClientVersion()` (the SDK-parsed initialize
+  `clientInfo`) into the session context, so `gridctl_report` can attribute it.
+  Never fatal — a missing client falls back to `"unknown"`.
+- **Honors `CLOUDGRID_TELEMETRY=off`** (matches the CLI reporter). When set,
+  `gridctl_report` returns "reporting disabled" and does not POST. Consent is
+  still required regardless.
+- Bearer (signed-in) / trusted-server (anon web) auth and client-side secret
+  scrubbing are unchanged.
+
 ## 0.8.1
 
 Consent-gated error reporting. When a CloudGrid call fails in a way that looks
