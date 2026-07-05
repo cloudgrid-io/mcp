@@ -13,9 +13,24 @@ You do **not** provision a database or set a connection string. In
 - injects the connection string as the **`MONGODB_URL`** environment variable —
   at dev-time (`grid dev`) and at runtime (after `grid plug`).
 
-The app reads it via `process.env.MONGODB_URL` in `lib/db.js`. Never hardcode a
-connection string; never commit a secret. (If you also declare `redis: private`,
-the grid injects `REDIS_URL` the same way.)
+The app reads it via `process.env.MONGODB_URL` in `services/web/lib/db.js` —
+**lazily, inside the `getDb` getter, never at module top level** (a top-level
+read fails `next build`, which imports the module for route analysis before the
+grid injects the var). Never hardcode a connection string; never commit a
+secret. (If you also declare `redis: private`, the grid injects `REDIS_URL` the
+same way.)
+
+> **Use `requires:` (NOT `needs:`).** The CLI warns `requires:` is deprecated,
+> but the deployer currently only injects `MONGODB_URL` from `requires:` —
+> migrating to `needs:` builds fine but injects NO DB connection (every request
+> 500s). Keep `requires:` until CloudGrid's deployer honors `needs:`.
+
+## Service layout
+
+App code lives under **`services/web/`**, not the template root. `path:` in
+`cloudgrid.yaml` is the URL mount, not the filesystem path — the service named
+`web` means the CLI looks for `services/web/`. Files at the root fail with
+`Error: Service directory not found: …/services/web`.
 
 ## Run locally
 
@@ -37,19 +52,19 @@ to update the same URL.
 ## File tree
 
 ```
-cloudgrid.yaml        # name + services.web (nextjs) + requires: [mongodb]
-package.json          # next, react, react-dom, mongodb driver only
-lib/db.js             # cached Mongo client from process.env.MONGODB_URL
-app/layout.js         # root layout + inline CSS
-app/page.js           # server component: reads todos from Mongo
-app/todo-form.js      # client form: POST/DELETE via the API
-app/api/todos/route.js# GET (list) / POST (add) / DELETE (remove)
+cloudgrid.yaml                        # name + services.web (nextjs) + requires: [mongodb]
+services/web/package.json             # next, react, react-dom, mongodb driver only
+services/web/lib/db.js                # lazy Mongo client from process.env.MONGODB_URL
+services/web/app/layout.js            # root layout + inline CSS
+services/web/app/page.js              # server component: reads todos from Mongo
+services/web/app/todo-form.js         # client form: POST/DELETE via the API
+services/web/app/api/todos/route.js   # GET (list) / POST (add) / DELETE (remove)
 ```
 
 ## Adapt it
 
-- Rename the `todos` collection in `app/api/todos/route.js` and `app/page.js`
-  (e.g. `submissions`, `tasks`, `entries`).
+- Rename the `todos` collection in `services/web/app/api/todos/route.js` and
+  `services/web/app/page.js` (e.g. `submissions`, `tasks`, `entries`).
 - Change the document fields (add owners, timestamps, statuses).
 - Add more routes/collections as the app grows.
 - Add `redis: private` to `requires` only if you actually need Redis.

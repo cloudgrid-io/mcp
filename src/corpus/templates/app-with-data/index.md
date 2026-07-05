@@ -3,42 +3,61 @@
 A minimal but real, deployable to-do app. Data lives in the grid-shared MongoDB,
 so it survives refresh and is shared across sessions — unlike a static page.
 
-**Key rule:** the grid injects the DB connection string as the `MONGODB_URL`
-environment variable at dev-time and runtime. The app reads
-`process.env.MONGODB_URL`. Never hardcode a connection string; never commit a
-secret. Declare `requires: [mongodb]` in `cloudgrid.yaml` — that is what makes
-the grid provision Mongo and inject the env var.
+**Key rules (all proven by a real end-to-end deploy):**
 
-Write these files into the scaffolded app folder, adapt the collection/fields to
-the user's app, then `grid dev` (local) / `grid plug` (deploy, async — poll to a
-live URL).
+1. **Service code MUST live under `services/<name>/`, not the repo/template
+   root.** `path:` in `cloudgrid.yaml` is the URL mount, NOT the filesystem path.
+   The service named `web` → the CLI looks for `services/web/`. App files at the
+   root fail with `Error: Service directory not found: …/services/web`.
+2. **Read `MONGODB_URL` LAZILY (inside the getter), never at module top level.**
+   The grid injects the DB connection string as the `MONGODB_URL` environment
+   variable at dev-time and runtime; the app reads `process.env.MONGODB_URL`
+   inside `getDb`. A top-level `const uri = process.env.MONGODB_URL; if (!uri)
+   throw` fails `next build` (the module is imported for route analysis before
+   the grid injects the var). Never hardcode a connection string; never commit a
+   secret.
+3. **Declare the datastore with `requires: [mongodb]` — NOT `needs:`.** The CLI
+   warns `requires:` is deprecated, but the deployer only injects `MONGODB_URL`
+   from `requires:`; `needs:` builds fine but injects NO DB connection (every
+   request 500s). Keep `requires:` until the deployer honors `needs:`.
+
+Write these files into the scaffolded app folder — the app code goes under
+`services/web/` — adapt the collection/fields to the user's app, then `grid dev`
+(local) / `grid plug` (deploy, async — poll to a live URL).
 
 ## File tree
 
 ```
-cloudgrid.yaml
-package.json
-lib/db.js
-app/layout.js
-app/page.js
-app/todo-form.js
-app/api/todos/route.js
+cloudgrid.yaml                          # name + services.web (nextjs) + requires: [mongodb]
+services/web/package.json               # next, react, react-dom, mongodb driver only
+services/web/lib/db.js                  # lazy Mongo client from process.env.MONGODB_URL
+services/web/app/layout.js              # root layout + inline CSS
+services/web/app/page.js                # server component: reads todos from Mongo
+services/web/app/todo-form.js           # client form: POST/DELETE via the API
+services/web/app/api/todos/route.js     # GET (list) / POST (add) / DELETE (remove)
 ```
 
 ## cloudgrid.yaml
 
 ```yaml
+# Rename this app. The grid injects MONGODB_URL (and REDIS_URL if you add a cache)
+# as environment variables at runtime — do NOT set them yourself, and never commit
+# a connection string or secret.
+#
+# NOTE: use `requires:` (NOT `needs:`). The CLI warns that `requires:` is deprecated,
+# but the deployer currently only injects MONGODB_URL from `requires:` — migrating to
+# `needs:` builds fine but injects NO database connection (every request 500s).
+# Keep `requires:` until CloudGrid's deployer honors `needs:`.
 name: my-app
 services:
   web:
     type: nextjs
     path: /
 requires:
-  - mongodb        # alias: db — grid provisions Mongo and injects MONGODB_URL
-  # - redis: private   # OPTIONAL — add only if the app needs Redis (injects REDIS_URL)
+  - mongodb
 ```
 
-## package.json
+## services/web/package.json
 
 ```json
 {
@@ -59,38 +78,43 @@ requires:
 }
 ```
 
-## lib/db.js
+## services/web/lib/db.js
 
 ```js
-// Cached MongoDB client. The grid injects MONGODB_URL at dev-time and runtime;
-// never hardcode a connection string or commit a secret.
+// Cached MongoDB client for the App Router.
+//
+// The grid injects the connection string as the MONGODB_URL environment variable
+// at runtime (after `grid plug`) and under `grid dev` locally. Never hardcode a
+// connection string here and never commit a secret.
+//
+// The env var and client are resolved LAZILY (inside getDb), never at module top
+// level — otherwise `next build` throws when it imports this module for route
+// analysis, before the grid injects MONGODB_URL.
 import { MongoClient } from "mongodb";
 
-const uri = process.env.MONGODB_URL;
-if (!uri) {
-  throw new Error(
-    "MONGODB_URL is not set. The grid injects it automatically — run with " +
-      "`grid dev` locally, or deploy with `grid plug` (injected at runtime). " +
-      "Do not set it by hand.",
-  );
-}
-
-let clientPromise = globalThis.__mongoClientPromise;
-if (!clientPromise) {
-  const client = new MongoClient(uri);
-  clientPromise = client.connect();
-  globalThis.__mongoClientPromise = clientPromise;
+function clientPromise() {
+  const uri = process.env.MONGODB_URL;
+  if (!uri) {
+    throw new Error(
+      "MONGODB_URL is not set. The grid injects it automatically — run this app " +
+        "with `grid dev` locally, or deploy it with `grid plug` (the grid injects " +
+        "MONGODB_URL at runtime). Do not set it by hand.",
+    );
+  }
+  if (!globalThis.__mongoClientPromise) {
+    globalThis.__mongoClientPromise = new MongoClient(uri).connect();
+  }
+  return globalThis.__mongoClientPromise;
 }
 
 export async function getDb() {
-  const client = await clientPromise;
+  const client = await clientPromise();
+  // The default DB comes from the MONGODB_URL path segment the grid injects.
   return client.db();
 }
-
-export { clientPromise };
 ```
 
-## app/layout.js
+## services/web/app/layout.js
 
 ```js
 export const metadata = {
@@ -119,7 +143,7 @@ export default function RootLayout({ children }) {
 }
 ```
 
-## app/page.js
+## services/web/app/page.js
 
 ```js
 import { getDb } from "../lib/db.js";
@@ -145,7 +169,7 @@ export default async function Page() {
 }
 ```
 
-## app/todo-form.js
+## services/web/app/todo-form.js
 
 ```js
 "use client";
@@ -191,7 +215,7 @@ export default function TodoForm({ initialTodos }) {
 }
 ```
 
-## app/api/todos/route.js
+## services/web/app/api/todos/route.js
 
 ```js
 import { NextResponse } from "next/server";

@@ -9,9 +9,18 @@ the API supports updating status via PATCH.
 Data persists in the grid-shared Mongo, so the whole team sees the same board
 across sessions and refresh.
 
+**Same three proven rules as the template:** (1) app code lives under
+**`services/web/`** (the service name, NOT the repo root — `path:` is the URL
+mount); (2) `MONGODB_URL` is read **lazily inside the `getDb` getter**, never at
+module top level (a top-level read fails `next build`); (3) the datastore is
+declared with **`requires: [mongodb]`, not `needs:`** — the deployer only
+injects `MONGODB_URL` from `requires:`.
+
 ## cloudgrid.yaml
 
 ```yaml
+# NOTE: use `requires:` (NOT `needs:`). The deployer only injects MONGODB_URL
+# from `requires:`; `needs:` builds fine but injects NO DB connection (500s).
 name: team-task-board
 services:
   web:
@@ -21,7 +30,7 @@ requires:
   - mongodb
 ```
 
-## package.json
+## services/web/package.json
 
 ```json
 {
@@ -38,32 +47,33 @@ requires:
 }
 ```
 
-## lib/db.js
+## services/web/lib/db.js
 
 ```js
 // Cached Mongo client. MONGODB_URL is injected by the grid (dev + runtime).
+// Resolve it LAZILY inside the getter — a top-level read fails `next build`.
 import { MongoClient } from "mongodb";
 
-const uri = process.env.MONGODB_URL;
-if (!uri) {
-  throw new Error(
-    "MONGODB_URL is not set. The grid injects it — run `grid dev` locally or " +
-      "deploy with `grid plug`. Do not set it by hand.",
-  );
-}
-
-let clientPromise = globalThis.__mongoClientPromise;
-if (!clientPromise) {
-  clientPromise = new MongoClient(uri).connect();
-  globalThis.__mongoClientPromise = clientPromise;
+function clientPromise() {
+  const uri = process.env.MONGODB_URL;
+  if (!uri) {
+    throw new Error(
+      "MONGODB_URL is not set. The grid injects it — run `grid dev` locally or " +
+        "deploy with `grid plug`. Do not set it by hand.",
+    );
+  }
+  if (!globalThis.__mongoClientPromise) {
+    globalThis.__mongoClientPromise = new MongoClient(uri).connect();
+  }
+  return globalThis.__mongoClientPromise;
 }
 
 export async function getDb() {
-  return (await clientPromise).db();
+  return (await clientPromise()).db();
 }
 ```
 
-## app/api/tasks/route.js
+## services/web/app/api/tasks/route.js
 
 ```js
 import { NextResponse } from "next/server";
@@ -132,7 +142,7 @@ export async function DELETE(request) {
 }
 ```
 
-## app/page.js
+## services/web/app/page.js
 
 ```js
 import { getDb } from "../lib/db.js";
@@ -166,7 +176,7 @@ export default async function Page() {
 }
 ```
 
-## app/board.js
+## services/web/app/board.js
 
 ```js
 "use client";
@@ -234,5 +244,8 @@ export default function Board({ initialTasks }) {
 
 - Deploy the same way as the template: `grid dev` locally, `grid plug` to deploy
   (async — poll status to a live URL). Re-plug the same entity to keep one URL.
-- The only store this needs is Mongo (`requires: [mongodb]`). Add
-  `redis: private` only for caching/sessions/pubsub you actually use.
+- The only store this needs is Mongo (`requires: [mongodb]` — not `needs:`; the
+  deployer only injects `MONGODB_URL` from `requires:`). Add `redis: private`
+  only for caching/sessions/pubsub you actually use.
+- All app code lives under `services/web/`; the connection is read lazily inside
+  `getDb`, never at module top level.

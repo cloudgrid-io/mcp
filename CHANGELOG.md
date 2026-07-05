@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.9.1
+
+fix: app-with-data template deploys correctly — services/<name>/ layout, lazy DB
+client, requires: (not needs:) for DB injection; verified live end-to-end.
+
+The 0.9.0 `app-with-data` template did not deploy. A real end-to-end deploy
+(Next.js + Mongo → a live grid) surfaced three defects; the corrected shape was
+then verified live (data persists across independent requests). See analysis
+`37-user-case-support-analysis.md`.
+
+- **Service layout** — the template app now lives under `services/web/`
+  (`services/web/app/`, `services/web/lib/`, `services/web/package.json`) instead
+  of the corpus-template root. `path:` in `cloudgrid.yaml` is the URL mount, not
+  the filesystem path: a service named `web` makes the CLI look for
+  `services/web/`; app files at the root fail with `Error: Service directory not
+  found: …/services/web`. Import paths are unchanged (the whole app moved
+  together). The example dir mirrors the same layout.
+- **Lazy DB client** — `services/web/lib/db.js` now reads `process.env.MONGODB_URL`
+  lazily inside `getDb`, never at module top level. A top-level read + throw
+  fails `next build`, which imports the module for route analysis before the grid
+  injects the var. Moving the check into the getter lets the build pass.
+- **`requires:` (not `needs:`)** — `cloudgrid.yaml` keeps `requires: [mongodb]`
+  with an explanatory comment. The CLI warns `requires:` is deprecated, but the
+  deployer currently only injects `MONGODB_URL` from `requires:`; migrating to
+  `needs:` builds fine but injects NO DB connection (every request 500s). This is
+  a platform bug (flagged to Gilad); the template stays on `requires:` until the
+  deployer honors `needs:`.
+- Regenerated the template and example `index.md` fetch-bundles to describe the
+  corrected `services/web/` tree, the lazy client, and the requires-not-needs
+  note. Updated the `app-with-data` workflow and `persistent-apps`
+  troubleshooting docs accordingly. Extended the app-with-data test to assert the
+  new service paths, that `cloudgrid.yaml` has `requires:` and not `needs:`, and
+  that `db.js` has no module-top-level `process.env.MONGODB_URL` read.
+
 ## 0.9.0
 
 New capability: the **app-with-data** golden path — the first runtime
