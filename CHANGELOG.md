@@ -18,7 +18,7 @@ per-template fragments. Additive; no deploy-behavior change.
 - **The nextjs+database example uses the working shape today** — active
   `requires: [mongodb]` with the canonical `needs: {database: true}` shown only as
   a comment, mirroring the live-verified `app-with-data` template. The deployer
-  does not inject from `needs:` yet (atomicfuse/cloudgrid#1527); `needs:` and
+  does not inject from `needs:` yet (platform issue #1527); `needs:` and
   `requires:` together are validator-rejected.
 - **Wiring** — the `gridctl_start` PLAYBOOK gains a rule pointing agents at the
   reference before writing a `cloudgrid.yaml`; `capability-map.md` ↔

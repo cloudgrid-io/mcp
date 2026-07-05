@@ -1,7 +1,7 @@
 # cloudgrid.yaml reference — the full manifest schema for agents
 
-> **Canonical source:** `cloudgrid-yaml-reference.md` in the platform repo
-> (`cloudgrid-io/cloudgrid` / atomicfuse). This is the agent-facing distribution
+> **Canonical source:** `cloudgrid-yaml-reference.md` in the CloudGrid platform
+> repo. This is the agent-facing distribution
 > of that reference — practically complete, not a verbatim dump. **Keep in sync**
 > with the upstream: when the platform reference changes, update this doc.
 >
@@ -64,7 +64,7 @@ services:
 
 **This is the one agents get wrong.** The canonical schema is `needs: {database:
 true}`, but the deployer does NOT inject from `needs:` yet
-(atomicfuse/cloudgrid#1527). Today you MUST use `requires: [mongodb]`, which injects
+(tracked in platform issue #1527). Today you MUST use `requires: [mongodb]`, which injects
 `MONGODB_URL`. `needs:` and `requires:` cannot both be active — the validator
 rejects the combination — so the canonical `needs:` is shown ONLY as a comment.
 
@@ -532,7 +532,7 @@ Use `source.path: .` for a flat project where the code lives at the root.
 The canonical schema above is where CloudGrid is going. Here is what actually works
 on the **live deployer today** — bake these into any yaml you author:
 
-- **The deployer does NOT inject from `needs:` yet** (atomicfuse/cloudgrid#1527). A
+- **The deployer does NOT inject from `needs:` yet** (tracked in platform issue #1527). A
   yaml with `needs: {database: true}` builds fine but injects NO connection string,
   so every request 500s at runtime.
 - **For a database or cache TODAY, use the deprecated `requires:` field:**
