@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.8.4
+
+Robust content handling for `gridctl_drop`/`cloudgrid_drop`: stop silently
+publishing empty/garbage drops. Fixes the real repro where a heavy persona-deck
+(~535KB with embedded base64 photos) was base64-encoded by the agent and passed
+as `html`; `runDrop` wrapped the base64 blob in an HTML shell and published a
+wall of text (an empty-looking page) while reporting SUCCESS.
+
+- **Base64-of-HTML decode (both routes).** New `decodeIfBase64Html` helper: a
+  strict-base64 blob (whitespace-stripped, length divisible by 4, ≥64 chars,
+  `[A-Za-z0-9+/]` + up to two `=`) that DECODES to full HTML is published as the
+  real HTML. Applied to the inline `html` string and to bytes read via `path`
+  (a base64 `.txt` file), so both resolve to a real page instead of text.
+- **Refuse garbage instead of wrapping it.** After the base64 attempt, content
+  that still isn't full HTML is only wrapped when it's a small (≤8KB) genuine
+  snippet/fragment (existing "share this snippet" behavior preserved). A large
+  blob, undecodable base64, or a bare file path now throws an actionable error
+  naming the case — no silent publish.
+- **`@`-prefixed / mistaken-path inputs.** A leading `@` on `html` is stripped;
+  a path-looking `html` in the local edition is read from disk when the file
+  exists (clear error naming the resolved path when it doesn't). On the hosted
+  server a path-looking `html` errors, steering to raw inline HTML.
+- **Correct `path` content-type.** The `path` route now serves HTML as
+  `text/html` (sniffed from the bytes or a `.html`/`.htm` filename) instead of
+  always `application/octet-stream`, so an HTML upload renders as a page rather
+  than downloading as a blob. A `.txt` that decodes to HTML uploads as
+  `index.html`.
+- **Auth-aware inline size cap.** The 2MB cap now applies only to anonymous
+  inline drops; signed-in inline drops get `AUTHED_HTML_MAX_BYTES` (25MB,
+  conservative — kept ≤ the server's single-artifact limit, `TODO(platform-confirm)`).
+  The check is relocated to after auth is resolved. `path` (read from disk) is
+  uncapped.
+- **Guidance.** `gridctl_drop`/`gridctl_plug` descriptions and the `path`/`html`
+  input schemas now steer heavy/local files to `path` (never base64, never an
+  `@`-prefixed path or a file path as `html`, no `artifact_files` parameter). A
+  new playbook rule tells agents to prefer `path` for heavy/local files and to
+  use `gridctl_source` to inspect a drop that looks empty.
+
 ## 0.8.3
 
 Added `gridctl_source`/`cloudgrid_source`: fetch a drop's current HTML inline so

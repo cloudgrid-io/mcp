@@ -36,6 +36,12 @@ export const MCP_VERSION = (() => {
 })();
 
 const ANON_HTML_MAX_BYTES = 2_000_000;
+// Signed-in inline drops get a larger cap than the anonymous 2MB. Kept
+// conservative — it must stay ≤ the platform's single-artifact byte limit.
+// TODO(platform-confirm): confirm the server's single-artifact limit (the
+// folder-plug path uses PLUG_MAX_TOTAL_BYTES = 100MB, but the single-artifact
+// inline limit is not yet confirmed) and raise this to match.
+const AUTHED_HTML_MAX_BYTES = 25_000_000;
 const CONSOLE_URL = "https://console.cloudgrid.io/";
 
 // ── Widget resources (ChatGPT Apps SDK, web edition only) ────────────────────
@@ -81,6 +87,7 @@ Operating rules:
 7. When signed in and the user has more than one grid, do not assume a target — the publish tools will ask; relay the choice to the user and pass the chosen grid.
 8. When a build/deploy fails unexpectedly, offer to report it to the CloudGrid team — only with the user's explicit consent (ask first). Send just the error + the failed request by default (call gridctl_report), and never send the whole conversation unless the user agrees (include_conversation). Respect privacy.
 9. To modify an existing drop when you don't already have its HTML in context, first call gridctl_source to fetch the current HTML, apply your change, then call gridctl_drop/gridctl_plug with target_entity_id (the drop's entity_id) to update the SAME URL in place. Do not ask the user to paste the HTML back.
+10. Publishing a heavy or local file: in the local edition use the path parameter so it is read from disk (no inline size limit); never base64-encode HTML and never pass a file path (or an @-prefixed path) as html. If a drop looks empty, use gridctl_source to check what was actually published, then re-plug with the real HTML/path and target_entity_id.
 
 Deploy is edition-dependent: on the hosted MCP call the drop tool with the HTML; on local MCP / CLI write the file and run the plug tool. An HTML page deploys synchronously, so you get a URL right away.`;
 
@@ -782,6 +789,50 @@ function looksLikeFullHtml(s) {
   return head.startsWith("<!doctype html") || head.startsWith("<html");
 }
 
+// A real user (heavy persona-deck in Claude Desktop) hit an agent that worried
+// about inline size, base64-encoded the HTML, and passed the base64 blob as
+// `html` — which used to get wrapped in an HTML shell and published as a wall of
+// text (an empty-looking page). Rescue that case: if the candidate text is not
+// already full HTML but is a strict-base64 blob that DECODES to full HTML, use
+// the decoded HTML. Applied to both the inline `html` string and the bytes read
+// via `path` (a base64 `.txt` file). Returns the original text unchanged when it
+// isn't base64-of-HTML, so genuine snippets are untouched.
+function decodeIfBase64Html(text) {
+  if (typeof text !== "string" || looksLikeFullHtml(text)) {
+    return { html: text, wasBase64: false };
+  }
+  const stripped = text.replace(/\s+/g, "");
+  if (
+    stripped.length < 64 ||
+    stripped.length % 4 !== 0 ||
+    !/^[A-Za-z0-9+/]+={0,2}$/.test(stripped)
+  ) {
+    return { html: text, wasBase64: false };
+  }
+  let decoded;
+  try {
+    decoded = Buffer.from(stripped, "base64").toString("utf8");
+  } catch {
+    return { html: text, wasBase64: false };
+  }
+  if (looksLikeFullHtml(decoded)) {
+    return { html: decoded, wasBase64: true };
+  }
+  return { html: text, wasBase64: false };
+}
+
+// Heuristic: does the string look like a bare filesystem path (not HTML)? Used
+// to catch a model that passes a file path — or an invented `@/home/...`
+// shorthand — as `html`. Single line, no HTML tag, path-ish shape.
+function looksLikePath(s) {
+  if (typeof s !== "string") return false;
+  const t = s.trim();
+  if (t.length === 0 || t.length > 4096) return false;
+  if (/[\n\r]/.test(t)) return false;
+  if (/<[a-z!/]/i.test(t)) return false; // contains a tag → not a path
+  return /^(~|\.{0,2}\/|[A-Za-z]:[\\/]|\/)/.test(t) || /\.[A-Za-z0-9]{1,8}$/.test(t);
+}
+
 // Anonymous drops are owned by the platform Guest Org, whose slug is the apex
 // the public URL hangs off (https://guest.cloudgrid.io/<slug>).
 const GUEST_ORG_SLUG = "guest";
@@ -827,6 +878,11 @@ export async function runDrop(
 ) {
   // `grid` is an accepted alias for `org` (Gilad's org→grid rename); `org` still works.
   const targetGrid = org ?? grid;
+  // The `deps` seam (readFile/exists) exists ONLY so the content-handling
+  // regression tests can drive the `path` / `@`-path routes offline. Production
+  // always calls this with no deps.
+  const { readFile: readFileImpl = readFile, fsExists = existsSync } = deps;
+
   // Defensive: the web edition schema excludes `path`, but if a model still
   // passes one (e.g. from a cached tool description), reject early with a
   // clear explanation.
@@ -836,30 +892,106 @@ export async function runDrop(
     );
   }
 
+  // An agent may pass an `@`-prefixed path (invented `@/home/claude/...`
+  // shorthand) or a bare filesystem path as `html`. Normalise: strip a leading
+  // `@`, and in the local edition promote a path-looking `html` to the `path`
+  // route (read from disk) when the file exists. On the hosted server there is
+  // no disk, so a path-looking `html` is a clear error.
+  let effectivePath = filePath;
+  let htmlInput = typeof html === "string" ? html : undefined;
+  if (!effectivePath && typeof htmlInput === "string") {
+    let candidate = htmlInput;
+    if (candidate.startsWith("@")) candidate = candidate.slice(1);
+    if (!looksLikeFullHtml(candidate) && looksLikePath(candidate)) {
+      if (ctx.edition === "web") {
+        throw new Error(
+          `This looks like a file path (\`${candidate.trim()}\`), but the hosted server cannot read local ` +
+            `files — pass the raw HTML inline as \`html\`.`,
+        );
+      }
+      const resolvedPath = candidate.trim();
+      if (fsExists(resolvedPath)) {
+        effectivePath = resolvedPath;
+        htmlInput = undefined;
+      } else {
+        throw new Error(
+          `The path \`${resolvedPath}\` does not exist. Pass a valid \`path\` to the .html file, or pass ` +
+            `the raw HTML inline as \`html\` (do not base64-encode it, and there is no artifact_files parameter).`,
+        );
+      }
+    } else if (candidate !== htmlInput) {
+      // Leading `@` on genuine inline content — strip it and keep the content.
+      htmlInput = candidate;
+    }
+  }
+
   let bytes;
   let name;
   let type;
+  // Anonymous drops are inline-capped hard; signed-in drops get a larger cap.
+  // The cap is enforced AFTER auth is resolved (see below), so only inline
+  // routes flag themselves here — `path` (local, read from disk) is uncapped.
+  let enforceInlineCap = false;
 
-  if (filePath) {
-    bytes = await readFile(filePath);
-    name = filename || basename(filePath);
-    type = "application/octet-stream";
-  } else if (typeof html === "string" && html.length > 0) {
-    let content = html;
+  if (effectivePath) {
+    const raw = await readFileImpl(effectivePath);
+    const asText = Buffer.isBuffer(raw) ? raw.toString("utf8") : String(raw);
+    const { html: decoded, wasBase64 } = decodeIfBase64Html(asText);
+    const lowerName = String(effectivePath).toLowerCase();
+    const nameIsHtml = lowerName.endsWith(".html") || lowerName.endsWith(".htm");
+    if (wasBase64) {
+      // A base64 `.txt` (or similar) that decoded to real HTML → publish the
+      // decoded HTML as text/html under an index.html name.
+      bytes = Buffer.from(decoded, "utf8");
+      type = "text/html";
+      name = filename || (nameIsHtml ? basename(effectivePath) : "index.html");
+    } else {
+      bytes = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+      // Content-type sniff (fix #4): serve HTML as text/html so it renders as a
+      // page instead of downloading as a blob.
+      if (looksLikeFullHtml(asText) || nameIsHtml) {
+        type = "text/html";
+        name = filename || (nameIsHtml ? basename(effectivePath) : "index.html");
+      } else {
+        type = "application/octet-stream";
+        name = filename || basename(effectivePath);
+      }
+    }
+  } else if (typeof htmlInput === "string" && htmlInput.length > 0) {
+    // Rescue a base64-of-HTML blob passed as `html` (real user repro).
+    const { html: resolved } = decodeIfBase64Html(htmlInput);
+    let content = resolved;
     if (!looksLikeFullHtml(content)) {
-      content =
-        `<!doctype html>\n<html lang="en">\n<head><meta charset="utf-8">` +
-        `<title>Shared on CloudGrid</title></head>\n<body>\n${content}\n</body>\n</html>\n`;
+      const stripped = content.replace(/\s+/g, "");
+      const looksBase64 =
+        stripped.length >= 64 && stripped.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(stripped);
+      const isShortFragment = Buffer.byteLength(content, "utf8") <= 8192;
+      const hasTag = /<[a-z][\s\S]*>/i.test(content);
+      if (isShortFragment && (hasTag || (!looksBase64 && !looksLikePath(content)))) {
+        // Legit "share this snippet" — wrap a small text/markup fragment into a
+        // full document (preserve existing friendly behavior).
+        content =
+          `<!doctype html>\n<html lang="en">\n<head><meta charset="utf-8">` +
+          `<title>Shared on CloudGrid</title></head>\n<body>\n${content}\n</body>\n</html>\n`;
+      } else {
+        // Large, or base64 that failed to decode to HTML, or a bare file path:
+        // refuse instead of silently publishing garbage.
+        const kind = looksBase64
+          ? "base64"
+          : looksLikePath(content)
+            ? "a file path"
+            : "raw data";
+        throw new Error(
+          `This doesn't look like an HTML document (it looks like ${kind}). Pass the raw HTML as \`html\`, ` +
+            `or in the local edition pass \`path\` to the .html file — do NOT base64-encode it. ` +
+            `There is no artifact_files parameter.`,
+        );
+      }
     }
     bytes = Buffer.from(content, "utf8");
     name = filename || "index.html";
     type = "text/html";
-    if (bytes.byteLength > ANON_HTML_MAX_BYTES) {
-      throw new Error(
-        `This HTML is ${(bytes.byteLength / 1e6).toFixed(2)} MB. Anonymous drops are capped at 2 MB. ` +
-          `Trim it, or sign in to publish larger.`,
-      );
-    }
+    enforceInlineCap = true;
   } else {
     throw new Error("Provide either `html` (inline content) or `path` (a local file).");
   }
@@ -920,6 +1052,26 @@ export async function runDrop(
     }
   }
   const isAnonymousWire = mode === "anon-edit" || !authToken;
+
+  // Auth-aware inline size cap (relocated here — auth is only known now). Anon
+  // inline drops stay capped at 2MB; signed-in inline drops get the larger
+  // AUTHED cap. `path` (read from disk) is uncapped and does not set the flag.
+  if (enforceInlineCap) {
+    if (isAnonymousWire) {
+      if (bytes.byteLength > ANON_HTML_MAX_BYTES) {
+        throw new Error(
+          `This HTML is ${(bytes.byteLength / 1e6).toFixed(2)} MB. Anonymous drops are capped at 2 MB. ` +
+            `Trim it, or sign in to publish larger.`,
+        );
+      }
+    } else if (bytes.byteLength > AUTHED_HTML_MAX_BYTES) {
+      throw new Error(
+        `This HTML is ${(bytes.byteLength / 1e6).toFixed(2)} MB. Inline drops are capped at ` +
+          `${(AUTHED_HTML_MAX_BYTES / 1e6).toFixed(0)} MB. In the local edition pass \`path\` to the ` +
+          `.html file (read from disk — no inline size limit) instead of pasting it inline.`,
+      );
+    }
+  }
 
   const headers = {};
   if (!isAnonymousWire) {
@@ -2283,8 +2435,8 @@ export function registerTools(server, ctx) {
         ...dropReplugParams,
       }
     : {
-        html: z.string().optional().describe("Inline HTML to publish. A fragment is wrapped into a full document."),
-        path: z.string().optional().describe("Path to a local file to upload instead of inline HTML."),
+        html: z.string().optional().describe("Inline HTML to publish (a small fragment is wrapped into a full document). Pass the RAW HTML — do NOT base64-encode it, and do NOT pass an `@`-prefixed path or a file path here. For a large or image-heavy document, use `path` instead."),
+        path: z.string().optional().describe("Path to a local .html file to upload instead of inline HTML — read from disk with no inline size limit. Preferred for large or image-heavy documents. There is no `artifact_files` parameter."),
         filename: z.string().optional().describe("Filename to present. Defaults to index.html for inline HTML."),
         anonymous: z.boolean().optional().describe("Force an anonymous drop even if the user is signed in."),
         grid: z.string().optional().describe("Leave unset; the tool will ask the user which grid to publish into. Only set this after the user picks from the list the tool returns."),
@@ -2295,7 +2447,7 @@ export function registerTools(server, ctx) {
   reg(
     "gridctl_drop",
     {
-      description: "Publish an HTML page or file to CloudGrid and get a public shareable URL. Use when the user wants to share, publish, send, or 'deploy' an artifact, or wants a link to send a friend. Re-drops in the same session UPDATE THE SAME entity in place — same link, new content, expiry reset (pass fresh: true to force a new drop, or entity_id to target a specific earlier drop). If signed in, it publishes into the user's grid as an owned inspiration; if not, it drops anonymously into the Guest Grid, claimable later — the result includes an entity_id + owner_token to persist as the re-plug/claim handle for later sessions. Drops expire per the platform default (7 days) unless claimed/owned; every in-place edit resets the timer. If you want to edit an existing drop but no longer have its HTML, call gridctl_source first to retrieve it, then re-plug with target_entity_id. Calls POST /api/v2/plug directly.",
+      description: "Publish an HTML page or file to CloudGrid and get a public shareable URL. Use when the user wants to share, publish, send, or 'deploy' an artifact, or wants a link to send a friend. Re-drops in the same session UPDATE THE SAME entity in place — same link, new content, expiry reset (pass fresh: true to force a new drop, or entity_id to target a specific earlier drop). If signed in, it publishes into the user's grid as an owned inspiration; if not, it drops anonymously into the Guest Grid, claimable later — the result includes an entity_id + owner_token to persist as the re-plug/claim handle for later sessions. Drops expire per the platform default (7 days) unless claimed/owned; every in-place edit resets the timer. If you want to edit an existing drop but no longer have its HTML, call gridctl_source first to retrieve it, then re-plug with target_entity_id. For a large or image-heavy document in the local edition, pass `path` to the .html file (read from disk — no inline size limit); do NOT base64-encode the content and do NOT pass an `@`-prefixed path or a file path as `html`. There is no `artifact_files` parameter. Calls POST /api/v2/plug directly.",
       inputSchema: dropInputSchema,
       outputSchema: {
         url: z.string().optional().describe("The public URL of the drop (stable across re-drops of the same entity)."),
