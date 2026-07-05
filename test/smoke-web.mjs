@@ -46,7 +46,7 @@ try {
   const names = toolList.map((t) => t.name).sort();
   console.log("web tools:", names.join(", "));
   // New gridctl_* names (direct-API + Agent Core) on the authed web edition.
-  for (const t of ["gridctl_drop", "gridctl_claim", "gridctl_plug", "gridctl_fork", "gridctl_download", "gridctl_login", "gridctl_login_status", "gridctl_visibility", "gridctl_orgs", "gridctl_start", "gridctl_fetch"]) {
+  for (const t of ["gridctl_drop", "gridctl_claim", "gridctl_plug", "gridctl_fork", "gridctl_download", "gridctl_login", "gridctl_login_status", "gridctl_visibility", "gridctl_orgs", "gridctl_start", "gridctl_fetch", "gridctl_report"]) {
     check(`exposes ${t}`, names.includes(t));
   }
   // Deprecated cloudgrid_* aliases still resolve during the migration.

@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.8.1
+
+Consent-gated error reporting. When a CloudGrid call fails in a way that looks
+like a genuine bug, the agent can OFFER to report it to the CloudGrid team — and
+only sends anything after the user's explicit yes. Privacy is the default: the
+error + failed-request context by default, never the whole conversation unless
+the user agrees.
+
+- **New `gridctl_report` tool (both editions).** Inputs: `message` (required —
+  the short "what failed" summary), `context` (`tool`, `inputs`, `grid`,
+  `original_request`, `error_code`, `error_detail`), and `include_conversation`
+  (default **false**; the agent sets it true only on an explicit user yes). Posts
+  `{app:"mcp", message, context, node_version, platform}` to
+  `POST /api/v2/errors/feedback`. Signed-in → `Authorization: Bearer`; anon on the
+  web edition → the trusted-server headers (works once the endpoint accepts them;
+  until then a 401 degrades to a friendly "sign in to report"). Obvious
+  secret-looking values in `context` are scrubbed client-side (defense-in-depth
+  on top of the server's redaction). Never throws — success / 429 / 401 / error
+  all return friendly text.
+- **`errorGuidance` report offer for genuine bugs only.** A 5xx, `INTERNAL_ERROR`,
+  or a build/deploy failure now appends a consent affordance that tells the agent
+  to ASK the user first, then call `gridctl_report`, and never send the full
+  conversation without an explicit yes. EXPECTED conditions — 429 rate-limit, the
+  `needs_grid` picker, 401 sign-in prompts, 409 `EDIT_REJECTED`, 403 — do NOT get
+  the offer (they aren't bugs), and unknown 4xx codes still pass through unchanged.
+- **Playbook consent rule.** `gridctl_start` now serves a rule: when a build/deploy
+  fails unexpectedly, offer to report it only with explicit consent, send just the
+  error + failed request by default, and never send the whole conversation unless
+  the user agrees.
+
 ## 0.8.0
 
 Alignment with the platform org→grid rollout and CLI 0.12. No user-facing

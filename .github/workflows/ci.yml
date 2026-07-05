@@ -43,6 +43,14 @@ jobs:
       # on authed multi-grid creates (like gridctl_drop), never on edits/anon,
       # and proceeds on an explicit/single grid. Drives the real tool handlers.
       - run: npm run test:grid-picker
+      # Offline consent-gated error-reporting test (0.8.1): gridctl_report posts
+      # {app:"mcp", message, context, node_version, platform} to
+      # /api/v2/errors/feedback (Bearer authed / trusted-server anon), scrubs
+      # secret-looking context keys, defaults include_conversation false, degrades
+      # gracefully on 401/429/network errors; the errorGuidance report offer is
+      # appended for 5xx/INTERNAL_ERROR/build-deploy failures but NOT for
+      # 429/needs_grid/401/409 EDIT_REJECTED.
+      - run: npm run test:error-reporting
 
   drift-guard:
     runs-on: ubuntu-latest
