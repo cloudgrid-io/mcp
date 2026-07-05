@@ -58,7 +58,7 @@ function makeExecSpy(handler) {
   return spy;
 }
 
-const fakeResolveCli = () => ({ entry: FAKE_ENTRY, version: "0.10.1" });
+const fakeResolveCli = () => ({ entry: FAKE_ENTRY, version: "0.12.0" });
 
 function electronFatalError() {
   const err = new Error("Command failed");
@@ -114,7 +114,7 @@ function electronFatalError() {
 {
   const exec = makeExecSpy(({ command, args }) => {
     if (command === process.execPath) throw electronFatalError();
-    if (String(args[args.length - 1]).includes("--version")) return { stdout: "0.10.2\n", stderr: "" };
+    if (String(args[args.length - 1]).includes("--version")) return { stdout: "0.12.0\n", stderr: "" };
     return { stdout: "GLOBAL OK\n", stderr: "" };
   });
   const result = await runCloudgrid(["whoami"], {}, { exec, resolveCli: fakeResolveCli });
@@ -137,7 +137,7 @@ function electronFatalError() {
 // ── 4. No usable runtime at all: bundled rung is skipped, fallbacks run ───────
 {
   const exec = makeExecSpy(({ args }) => {
-    if (String(args[args.length - 1]).includes("--version")) return { stdout: "0.10.2\n", stderr: "" };
+    if (String(args[args.length - 1]).includes("--version")) return { stdout: "0.12.0\n", stderr: "" };
     return { stdout: "GLOBAL OK\n", stderr: "" };
   });
   const result = await runCloudgrid(

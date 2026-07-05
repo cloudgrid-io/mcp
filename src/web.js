@@ -59,9 +59,9 @@ function makeWebContext(sessionId) {
     canOpenBrowser: false,
     // Transport OAuth wins; the in-tool login flow is the fallback.
     getToken: async () => sessionAuth[sessionId] ?? sessionToken,
-    // No local config on a shared host. The user passes `org`, or the API returns
-    // the list of orgs to choose from.
-    getActiveOrg: async () => null,
+    // No local config on a shared host. The user passes `grid`, or the API returns
+    // the list of grids to choose from.
+    getActiveGrid: async () => null,
     saveToken: async (jwt) => {
       sessionToken = jwt;
       return decodeJwt(jwt);

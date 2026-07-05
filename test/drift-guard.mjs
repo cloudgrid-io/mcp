@@ -23,7 +23,7 @@ function check(label, cond) {
 // Always use the pinned version via npx to guarantee the test runs against the
 // same CLI version the MCP is tested against — not whatever is on $PATH.
 
-const CLI_PIN = "@cloudgrid-io/cli@~0.10.1";
+const CLI_PIN = "@cloudgrid-io/cli@~0.12";
 
 async function getHelpText(verb) {
   const npx = process.platform === "win32" ? "npx.cmd" : "npx";

@@ -25,7 +25,7 @@ function makeCtx({ token = null, edition = "web" } = {}) {
     state: { pendingLoginCode: null, lastAnonClaim: null, lastDrop: null, anonCookie: null },
     canOpenBrowser: false,
     getToken: async () => token,
-    getActiveOrg: async () => null,
+    getActiveGrid: async () => null,
     saveToken: async () => ({}),
     savedLocationNote: () => "",
     trustedServer: null,
