@@ -49,10 +49,13 @@ try {
   for (const t of ["gridctl_drop", "gridctl_claim", "gridctl_plug", "gridctl_fork", "gridctl_download", "gridctl_login", "gridctl_login_status", "gridctl_visibility", "gridctl_orgs", "gridctl_start", "gridctl_fetch", "gridctl_report"]) {
     check(`exposes ${t}`, names.includes(t));
   }
-  // Deprecated cloudgrid_* aliases still resolve during the migration.
-  for (const t of ["cloudgrid_drop", "cloudgrid_claim", "cloudgrid_login", "cloudgrid_login_status", "cloudgrid_visibility", "cloudgrid_orgs"]) {
-    check(`exposes deprecated alias ${t}`, names.includes(t));
-  }
+  // 0.10.0: the deprecated cloudgrid_* aliases are GONE. No advertised tool name
+  // may start with cloudgrid_.
+  const cloudgridNames = names.filter((n) => n.startsWith("cloudgrid_"));
+  check(
+    `no advertised tool name starts with cloudgrid_ (found: ${cloudgridNames.join(", ") || "none"})`,
+    cloudgridNames.length === 0,
+  );
   check("does NOT expose CLI-only gridctl_init", !names.includes("gridctl_init"));
 
   // gridctl_plug is on the web edition now (spec v2 — the unified direct-API
@@ -63,10 +66,6 @@ try {
   check("web plug has `artifact_files` param", "artifact_files" in plugProps);
   check("web plug has `target_entity_id` param", "target_entity_id" in plugProps);
   check("web plug has `owner_token` param", "owner_token" in plugProps);
-
-  // Agent Core tools are gridctl_* from birth — no cloudgrid_* alias for them.
-  check("no cloudgrid_start alias", !names.includes("cloudgrid_start"));
-  check("no cloudgrid_fetch alias", !names.includes("cloudgrid_fetch"));
 
   // FIX A: web edition drop must NOT have `path` in schema, must have `html`.
   // The schema exclusion is the primary defense; the SDK strips unknown

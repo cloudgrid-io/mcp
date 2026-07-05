@@ -113,7 +113,7 @@ https://github.com/cloudgrid-io/mcp/releases/latest/download/cloudgrid.mcpb
 
 The bundle carries the full local toolset (including the `cloudgrid` CLI), so deploy
 and secrets tools work without a separate install. Sign in from chat with the
-`cloudgrid_login` tool on first use.
+`gridctl_login` tool on first use.
 
 ## For agents
 

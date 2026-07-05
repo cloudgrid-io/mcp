@@ -16,7 +16,7 @@ Which one you use depends on the client. Pick your client below.
 - **Node 18+** (for `npx`).
 - **No login needed to try it** — anonymous drop works out of the box. For owned
   drops (into your org), run `cloudgrid login` once, or use the `login` skill / the
-  `cloudgrid_login` MCP tool.
+  `gridctl_login` MCP tool.
 
 ---
 
@@ -45,7 +45,7 @@ npx skills add cloudgrid-io/skills
 ```
 claude mcp add cloudgrid -- npx -y @cloudgrid-io/mcp
 ```
-- **Find it under `/mcp`.** Exposes tools `cloudgrid_drop`, `cloudgrid_login`, …
+- **Find it under `/mcp`.** Exposes tools `gridctl_drop`, `gridctl_login`, …
 - Invoke by describing the task; the model calls the tool.
 
 > Where did my install go? `/skills` (skills), `/plugin` (plugin), `/mcp` (MCP).

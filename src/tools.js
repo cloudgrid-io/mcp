@@ -226,30 +226,30 @@ const MIN_CLI_VERSION = "0.12.0";
 // Verb map for the drift guard: each CLI-wrapping tool's top-level verb(s).
 // The drift-guard test imports this and asserts every verb exists in `cloudgrid --help`.
 export const CLI_TOOL_VERBS = {
-  cloudgrid_init:     ["init"],
-  // cloudgrid_plug is NOT here: gridctl_plug is now a direct-API tool
+  gridctl_init:     ["init"],
+  // gridctl_plug is NOT here: gridctl_plug is now a direct-API tool
   // (POST /api/v2/plug, spec v2 §3), not a CLI wrapper.
-  cloudgrid_logs:     ["logs"],
-  cloudgrid_share:    ["visibility"],
-  cloudgrid_feedback: ["feedback"],
-  cloudgrid_whoami:   ["whoami"],
-  cloudgrid_use:      ["use"],
-  cloudgrid_logout:   ["logout"],
-  cloudgrid_status:   ["status"],
-  cloudgrid_info:     ["info"],
-  cloudgrid_get:          ["get"],
-  cloudgrid_describe_grid: ["describe"],
-  cloudgrid_pickup:        ["pickup"],
-  cloudgrid_rename:   ["rename"],
-  cloudgrid_unplug:   ["unplug"],
-  cloudgrid_delete:   ["delete"],
-  cloudgrid_rollback: ["rollback"],
-  cloudgrid_versions: ["versions"],
-  cloudgrid_env:      ["env"],
-  cloudgrid_secrets:  ["secrets"],
-  cloudgrid_scaffold: ["scaffold"],
-  cloudgrid_doctor:   ["doctor"],
-  cloudgrid_open:     ["open"],
+  gridctl_logs:     ["logs"],
+  gridctl_share:    ["visibility"],
+  gridctl_feedback: ["feedback"],
+  gridctl_whoami:   ["whoami"],
+  gridctl_use:      ["use"],
+  gridctl_logout:   ["logout"],
+  gridctl_status:   ["status"],
+  gridctl_info:     ["info"],
+  gridctl_get:          ["get"],
+  gridctl_describe_grid: ["describe"],
+  gridctl_pickup:        ["pickup"],
+  gridctl_rename:   ["rename"],
+  gridctl_unplug:   ["unplug"],
+  gridctl_delete:   ["delete"],
+  gridctl_rollback: ["rollback"],
+  gridctl_versions: ["versions"],
+  gridctl_env:      ["env"],
+  gridctl_secrets:  ["secrets"],
+  gridctl_scaffold: ["scaffold"],
+  gridctl_doctor:   ["doctor"],
+  gridctl_open:     ["open"],
 };
 
 // Simple semver comparison: true when `version` >= MIN_CLI_VERSION.
@@ -2356,34 +2356,19 @@ export async function runSource(ctx, { entity_id, url, grid, slug } = {}) {
 // Registers the tools onto `server`. ctx.edition decides whether the CLI-wrapping
 // tools are included (they need a local machine).
 export function registerTools(server, ctx) {
-  // ── Tool naming: gridctl_* with deprecated cloudgrid_* aliases ────────────
-  // Every tool is registered under its new `gridctl_*` name AND its legacy
-  // `cloudgrid_*` alias (same handler), so nothing breaks mid-migration. The
-  // alias is marked deprecated in its description; both names resolve to the
-  // same handler. Aliases are removed in a later major. `reg` wraps the
+  // ── Tool naming: gridctl_* only ───────────────────────────────────────────
+  // Every tool is registered under its `gridctl_*` name only. The legacy
+  // deprecated `cloudgrid_*` aliases were removed in 0.10.0 — they doubled the
+  // connector tool list and de-duplicated poorly in permission UIs. Clients
+  // enumerate tools dynamically, so discovery is unaffected. `reg` wraps the
   // object-config `server.registerTool`; `regTool` wraps the positional
-  // `server.tool` shorthand. Both take the new gridctl_* name and derive the
-  // alias by swapping the prefix.
-  const aliasOf = (name) => name.replace(/^gridctl_/, "cloudgrid_");
-
+  // `server.tool` shorthand.
   const reg = (name, config, handler) => {
     server.registerTool(name, config, handler);
-    const alias = aliasOf(name);
-    if (alias !== name) {
-      server.registerTool(
-        alias,
-        { ...config, description: `(deprecated: use ${name}) ${config.description}` },
-        handler,
-      );
-    }
   };
 
   const regTool = (name, description, schema, annotations, handler) => {
     server.tool(name, description, schema, annotations, handler);
-    const alias = aliasOf(name);
-    if (alias !== name) {
-      server.tool(alias, `(deprecated: use ${name}) ${description}`, schema, annotations, handler);
-    }
   };
 
   // ── Widget resources (web edition, ChatGPT Apps SDK) ──────────────────────

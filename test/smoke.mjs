@@ -8,8 +8,8 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
-// The canonical gridctl_* tool set (local edition). The two Agent Core tools
-// (gridctl_start, gridctl_fetch) are gridctl_* from birth and have NO alias.
+// The canonical gridctl_* tool set (local edition). As of 0.10.0 these are the
+// ONLY advertised names — the deprecated cloudgrid_* aliases were removed.
 const GRIDCTL = [
   "gridctl_start",
   "gridctl_fetch",
@@ -48,12 +48,6 @@ const GRIDCTL = [
   "gridctl_open",
 ];
 
-// Deprecated cloudgrid_* aliases — every gridctl_* tool EXCEPT the two new
-// Agent Core tools keeps its legacy name as an alias (same handler).
-const ALIASES = GRIDCTL.filter((n) => n !== "gridctl_start" && n !== "gridctl_fetch").map((n) =>
-  n.replace(/^gridctl_/, "cloudgrid_"),
-);
-
 const transport = new StdioClientTransport({ command: "node", args: ["src/index.js"] });
 const client = new Client({ name: "cloudgrid-mcp-smoke", version: "0.0.0" });
 
@@ -69,14 +63,16 @@ const { tools } = await client.listTools();
 const names = tools.map((t) => t.name);
 const nameSet = new Set(names);
 
-const expected = [...GRIDCTL, ...ALIASES];
-check(`lists ${expected.length} tools`, names.length === expected.length);
+check(`lists exactly ${GRIDCTL.length} tools`, names.length === GRIDCTL.length);
 for (const name of GRIDCTL) check(`exposes ${name}`, nameSet.has(name));
-for (const name of ALIASES) check(`exposes deprecated alias ${name}`, nameSet.has(name));
 
-// Alias descriptions must point to the new name and NOT advertise cloudgrid_*.
-const aliasDrop = tools.find((t) => t.name === "cloudgrid_drop");
-check("cloudgrid_drop alias marked deprecated → gridctl_drop", (aliasDrop?.description ?? "").includes("(deprecated: use gridctl_drop)"));
+// 0.10.0: the deprecated cloudgrid_* aliases are GONE. No advertised tool name
+// may start with cloudgrid_.
+const cloudgridNames = names.filter((n) => n.startsWith("cloudgrid_"));
+check(
+  `no advertised tool name starts with cloudgrid_ (found: ${cloudgridNames.join(", ") || "none"})`,
+  cloudgridNames.length === 0,
+);
 
 // Local edition: gridctl_drop must include the `path` parameter, plus the
 // unified-plug re-plug handles (entity_id / owner_token / fresh).
@@ -100,8 +96,7 @@ check("plug has `owner_token` param", "owner_token" in plugProps);
 check("plug has `anon` param", "anon" in plugProps);
 check("plug dropped the CLI-wrap `target` param", !("target" in plugProps));
 
-// Agent Core: gridctl_start returns the playbook + presentation workflow; the
-// alias and new tool resolve to the same handler.
+// Agent Core: gridctl_start returns the playbook + presentation workflow.
 const start = await client.callTool({ name: "gridctl_start", arguments: {} });
 const startStruct = start.structuredContent ?? {};
 check("gridctl_start returns a playbook", (startStruct.playbook ?? "").length > 100);
@@ -115,9 +110,9 @@ const fetched = await client.callTool({ name: "gridctl_fetch", arguments: { kind
 const fetchedText = fetched.content?.[0]?.text ?? "";
 check("gridctl_fetch returns deck template HTML", fetched.isError !== true && /<!doctype html/i.test(fetchedText));
 
-// The deprecated alias resolves to the same handler as the new name.
-const aliasStatus = await client.callTool({ name: "cloudgrid_orgs", arguments: {} });
-check("deprecated alias cloudgrid_orgs resolves (no method-not-found)", aliasStatus !== undefined);
+// gridctl_orgs resolves under its canonical name.
+const orgsStatus = await client.callTool({ name: "gridctl_orgs", arguments: {} });
+check("gridctl_orgs resolves (no method-not-found)", orgsStatus !== undefined);
 
 // The end-to-end CLI call requires a logged-in cloudgrid CLI on $PATH.
 // In CI the CLI is not installed, so skip this part.

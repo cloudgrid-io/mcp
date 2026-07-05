@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.10.0
+
+Removed the deprecated `cloudgrid_*` tool aliases — tools are `gridctl_*` only.
+Halves the connector tool list and de-duplicates the permission UI (every tool
+previously showed twice in Claude's connector UI: `Cloudgrid drop` + `Gridctl
+drop`, etc.). Clients enumerate tools dynamically, so nothing that discovers
+tools breaks; only hard-coded `cloudgrid_*` tool references need to switch to
+`gridctl_*`.
+
+- **Registration** — `registerTools` no longer derives a `cloudgrid_*` alias for
+  each `gridctl_*` tool. The `aliasOf` helper and the second `registerTool` /
+  `server.tool` call are gone; `reg` and `regTool` now register each tool under
+  its `gridctl_*` name only. Every `gridctl_*` tool and handler is unchanged.
+  Local edition advertises 35 tools (was 68); web edition advertises 12 (was 18).
+- **Docs / corpus** — switched the remaining hard-coded `cloudgrid_*` MCP-tool
+  references (README, REMOTE, `src/corpus/**`, the `org-picker` widget's live
+  `callTool`, and the `CLI_TOOL_VERBS` drift-guard labels) to `gridctl_*`. CLI
+  commands (`cloudgrid init`, `cloudgrid logs`, …) are unchanged — those are the
+  CLI, not MCP tool names.
+- **Tests** — smoke/smoke-web/source-fetch now assert the aliases are ABSENT and
+  guard that no advertised tool name (and no registered handler) starts with
+  `cloudgrid_`. The docs-edition rename aliases (`search_cloudgrid_documentation`,
+  `cloudgrid_quickstart_guide`) are a separate mechanism and are untouched.
+
 ## 0.9.1
 
 fix: app-with-data template deploys correctly — services/<name>/ layout, lazy DB
