@@ -73,6 +73,14 @@ jobs:
       # requires: [mongodb] with only a COMMENTED canonical needs:, and NO template
       # yaml has active needs: AND requires: together (validator-rejected combo).
       - run: npm run test:self-describing
+      # Offline canonical cloudgrid.yaml reference test (0.11.1): the corpus doc
+      # cloudgrid-yaml fetches via fetchCorpus + the real gridctl_fetch handler,
+      # carries the full needs: vocabulary + injected env var names + validation
+      # rules + a full example, the requires-vs-needs caveat (#1527), and the DB
+      # example uses active requires: [mongodb] with only a COMMENTED canonical
+      # needs: — GUARDING that no yaml block shows active needs: AND requires:
+      # together. Also asserts the PLAYBOOK + capability-map cross-links.
+      - run: npm run test:canonical-yaml
 
   drift-guard:
     runs-on: ubuntu-latest

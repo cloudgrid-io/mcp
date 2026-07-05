@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.11.1
+
+Distribute Gilad's canonical `cloudgrid.yaml` reference into the agent-facing
+corpus, so the MCP/agents/builders can fetch one practically-complete schema and
+author `cloudgrid.yaml` correctly — instead of stitching it together from
+per-template fragments. Additive; no deploy-behavior change.
+
+- **New corpus doc** — `src/corpus/cloudgrid-yaml.md`, fetchable with
+  `gridctl_fetch("doc", "cloudgrid-yaml")` (same top-level `doc` kind as the
+  capability-map). Distilled from the platform's authoritative
+  `cloudgrid-yaml-reference.md` (cited in the header with a keep-in-sync note).
+  Covers: minimal real deployable examples (static / node / nextjs /
+  nextjs+database / cron-agent), the full annotated kitchen-sink example, the
+  service-types table, the nine `needs:` with their injected env var names, the
+  validation rules agents trip on, and a **CloudGrid-today caveat box**.
+- **The nextjs+database example uses the working shape today** — active
+  `requires: [mongodb]` with the canonical `needs: {database: true}` shown only as
+  a comment, mirroring the live-verified `app-with-data` template. The deployer
+  does not inject from `needs:` yet (atomicfuse/cloudgrid#1527); `needs:` and
+  `requires:` together are validator-rejected.
+- **Wiring** — the `gridctl_start` PLAYBOOK gains a rule pointing agents at the
+  reference before writing a `cloudgrid.yaml`; `capability-map.md` ↔
+  `cloudgrid-yaml.md` cross-link.
+- **Tests** — `test/canonical-yaml.test.mjs` asserts the doc fetches, carries the
+  needs vocabulary + the requires caveat + a full example + the active-`requires:`/
+  commented-`needs:` DB example, and guards that the doc shows no active `needs:` +
+  `requires:` together. Wired into CI.
+
 ## 0.11.0
 
 Self-describing templates + a capability map, so any LLM can match a user request
