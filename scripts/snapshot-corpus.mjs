@@ -40,6 +40,8 @@ const copies = [
   [`${SKILLS}/INSTALL.md`, "install.md"],
   [`${SKILLS}/COOKBOOK.md`, "cookbook.md"],
   [`${SKILLS}/INSTALL_FOR_AGENTS.md`, "install-for-agents.md"],
+  [`${SKILLS}/capability-map.md`, "capability-map.md"],
+  [`${SKILLS}/cloudgrid-yaml.md`, "cloudgrid-yaml.md"],
   // Individual skill docs
   [`${SKILLS}/skills/drop/SKILL.md`, "skill-drop.md"],
   [`${SKILLS}/skills/login/SKILL.md`, "skill-login.md"],
