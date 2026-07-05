@@ -1,19 +1,15 @@
-# Rename this app. The grid injects MONGODB_URL (and REDIS_URL if you add a cache)
-# as environment variables at runtime — do NOT set them yourself, and never commit
-# a connection string or secret.
+# Rename this app. The grid injects the DB connection string (and a Redis URL if
+# you add a cache) as environment variables at runtime — do NOT set them
+# yourself, and never commit a connection string or secret.
 #
-# NOTE: use `requires:` (NOT `needs:`). The CLI warns that `requires:` is deprecated,
-# but the deployer currently only injects MONGODB_URL from `requires:` — migrating to
-# `needs:` builds fine but injects NO database connection (every request 500s).
-# Keep `requires:` until CloudGrid's deployer honors `needs:`.
+# `needs: { database: true }` is the canonical, recommended shape. The deployer
+# provisions Mongo and injects DATABASE_MONGODB_URL (plus the legacy MONGODB_URL
+# alias). `requires:` is the deprecated v1 alias — don't author new yaml with it,
+# and never set `needs:` and `requires:` together (the validator rejects it).
 name: my-app
 services:
   web:
     type: nextjs
     path: /
-# Canonical capability (metadata): this app needs a database.
-# When #1527 lands (deployer honors needs:), replace requires: with:
-#   needs:
-#     database: true
-requires:
-  - mongodb
+needs:
+  database: true

@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.11.2
+
+Flip the corpus to canonical `needs:` now that the deployer injects from it
+(platform issue #1527 fixed and verified live: `needs: {database: true}` injects
+both `DATABASE_MONGODB_URL` and the legacy `MONGODB_URL`, and persists). The
+`requires:` shim baked in by 0.11.0/0.11.1 is removed.
+
+- **`app-with-data` template** — `cloudgrid.yaml` now declares the canonical
+  active `needs: { database: true }` (no `requires:`); `services/web/lib/db.js`
+  reads `process.env.DATABASE_MONGODB_URL || process.env.MONGODB_URL` (canonical
+  first, legacy fallback), keeping the lazy getter + clear unset-error. `index.md`
+  and `README.md` regenerated to match.
+- **`examples/app-with-data`** — the filled "Team Task Board" reference flipped to
+  active `needs: { database: true }` and `DATABASE_MONGODB_URL`.
+- **`cloudgrid-yaml.md`** — `needs:` is now the primary/recommended shape
+  everywhere; the §7 caveat box is rewritten to say `needs:` is canonical and
+  injects the connection env vars, `requires:` is the deprecated v1 alias, and the
+  two can't both be set. Kept a one-line historical note that #1527 was the old
+  non-injecting bug (now fixed). Static-vs-runtime, read-env-lazily, local-edition
+  notes and the full annotated example/tables retained.
+- **`capability-map.md`** — injection status updated: `database`/`cache`/`vector`
+  and the rest inject via `needs:` (no more "pending #1527").
+- **Workflow / troubleshooting** — `workflows/app-with-data.md` and
+  `troubleshooting/persistent-apps.md` corrected to recommend `needs:`.
+- **Tests** — the Task-41/42 guards are flipped: the DB example/template now must
+  use active `needs: { database: true }` and NO active `requires:`. The "never
+  active `needs:` + `requires:` together" guard is kept.
+
 ## 0.11.1
 
 Distribute Gilad's canonical `cloudgrid.yaml` reference into the agent-facing

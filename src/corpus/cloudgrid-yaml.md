@@ -14,9 +14,10 @@ entity (an app or an agent). It declares the services your entity runs, the
 infrastructure it needs, and how it behaves. `grid init` creates it; `grid plug`
 reads it to build and deploy.
 
-**READ THE CAVEAT BOX (bottom) FIRST if you are wiring a database or cache today** —
-the deployer does not inject from `needs:` yet, so the working shape for infra that
-must inject differs from the canonical schema below.
+**Wiring a database or cache? Use `needs:`** — `needs: {database: true}` is
+canonical and the deployer injects the connection env vars from it. See §7 for the
+`needs:`-vs-`requires:` note. `requires:` is the deprecated v1 alias; don't author
+new yaml with it.
 
 ---
 
@@ -60,38 +61,34 @@ services:
     path: /
 ```
 
-### Next.js + database — the working shape TODAY
+### Next.js + database — the canonical shape
 
-**This is the one agents get wrong.** The canonical schema is `needs: {database:
-true}`, but the deployer does NOT inject from `needs:` yet
-(tracked in platform issue #1527). Today you MUST use `requires: [mongodb]`, which injects
-`MONGODB_URL`. `needs:` and `requires:` cannot both be active — the validator
-rejects the combination — so the canonical `needs:` is shown ONLY as a comment.
+Declare the datastore with `needs: {database: true}`. The deployer provisions
+Mongo and injects `DATABASE_MONGODB_URL` (plus the legacy `MONGODB_URL` alias) at
+dev-time and runtime. `requires:` is the deprecated v1 alias — don't author new
+yaml with it, and never set `needs:` and `requires:` together (the validator
+rejects the combination). See §7 for the details.
 
 This mirrors the live-verified `app-with-data` template exactly: app code under
-`services/web/`, and the app reads `process.env.MONGODB_URL` **lazily** (inside a
-getter, never at module top level — a top-level read fails `next build`).
+`services/web/`, and the app reads `process.env.DATABASE_MONGODB_URL` (falling
+back to the legacy `MONGODB_URL`) **lazily** (inside a getter, never at module top
+level — a top-level read fails `next build`).
 
 ```yaml
-# Rename this app. The grid injects MONGODB_URL (and REDIS_URL if you add a cache)
-# as environment variables at runtime — do NOT set them yourself, and never commit
-# a connection string or secret.
+# Rename this app. The grid injects the DB connection string (and a Redis URL if
+# you add a cache) as environment variables at runtime — do NOT set them
+# yourself, and never commit a connection string or secret.
 #
-# NOTE: use `requires:` (NOT `needs:`). The CLI warns that `requires:` is deprecated,
-# but the deployer currently only injects MONGODB_URL from `requires:` — migrating to
-# `needs:` builds fine but injects NO database connection (every request 500s).
-# Keep `requires:` until CloudGrid's deployer honors `needs:`.
+# `needs: { database: true }` is canonical: the deployer provisions Mongo and
+# injects DATABASE_MONGODB_URL (plus the legacy MONGODB_URL alias). `requires:` is
+# the deprecated v1 alias — don't mix the two (the validator rejects it).
 name: my-app
 services:
   web:
     type: nextjs
     path: /
-# Canonical capability (metadata): this app needs a database.
-# When #1527 lands (deployer honors needs:), replace requires: with:
-#   needs:
-#     database: true
-requires:
-  - mongodb
+needs:
+  database: true
 ```
 
 ### Agent — a cron job
@@ -112,16 +109,16 @@ services:
     timezone: UTC
 ```
 
-> A cron/agent that also needs a database follows the same caveat: use
-> `requires: [mongodb]` today, not `needs: {database: true}`.
+> A cron/agent that also needs a database declares it the canonical way:
+> `needs: {database: true}` (not the deprecated `requires:`).
 
 ---
 
 ## 2. Full annotated example (the kitchen sink)
 
 Every supported field, commented. **No real project uses all of these at once** —
-this is a reference, not a template. (Note the `needs:` block here is the
-*canonical* schema; see the caveat box for what actually injects today.)
+this is a reference, not a template. (The `needs:` block here is the canonical
+schema — the deployer injects the connection env vars from it; see §7.)
 
 ```yaml
 # ─── Identity ───────────────────────────────────────────────────────
@@ -147,7 +144,7 @@ notify: true                        # Slack notification on deploy failure (defa
 # ─── Scaling ────────────────────────────────────────────────────────
 scale: auto                         # 'auto' (default), 'alert', or integer 1-10.
 
-# ─── Infrastructure needs (v2, CANONICAL — see caveat box for today) ─
+# ─── Infrastructure needs (v2, CANONICAL — the deployer injects from these) ─
 needs:
   database: true                    # Mongo (org-tier). Injects DATABASE_MONGODB_URL.
   cache: true                       # Redis with LRU eviction. Injects CACHE_REDIS_URL.
@@ -280,7 +277,7 @@ services:
 |-------|-------------|-------|
 | `domain` | `custom_domains` | Single custom domain string. |
 | `network` | `expose` | `{ public: bool }`. |
-| `requires` | `needs` | v1 infra requirements. **Cannot be mixed with `needs`.** ⚠️ But `requires:` is the ONLY thing that injects a DB/cache connection today — see caveat box. |
+| `requires` | `needs` | v1 infra requirements. Deprecated — author `needs:` instead. **Cannot be mixed with `needs`** (the validator rejects the combination). |
 | `persist` (top-level) | `needs.disk` | v1 entity-level filesystem persistence. |
 
 ---
@@ -396,8 +393,7 @@ services:
 
 The `needs:` block declares infrastructure capabilities; the platform provisions
 them and injects connection details as env vars. **Cron is NOT a need — it is a
-service type.** ⚠️ See the caveat box: `needs:` does not inject on the live
-deployer yet.
+service type.**
 
 | Need | Provides | Injected env var(s) | Backing |
 |------|----------|---------------------|---------|
@@ -453,9 +449,8 @@ needs:
 
 **Per `needs:` declaration:** as in the table above. Legacy aliases
 (`MONGODB_URL`, `REDIS_URL`, `PGVECTOR_URL`) are injected alongside the canonical
-names during the transition; new apps should read the canonical names — **except
-today**, when only `requires:` injects, and it injects the legacy `MONGODB_URL` /
-`REDIS_URL` names (see caveat box).
+names during the transition; new apps should read the canonical names
+(`DATABASE_MONGODB_URL`, etc.) with the legacy name as a fallback.
 
 ### Persistence (disk)
 
@@ -493,8 +488,8 @@ The platform validates `cloudgrid.yaml` at plug time — strictly.
 2. **No `org:` or `entity_id:` in the YAML.** Identity lives in
    `.cloudgrid/link.json` (gitignored), not the manifest.
 3. **No mixing `requires:` and `needs:`.** Use one or the other — the validator
-   rejects the combination. (Today, use `requires:` for infra that must inject;
-   see caveat box.)
+   rejects the combination. Author `needs:` (canonical); `requires:` is the
+   deprecated v1 alias.
 4. **No mixed persistence forms.** Entity-level flag form and service-level
    verbose array form cannot coexist.
 5. **Unknown fields are rejected** with a "did you mean?" suggestion.
@@ -527,23 +522,24 @@ Use `source.path: .` for a flat project where the code lives at the root.
 
 ---
 
-## 7. ⚠️ CloudGrid today — the critical caveat box (READ THIS)
+## 7. `needs:` vs `requires:` — and the live deploy mechanics (READ THIS)
 
-The canonical schema above is where CloudGrid is going. Here is what actually works
-on the **live deployer today** — bake these into any yaml you author:
+Bake these into any yaml you author:
 
-- **The deployer does NOT inject from `needs:` yet** (tracked in platform issue #1527). A
-  yaml with `needs: {database: true}` builds fine but injects NO connection string,
-  so every request 500s at runtime.
-- **For a database or cache TODAY, use the deprecated `requires:` field:**
-  - `requires: [mongodb]` → injects `MONGODB_URL` (Mongo).
-  - `requires: [redis]` → injects `REDIS_URL` (Redis).
-  These are the only infra that inject today, and only via `requires:`.
+- **`needs:` is canonical and it injects.** `needs: {database: true}` provisions
+  Mongo and injects the connection env vars — `DATABASE_MONGODB_URL` plus the
+  legacy `MONGODB_URL` alias. Likewise `cache: true` → `CACHE_REDIS_URL` (+legacy
+  `REDIS_URL`), `vector: pgvector` → `VECTOR_PGVECTOR_URL` (+legacy
+  `PGVECTOR_URL`), and so on across the nine needs (see §5). An app reading the
+  legacy names keeps working because the aliases are injected alongside.
+  (*Historical note: the deployer once did not inject from `needs:` — platform
+  issue #1527, now fixed and verified live. The old `requires:` workaround is
+  obsolete.*)
+- **`requires:` is the deprecated v1 alias** — `requires: [mongodb]` /
+  `requires: [redis]`. The CLI warns it's deprecated. **Don't author new yaml with
+  it**; use `needs:` instead.
 - **`needs:` and `requires:` together are HARD-REJECTED** by the validator ("use
-  one or the other"). So the working shape today is **`requires:`-only** for infra
-  that must inject — declare the canonical `needs:` as a **comment** that flips to
-  active when #1527 lands. Never show both active. (`ai` / AI Gateway is available
-  today via the `@cloudgrid-io/ai` SDK + `AI_GATEWAY_URL`.)
+  one or the other"). So author **`needs:`-only** — never set both.
 - **Static single-file pages deploy as inspirations** via `gridctl_drop` — instant,
   synchronous, works on the hosted edition and any client.
 - **A `cloudgrid.yaml` with `services:` makes it a runtime** — async build,
@@ -551,10 +547,10 @@ on the **live deployer today** — bake these into any yaml you author:
   returns `status: building`; poll status until live, then use the returned live
   URL. Re-plug the same entity to update the same URL.
 - **Read injected env vars lazily** (inside a getter/handler), never at module top
-  level — a top-level read of `MONGODB_URL` fails `next build`, which imports the
-  module for route analysis before the grid injects the var.
+  level — a top-level read of `DATABASE_MONGODB_URL` fails `next build`, which
+  imports the module for route analysis before the grid injects the var.
 
-The verified DB shape (mirrors the `app-with-data` template):
+The canonical DB shape (mirrors the `app-with-data` template):
 
 ```yaml
 name: my-app
@@ -562,13 +558,12 @@ services:
   web:
     type: nextjs
     path: /
-# Canonical (metadata): needs: { database: true } — flip to this when #1527 lands.
-requires:
-  - mongodb
+needs:
+  database: true
 ```
 
 ---
 
 *This doc is the agent-facing distribution of the platform's canonical
 `cloudgrid-yaml-reference.md`. See also `gridctl_fetch("doc", "capability-map")`
-for matching a user intent to a template + the today-vs-#1527 injection status.*
+for matching a user intent to a template + the `needs:` injection status.*

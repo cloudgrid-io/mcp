@@ -9,17 +9,19 @@ so it survives refresh and is shared across sessions — unlike a static page.
    root.** `path:` in `cloudgrid.yaml` is the URL mount, NOT the filesystem path.
    The service named `web` → the CLI looks for `services/web/`. App files at the
    root fail with `Error: Service directory not found: …/services/web`.
-2. **Read `MONGODB_URL` LAZILY (inside the getter), never at module top level.**
-   The grid injects the DB connection string as the `MONGODB_URL` environment
-   variable at dev-time and runtime; the app reads `process.env.MONGODB_URL`
-   inside `getDb`. A top-level `const uri = process.env.MONGODB_URL; if (!uri)
+2. **Read the DB connection string LAZILY (inside the getter), never at module
+   top level.** The grid injects it as the `DATABASE_MONGODB_URL` environment
+   variable (plus the legacy `MONGODB_URL` alias) at dev-time and runtime; the
+   app reads `process.env.DATABASE_MONGODB_URL || process.env.MONGODB_URL` inside
+   `getDb`. A top-level `const uri = process.env.DATABASE_MONGODB_URL; if (!uri)
    throw` fails `next build` (the module is imported for route analysis before
    the grid injects the var). Never hardcode a connection string; never commit a
    secret.
-3. **Declare the datastore with `requires: [mongodb]` — NOT `needs:`.** The CLI
-   warns `requires:` is deprecated, but the deployer only injects `MONGODB_URL`
-   from `requires:`; `needs:` builds fine but injects NO DB connection (every
-   request 500s). Keep `requires:` until the deployer honors `needs:`.
+3. **Declare the datastore with `needs: { database: true }`.** This is the
+   canonical shape — the deployer provisions Mongo and injects
+   `DATABASE_MONGODB_URL` (plus the legacy `MONGODB_URL` alias). `requires:` is
+   the deprecated v1 alias; don't author new yaml with it, and never set `needs:`
+   and `requires:` together (the validator rejects the combination).
 
 Write these files into the scaffolded app folder — the app code goes under
 `services/web/` — adapt the collection/fields to the user's app, then `grid dev`
@@ -28,9 +30,9 @@ Write these files into the scaffolded app folder — the app code goes under
 ## File tree
 
 ```
-cloudgrid.yaml                          # name + services.web (nextjs) + requires: [mongodb]
+cloudgrid.yaml                          # name + services.web (nextjs) + needs: { database: true }
 services/web/package.json               # next, react, react-dom, mongodb driver only
-services/web/lib/db.js                  # lazy Mongo client from process.env.MONGODB_URL
+services/web/lib/db.js                  # lazy Mongo client from DATABASE_MONGODB_URL (legacy MONGODB_URL fallback)
 services/web/app/layout.js              # root layout + inline CSS
 services/web/app/page.js                # server component: reads todos from Mongo
 services/web/app/todo-form.js           # client form: POST/DELETE via the API
@@ -40,32 +42,28 @@ services/web/app/api/todos/route.js     # GET (list) / POST (add) / DELETE (remo
 ## cloudgrid.yaml
 
 ```yaml
-# Rename this app. The grid injects MONGODB_URL (and REDIS_URL if you add a cache)
-# as environment variables at runtime — do NOT set them yourself, and never commit
-# a connection string or secret.
+# Rename this app. The grid injects the DB connection string (and a Redis URL if
+# you add a cache) as environment variables at runtime — do NOT set them
+# yourself, and never commit a connection string or secret.
 #
-# NOTE: use `requires:` (NOT `needs:`). The CLI warns that `requires:` is deprecated,
-# but the deployer currently only injects MONGODB_URL from `requires:` — migrating to
-# `needs:` builds fine but injects NO database connection (every request 500s).
-# Keep `requires:` until CloudGrid's deployer honors `needs:`.
+# `needs: { database: true }` is the canonical, recommended shape. The deployer
+# provisions Mongo and injects DATABASE_MONGODB_URL (plus the legacy MONGODB_URL
+# alias). `requires:` is the deprecated v1 alias — don't author new yaml with it,
+# and never set `needs:` and `requires:` together (the validator rejects it).
 name: my-app
 services:
   web:
     type: nextjs
     path: /
-# Canonical capability (metadata): this app needs a database.
-# When #1527 lands (deployer honors needs:), replace requires: with:
-#   needs:
-#     database: true
-requires:
-  - mongodb
+needs:
+  database: true
 ```
 
-> **Capability:** this template's canonical need is `database: true` (see the
-> commented block above and the capability-map). The deployed yaml keeps
-> `requires: [mongodb]` because only `requires:` injects `MONGODB_URL` today
-> (#1527); `needs:` and `requires:` cannot co-exist active in the same yaml, so
-> the canonical `needs:` is shown only as a comment until the deployer honors it.
+> **Capability:** this template's need is `database: true`. The deployer
+> provisions Mongo and injects `DATABASE_MONGODB_URL` (plus the legacy
+> `MONGODB_URL` alias), so an app reading either var works. `requires:` is the
+> deprecated v1 alias — don't mix it with `needs:` (the validator rejects the
+> combination). See the capability-map for the full injection table.
 
 ## services/web/package.json
 
@@ -93,22 +91,23 @@ requires:
 ```js
 // Cached MongoDB client for the App Router.
 //
-// The grid injects the connection string as the MONGODB_URL environment variable
-// at runtime (after `grid plug`) and under `grid dev` locally. Never hardcode a
-// connection string here and never commit a secret.
+// The grid injects the connection string as the DATABASE_MONGODB_URL environment
+// variable (plus the legacy MONGODB_URL alias) at runtime (after `grid plug`) and
+// under `grid dev` locally. Read the canonical var first, fall back to the legacy
+// alias. Never hardcode a connection string here and never commit a secret.
 //
 // The env var and client are resolved LAZILY (inside getDb), never at module top
 // level — otherwise `next build` throws when it imports this module for route
-// analysis, before the grid injects MONGODB_URL.
+// analysis, before the grid injects the var.
 import { MongoClient } from "mongodb";
 
 function clientPromise() {
-  const uri = process.env.MONGODB_URL;
+  const uri = process.env.DATABASE_MONGODB_URL || process.env.MONGODB_URL;
   if (!uri) {
     throw new Error(
-      "MONGODB_URL is not set. The grid injects it automatically — run this app " +
-        "with `grid dev` locally, or deploy it with `grid plug` (the grid injects " +
-        "MONGODB_URL at runtime). Do not set it by hand.",
+      "DATABASE_MONGODB_URL is not set. The grid injects it automatically — run " +
+        "this app with `grid dev` locally, or deploy it with `grid plug` (the grid " +
+        "injects the DB connection string at runtime). Do not set it by hand.",
     );
   }
   if (!globalThis.__mongoClientPromise) {
@@ -119,7 +118,7 @@ function clientPromise() {
 
 export async function getDb() {
   const client = await clientPromise();
-  // The default DB comes from the MONGODB_URL path segment the grid injects.
+  // The default DB comes from the connection-string path segment the grid injects.
   return client.db();
 }
 ```
@@ -267,5 +266,5 @@ export async function DELETE(request) {
 
 - Rename the `todos` collection to your data (`submissions`, `tasks`, `entries`).
 - Change the document fields; add owners/timestamps/statuses.
-- Add `redis: private` to `requires` only if you actually need Redis.
+- Add `cache: true` to `needs:` only if you actually need Redis.
 - Run `grid dev` to test locally, `grid plug` to deploy (async — poll to live).

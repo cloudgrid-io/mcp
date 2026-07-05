@@ -1,14 +1,14 @@
-// Offline test for the canonical cloudgrid.yaml reference doc (0.11.1).
+// Offline test for the canonical cloudgrid.yaml reference doc (0.11.2).
 //
 // The MCP/agents/builders fetch one practically-complete cloudgrid.yaml schema so
 // they author the manifest correctly. Asserts:
 //   1. gridctl_fetch("doc","cloudgrid-yaml") resolves (via fetchCorpus AND the real
 //      gridctl_fetch handler) and returns substantial content.
 //   2. The doc carries the full needs: vocabulary (all 9) + the injected env var
-//      names, at least one full example, and the requires-vs-needs caveat.
-//   3. The DB example uses an ACTIVE requires: [mongodb] and only a COMMENTED
-//      canonical needs: — never an active needs:+requires: together (validator
-//      rejects the combo). This is the guard, extended from the Task-41 guard.
+//      names, at least one full example, and the needs-vs-requires note.
+//   3. The DB example uses an ACTIVE needs: {database: true} and NO active
+//      requires: — never an active needs:+requires: together (validator rejects
+//      the combo). This is the guard, flipped from the Task-41/42 requires: shim.
 //   4. The header cites the upstream canonical + a keep-in-sync note, and the doc
 //      cross-links the capability-map.
 //   5. Wiring: the gridctl_start PLAYBOOK points at the reference; capability-map
@@ -53,35 +53,36 @@ check("doc has validation rules (name charset, one service at /, reserved env, d
   /\^\[a-z\]/.test(doc) && /Only one service can\s+claim/.test(doc) &&
   /[Rr]eserved/.test(doc) && /circular/.test(doc));
 
-// ── 2b. The requires-vs-needs caveat box ─────────────────────────────────────
-check("doc has the requires-vs-needs caveat referencing #1527",
-  /#1527/.test(doc) && /requires:/.test(doc) && /needs:/.test(doc));
-check("doc caveat: use requires: [mongodb] / [redis] today",
-  /requires:\s*\[mongodb\]/.test(doc) && /requires:\s*\[redis\]/.test(doc));
-check("doc caveat: needs: and requires: together are rejected",
+// ── 2b. The needs-vs-requires box (§7) ───────────────────────────────────────
+check("doc §7 says needs: is canonical and injects the connection env vars",
+  /needs:/.test(doc) && /canonical/i.test(doc) && /DATABASE_MONGODB_URL/.test(doc));
+check("doc §7 marks requires: [mongodb] / [redis] as the deprecated v1 alias",
+  /requires:\s*\[mongodb\]/.test(doc) && /requires:\s*\[redis\]/.test(doc) && /deprecated/i.test(doc));
+check("doc §7 keeps only a one-line historical #1527 note (now fixed)",
+  /#1527/.test(doc) && /(fixed|obsolete|historical)/i.test(doc));
+check("doc §7: needs: and requires: together are rejected",
   /(reject|one or the other)/i.test(doc));
-check("doc caveat: static → inspiration (gridctl_drop) / services: → runtime",
+check("doc §7: static → inspiration (gridctl_drop) / services: → runtime",
   /inspiration/i.test(doc) && /gridctl_drop/.test(doc) && /runtime/i.test(doc) && /local edition/i.test(doc));
 
-// ── 3. GUARD: the DB example uses active requires: + only a COMMENTED needs: ──
+// ── 3. GUARD: the DB example uses active needs: {database: true}, NO requires: ─
 // Extract fenced code blocks and, for the ones that are cloudgrid.yaml manifests,
-// assert no block has BOTH an active needs: AND an active requires: (validator
-// rejects the combo). A commented `# needs:` alongside an active requires: is OK.
+// assert the DB example uses the canonical active needs: and that no block has
+// BOTH an active needs: AND an active requires: (validator rejects the combo).
 const codeBlocks = [...doc.matchAll(/```yaml\n([\s\S]*?)```/g)].map((m) => m[1]);
 check("doc contains yaml code blocks", codeBlocks.length >= 4);
 
-// The DB example: active requires: [mongodb], commented canonical needs:.
-const dbBlock = codeBlocks.find((b) => /requires:/.test(b) && /-\s*mongodb/.test(b));
-check("doc has a DB example with active requires: [mongodb]",
-  !!dbBlock && /^requires:/m.test(dbBlock) && /-\s*mongodb/.test(dbBlock));
-check("doc DB example has NO active needs: (only a comment)",
-  !!dbBlock && !/^\s*needs:/m.test(dbBlock));
-check("doc DB example SHOWS the canonical needs: as a comment",
-  !!dbBlock && /#\s*needs:/.test(dbBlock) && /database:\s*true/.test(dbBlock));
+// The DB example: active needs: {database: true}, no active requires:.
+const dbBlock = codeBlocks.find(
+  (b) => /type:\s*nextjs/.test(b) && /^\s*needs:/m.test(b) && /database:\s*true/.test(b),
+);
+check("doc has a DB example with active needs: {database: true}",
+  !!dbBlock && /^needs:/m.test(dbBlock) && /database:\s*true/.test(dbBlock));
+check("doc DB example has NO active requires: (deprecated v1 alias)",
+  !!dbBlock && !/^\s*requires:/m.test(dbBlock));
 
-// The guard: no single yaml manifest block shows active needs: AND requires:.
-// (The annotated kitchen-sink block shows an active `needs:` but NO `requires:`,
-// so it passes; the DB block shows an active `requires:` but no active `needs:`.)
+// The guard (kept): no single yaml manifest block shows active needs: AND
+// requires: together — the validator rejects the combination.
 for (const [i, block] of codeBlocks.entries()) {
   const activeNeeds = /^\s*needs:/m.test(block);
   const activeRequires = /^\s*requires:/m.test(block);
