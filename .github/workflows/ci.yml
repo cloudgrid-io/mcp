@@ -81,6 +81,18 @@ jobs:
       # GUARDING that no yaml block shows active needs: AND requires: together.
       # Also asserts the PLAYBOOK + capability-map cross-links.
       - run: npm run test:canonical-yaml
+      # Offline archetypes test (0.12.0): the two new runtime archetypes,
+      # api-service (node + database) and ai-app (ai + database chatbot). Asserts
+      # their workflow/template/example resolve via fetchCorpus + the real
+      # gridctl_fetch handler, both show in the gridctl_start menu, and the
+      # templates are internally consistent — active canonical needs: (no active
+      # requires:, never both), DB connection read LAZILY (never at module top
+      # level), no hardcoded connection string/secret. api-service: Node http on
+      # PORT||8080, DATABASE_MONGODB_URL||MONGODB_URL, a REST resource. ai-app:
+      # @cloudgrid-io/ai createClient().chat({messages}) zero-arg (no key) +
+      # persists to Mongo. GUARDS that neither declares needs: vector (#1545) or a
+      # cron service (#1543).
+      - run: npm run test:archetypes
 
   drift-guard:
     runs-on: ubuntu-latest
