@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{PRODUCT_NAME}} — {{TAGLINE}}</title>
+<style>
+  :root {
+    --bg: #0b0f17;
+    --panel: #121826;
+    --panel-2: #0f1523;
+    --fg: #e8edf5;
+    --muted: #9aa7bd;
+    --accent: #5b8cff;
+    --accent-2: #7c6bff;
+    --border: #223049;
+    --ok: #34d399;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.55;
+  }
+  a { color: inherit; }
+  section { padding: clamp(3rem, 8vw, 6rem) clamp(1.25rem, 6vw, 6rem); border-top: 1px solid var(--border); }
+  .container { max-width: 1080px; margin: 0 auto; }
+  nav {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    padding: 1.1rem clamp(1.25rem, 6vw, 6rem);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; background: rgba(11,15,23,0.85); backdrop-filter: blur(8px); z-index: 10;
+  }
+  nav .brand { font-weight: 600; letter-spacing: -0.01em; }
+  nav .links { display: flex; gap: 1.5rem; }
+  nav .links a { color: var(--muted); text-decoration: none; font-size: 0.95rem; }
+  nav .links a:hover { color: var(--fg); }
+  .btn {
+    display: inline-block; background: var(--accent); color: #fff; text-decoration: none;
+    padding: 0.75rem 1.4rem; border-radius: 10px; font-weight: 600; font-size: 0.95rem;
+    border: 1px solid transparent;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn.ghost { background: transparent; border-color: var(--border); color: var(--fg); }
+  @media (max-width: 640px) { nav .links { display: none; } }
+
+  .hero { text-align: center; display: grid; gap: 1.25rem; place-items: center; border-top: none; }
+  .hero .eyebrow { color: var(--accent); font-weight: 600; font-size: 0.9rem; letter-spacing: 0.02em; }
+  .hero h1 { font-size: clamp(2.4rem, 6vw, 4.2rem); line-height: 1.05; letter-spacing: -0.02em; max-width: 18ch; }
+  .hero p { font-size: clamp(1.05rem, 2.4vw, 1.4rem); color: var(--muted); max-width: 52ch; }
+  .hero .actions { display: flex; gap: 0.75rem; flex-wrap: wrap; justify-content: center; margin-top: 0.5rem; }
+
+  .section-head { text-align: center; display: grid; gap: 0.75rem; place-items: center; margin-bottom: 2.5rem; }
+  .section-head h2 { font-size: clamp(1.8rem, 4.5vw, 2.6rem); letter-spacing: -0.01em; }
+  .section-head p { color: var(--muted); max-width: 48ch; }
+
+  .features { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .feature { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 1.75rem; }
+  .feature .icon { width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); margin-bottom: 1rem; }
+  .feature h3 { font-size: 1.15rem; margin-bottom: 0.5rem; letter-spacing: -0.01em; }
+  .feature p { color: var(--muted); }
+
+  .pricing { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); align-items: start; }
+  .plan { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 2rem; display: grid; gap: 1rem; }
+  .plan.featured { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .plan .badge { align-self: start; font-size: 0.75rem; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 0.15rem 0.6rem; }
+  .plan h3 { font-size: 1.3rem; letter-spacing: -0.01em; }
+  .plan .price { font-size: 2.4rem; font-weight: 700; letter-spacing: -0.02em; }
+  .plan .price span { font-size: 1rem; color: var(--muted); font-weight: 400; }
+  .plan ul { list-style: none; display: grid; gap: 0.6rem; color: var(--muted); }
+  .plan li::before { content: "✓"; color: var(--ok); margin-right: 0.5rem; }
+
+  .testimonials { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .quote { background: var(--panel-2); border: 1px solid var(--border); border-radius: 14px; padding: 1.75rem; }
+  .quote blockquote { font-size: 1.05rem; margin-bottom: 1rem; }
+  .quote .who { color: var(--muted); font-size: 0.9rem; }
+
+  .faq { display: grid; gap: 0.75rem; max-width: 760px; margin: 0 auto; }
+  details { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.25rem; }
+  details summary { cursor: pointer; font-weight: 600; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+  details summary::-webkit-details-marker { display: none; }
+  details summary::after { content: "+"; color: var(--muted); }
+  details[open] summary::after { content: "–"; }
+  details p { color: var(--muted); margin-top: 0.75rem; }
+
+  .cta-band { text-align: center; display: grid; gap: 1.25rem; place-items: center; background: linear-gradient(135deg, rgba(91,140,255,0.12), rgba(124,107,255,0.12)); }
+  .cta-band h2 { font-size: clamp(1.8rem, 4.5vw, 3rem); letter-spacing: -0.01em; max-width: 22ch; }
+
+  footer { padding: 2.5rem clamp(1.25rem, 6vw, 6rem); border-top: 1px solid var(--border); color: var(--muted); font-size: 0.9rem; text-align: center; }
+</style>
+</head>
+<body>
+  <nav>
+    <span class="brand">{{PRODUCT_NAME}}</span>
+    <div class="links">
+      <a href="#features">Features</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#faq">FAQ</a>
+    </div>
+    <a class="btn" href="{{CTA_HREF}}">{{CTA_LABEL}}</a>
+  </nav>
+
+  <section class="hero">
+    <span class="eyebrow">{{HERO_EYEBROW}}</span>
+    <h1>{{HERO_HEADLINE}}</h1>
+    <p>{{HERO_SUBHEAD}}</p>
+    <div class="actions">
+      <a class="btn" href="{{CTA_HREF}}">{{CTA_LABEL}}</a>
+      <a class="btn ghost" href="#features">See how it works</a>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="container">
+      <div class="section-head">
+        <h2>{{FEATURES_HEADLINE}}</h2>
+        <p>{{FEATURES_SUBHEAD}}</p>
+      </div>
+      <div class="features">
+        <!-- FEATURES_START -->
+        <div class="feature"><div class="icon"></div><h3>{{FEATURE_1_TITLE}}</h3><p>{{FEATURE_1_BODY}}</p></div>
+        <div class="feature"><div class="icon"></div><h3>{{FEATURE_2_TITLE}}</h3><p>{{FEATURE_2_BODY}}</p></div>
+        <div class="feature"><div class="icon"></div><h3>{{FEATURE_3_TITLE}}</h3><p>{{FEATURE_3_BODY}}</p></div>
+        <div class="feature"><div class="icon"></div><h3>{{FEATURE_4_TITLE}}</h3><p>{{FEATURE_4_BODY}}</p></div>
+        <!-- Add more <div class="feature">...</div> blocks as needed. -->
+        <!-- FEATURES_END -->
+      </div>
+    </div>
+  </section>
+
+  <section id="pricing">
+    <div class="container">
+      <div class="section-head">
+        <h2>{{PRICING_HEADLINE}}</h2>
+        <p>{{PRICING_SUBHEAD}}</p>
+      </div>
+      <div class="pricing">
+        <!-- PRICING_START -->
+        <div class="plan">
+          <h3>{{PLAN_1_NAME}}</h3>
+          <div class="price">{{PLAN_1_PRICE}}<span>/{{PLAN_1_PERIOD}}</span></div>
+          <ul>
+            <li>{{PLAN_1_FEATURE_1}}</li>
+            <li>{{PLAN_1_FEATURE_2}}</li>
+            <li>{{PLAN_1_FEATURE_3}}</li>
+          </ul>
+          <a class="btn ghost" href="{{CTA_HREF}}">{{PLAN_1_CTA}}</a>
+        </div>
+        <div class="plan featured">
+          <span class="badge">Most popular</span>
+          <h3>{{PLAN_2_NAME}}</h3>
+          <div class="price">{{PLAN_2_PRICE}}<span>/{{PLAN_2_PERIOD}}</span></div>
+          <ul>
+            <li>{{PLAN_2_FEATURE_1}}</li>
+            <li>{{PLAN_2_FEATURE_2}}</li>
+            <li>{{PLAN_2_FEATURE_3}}</li>
+          </ul>
+          <a class="btn" href="{{CTA_HREF}}">{{PLAN_2_CTA}}</a>
+        </div>
+        <div class="plan">
+          <h3>{{PLAN_3_NAME}}</h3>
+          <div class="price">{{PLAN_3_PRICE}}<span>/{{PLAN_3_PERIOD}}</span></div>
+          <ul>
+            <li>{{PLAN_3_FEATURE_1}}</li>
+            <li>{{PLAN_3_FEATURE_2}}</li>
+            <li>{{PLAN_3_FEATURE_3}}</li>
+          </ul>
+          <a class="btn ghost" href="{{CTA_HREF}}">{{PLAN_3_CTA}}</a>
+        </div>
+        <!-- PRICING_END -->
+      </div>
+    </div>
+  </section>
+
+  <section id="testimonials">
+    <div class="container">
+      <div class="section-head"><h2>{{TESTIMONIALS_HEADLINE}}</h2></div>
+      <div class="testimonials">
+        <!-- TESTIMONIALS_START -->
+        <div class="quote"><blockquote>{{QUOTE_1}}</blockquote><div class="who">{{QUOTE_1_WHO}}</div></div>
+        <div class="quote"><blockquote>{{QUOTE_2}}</blockquote><div class="who">{{QUOTE_2_WHO}}</div></div>
+        <div class="quote"><blockquote>{{QUOTE_3}}</blockquote><div class="who">{{QUOTE_3_WHO}}</div></div>
+        <!-- TESTIMONIALS_END -->
+      </div>
+    </div>
+  </section>
+
+  <section id="faq">
+    <div class="container">
+      <div class="section-head"><h2>{{FAQ_HEADLINE}}</h2></div>
+      <div class="faq">
+        <!-- FAQ_START -->
+        <details><summary>{{FAQ_1_Q}}</summary><p>{{FAQ_1_A}}</p></details>
+        <details><summary>{{FAQ_2_Q}}</summary><p>{{FAQ_2_A}}</p></details>
+        <details><summary>{{FAQ_3_Q}}</summary><p>{{FAQ_3_A}}</p></details>
+        <details><summary>{{FAQ_4_Q}}</summary><p>{{FAQ_4_A}}</p></details>
+        <!-- FAQ_END -->
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-band">
+    <h2>{{CLOSING_HEADLINE}}</h2>
+    <a class="btn" href="{{CTA_HREF}}">{{CTA_LABEL}}</a>
+  </section>
+
+  <footer>{{FOOTER_TEXT}}</footer>
+</body>
+</html>

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{PRODUCT_NAME}} — {{TAGLINE}}</title>
+<style>
+  :root {
+    --bg: #0b0f17; --panel: #121826; --fg: #e8edf5; --muted: #9aa7bd;
+    --accent: #5b8cff; --accent-2: #7c6bff; --border: #223049; --ok: #34d399;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background:
+      radial-gradient(1200px 600px at 50% -10%, rgba(91,140,255,0.16), transparent 60%),
+      var(--bg);
+    color: var(--fg); min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased; line-height: 1.55;
+    display: grid; place-items: center; padding: 1.5rem;
+  }
+  .card { width: 100%; max-width: 560px; text-align: center; display: grid; gap: 1.5rem; }
+  .eyebrow { color: var(--accent); font-weight: 600; font-size: 0.9rem; letter-spacing: 0.02em; }
+  h1 { font-size: clamp(2.4rem, 8vw, 3.6rem); letter-spacing: -0.02em; line-height: 1.05; }
+  .sub { color: var(--muted); font-size: clamp(1.05rem, 3vw, 1.3rem); max-width: 44ch; margin: 0 auto; }
+
+  /* Static form: posts to the action below (mailto by default, or an external
+     form endpoint). It does NOT store signups on CloudGrid. See README. */
+  form { display: flex; gap: 0.6rem; max-width: 440px; margin: 0.5rem auto 0; flex-wrap: wrap; }
+  input[type="email"] {
+    flex: 1 1 220px; padding: 0.85rem 1rem; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--panel); color: var(--fg); font-size: 1rem;
+  }
+  input[type="email"]::placeholder { color: var(--muted); }
+  button {
+    padding: 0.85rem 1.5rem; border-radius: 10px; border: none; cursor: pointer;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff;
+    font-weight: 600; font-size: 1rem;
+  }
+  button:hover { filter: brightness(1.08); }
+
+  .proof { display: flex; align-items: center; justify-content: center; gap: 0.5rem; color: var(--muted); font-size: 0.92rem; }
+  .proof .count { color: var(--fg); font-weight: 700; }
+  .proof .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+  footer { color: var(--muted); font-size: 0.85rem; margin-top: 1rem; }
+</style>
+</head>
+<body>
+  <main class="card">
+    <span class="eyebrow">{{HERO_EYEBROW}}</span>
+    <h1>{{HEADLINE}}</h1>
+    <p class="sub">{{SUBHEAD}}</p>
+
+    <!-- Static form. Set `action` to a mailto: address or an external form
+         endpoint (for example a hosted form provider). Default = mailto. -->
+    <form action="mailto:{{SIGNUP_EMAIL}}" method="post" enctype="text/plain">
+      <input type="email" name="email" placeholder="you@example.com" required aria-label="Email address" />
+      <button type="submit">{{CTA_LABEL}}</button>
+    </form>
+
+    <div class="proof">
+      <span class="dot"></span>
+      <span><span class="count">{{SIGNUP_COUNT}}</span> {{SOCIAL_PROOF_TEXT}}</span>
+    </div>
+
+    <footer>{{FOOTER_TEXT}}</footer>
+  </main>
+</body>
+</html>

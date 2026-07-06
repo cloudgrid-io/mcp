@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{PRODUCT_NAME}} changelog</title>
+<style>
+  :root {
+    --bg: #0b0f17; --panel: #121826; --fg: #e8edf5; --muted: #9aa7bd;
+    --accent: #5b8cff; --border: #223049;
+    --added: #34d399; --fixed: #5b8cff; --changed: #fbbf24; --removed: #f87171;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased; line-height: 1.6;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: clamp(1.5rem, 5vw, 3.5rem) 1.25rem; }
+  header { margin-bottom: 3rem; }
+  header h1 { font-size: clamp(2rem, 5vw, 2.8rem); letter-spacing: -0.02em; margin-bottom: 0.5rem; }
+  header p { color: var(--muted); }
+
+  .entry { position: relative; padding-left: 1.5rem; padding-bottom: 2.5rem; border-left: 2px solid var(--border); }
+  .entry:last-child { border-left-color: transparent; padding-bottom: 0; }
+  .entry::before { content: ""; position: absolute; left: -7px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: var(--accent); border: 3px solid var(--bg); }
+  .entry .meta { display: flex; align-items: baseline; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; }
+  .entry .version { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.01em; }
+  .entry .date { color: var(--muted); font-size: 0.9rem; }
+  .entry ul { list-style: none; display: grid; gap: 0.6rem; }
+  .entry li { display: flex; gap: 0.65rem; align-items: baseline; color: var(--fg); }
+  .tag { flex: none; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    padding: 0.15rem 0.5rem; border-radius: 6px; min-width: 62px; text-align: center; }
+  .tag.added { color: var(--added); background: rgba(52,211,153,0.12); }
+  .tag.fixed { color: var(--fixed); background: rgba(91,140,255,0.12); }
+  .tag.changed { color: var(--changed); background: rgba(251,191,36,0.12); }
+  .tag.removed { color: var(--removed); background: rgba(248,113,113,0.12); }
+  .entry li span.text { color: var(--muted); }
+  footer { color: var(--muted); font-size: 0.85rem; margin-top: 2rem; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>{{PRODUCT_NAME}} changelog</h1>
+      <p>{{CHANGELOG_INTRO}}</p>
+    </header>
+
+    <!-- ENTRIES_START -->
+    <!-- Newest release first. Each li: <span class="tag TYPE">TYPE</span>
+         where TYPE is added / fixed / changed / removed. -->
+    <div class="entry">
+      <div class="meta">
+        <span class="version">{{ENTRY_1_VERSION}}</span>
+        <span class="date">{{ENTRY_1_DATE}}</span>
+      </div>
+      <ul>
+        <li><span class="tag added">Added</span><span class="text">{{ENTRY_1_ITEM_1}}</span></li>
+        <li><span class="tag fixed">Fixed</span><span class="text">{{ENTRY_1_ITEM_2}}</span></li>
+        <li><span class="tag changed">Changed</span><span class="text">{{ENTRY_1_ITEM_3}}</span></li>
+      </ul>
+    </div>
+
+    <div class="entry">
+      <div class="meta">
+        <span class="version">{{ENTRY_2_VERSION}}</span>
+        <span class="date">{{ENTRY_2_DATE}}</span>
+      </div>
+      <ul>
+        <li><span class="tag added">Added</span><span class="text">{{ENTRY_2_ITEM_1}}</span></li>
+        <li><span class="tag removed">Removed</span><span class="text">{{ENTRY_2_ITEM_2}}</span></li>
+      </ul>
+    </div>
+    <!-- Add more .entry blocks below, newest first. -->
+    <!-- ENTRIES_END -->
+
+    <footer>{{FOOTER_TEXT}}</footer>
+  </div>
+</body>
+</html>

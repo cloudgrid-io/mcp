@@ -1,0 +1,15 @@
+# Rename this app. The grid injects the DB connection string as an environment
+# variable at runtime — do NOT set it yourself, and never commit a connection
+# string or secret.
+#
+# `needs: { database: true }` is the canonical, recommended shape. The deployer
+# provisions Mongo and injects DATABASE_MONGODB_URL (plus the legacy MONGODB_URL
+# alias). `requires:` is the deprecated v1 alias — don't author new yaml with it,
+# and never set `needs:` and `requires:` together (the validator rejects it).
+name: my-admin
+services:
+  web:
+    type: nextjs
+    path: /
+needs:
+  database: true
