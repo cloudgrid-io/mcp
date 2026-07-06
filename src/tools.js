@@ -867,6 +867,30 @@ function composePlugUrl(data) {
   return `https://${grid}.cloudgrid.io/${slug}`;
 }
 
+// Parse the top-level `name:` from a cloudgrid.yaml manifest (issue #48). The
+// manifest is the source of truth for the entity name on a create, but the
+// inline-create wire never forwarded it, so an `artifact_files` create landed as
+// an auto `drop-XXXX` slug. Deliberately a tiny top-level-scalar scan (no YAML
+// dep, matching the rest of this module): the FIRST unindented `name:` key wins,
+// nested `services:`/`needs:` `name:` keys (indented) are ignored, and quotes +
+// inline `# comments` are stripped. Returns null when absent/unparseable.
+export function parseManifestName(yaml) {
+  if (typeof yaml !== "string" || yaml.length === 0) return null;
+  for (const rawLine of yaml.split(/\r?\n/)) {
+    // Top-level keys only — a leading space/tab means it is nested under a map.
+    if (/^\s/.test(rawLine)) continue;
+    const m = /^name:\s*(.+?)\s*$/.exec(rawLine);
+    if (!m) continue;
+    let val = m[1];
+    // Strip an inline comment on an unquoted scalar.
+    if (!/^["']/.test(val)) val = val.replace(/\s+#.*$/, "").trim();
+    // Strip surrounding quotes.
+    val = val.replace(/^(["'])(.*)\1$/, "$2").trim();
+    return val.length > 0 ? val : null;
+  }
+  return null;
+}
+
 // The public URL of a `/plug` response: the server-composed `url` verbatim
 // (canonical, flat-arch-aware — the unified plug spec), falling back to client-side composition
 // ONLY when the server left it empty (its composition is best-effort).
@@ -1958,6 +1982,24 @@ export async function runPlug(ctx, input, deps = {}) {
   }
   if (useAnonWire && ctx.state.anonCookie) headers["Cookie"] = ctx.state.anonCookie;
 
+  // ── CREATE manifest injection (issue #48) ───────────────────────────────────
+  // On a folder-walk create, a `cloudgrid.yaml` on disk is walked into the tree
+  // and — because directory reads surface it before the nested `services/…`
+  // files — rides the multipart body as the FIRST `artifact` part, with the
+  // walk's uniform `application/octet-stream` content-type. The runtime build
+  // orchestrator relies on the manifest leading the bundle (it drives the
+  // service graph + the entity name). The inline `artifact_files` create used to
+  // APPEND the `cloudgrid_yaml` manifest LAST and as `text/plain`, so a
+  // multi-service runtime rolled out with no service graph (0 replicas /
+  // rollout_failed) and an auto `drop-XXXX` name. Fold the manifest into the
+  // artifact list as the first entry (deduping any `cloudgrid.yaml` the caller
+  // already inlined) so both create paths emit a byte-equivalent bundle.
+  if (!isEdit && cloudgrid_yaml) {
+    const manifest = { path: "cloudgrid.yaml", buffer: Buffer.from(cloudgrid_yaml, "utf8") };
+    const rest = artifacts.filter((a) => a.path !== "cloudgrid.yaml");
+    artifacts = [manifest, ...rest];
+  }
+
   // ── Wire assembly ───────────────────────────────────────────────────────────
   const form = new FormData();
   for (const a of artifacts) {
@@ -1976,15 +2018,17 @@ export async function runPlug(ctx, input, deps = {}) {
         "cloudgrid.yaml",
       );
     }
-  } else if (cloudgrid_yaml) {
-    // On CREATE the manifest rides as a regular artifact file (the create wire
-    // filters a part FIELD-named `cloudgrid.yaml`, but a file named
-    // cloudgrid.yaml lands in the detected source tree).
-    form.append(
-      "artifact",
-      new Blob([cloudgrid_yaml], { type: "text/plain" }),
-      "cloudgrid.yaml",
-    );
+  }
+  // Honor the manifest name (issue #48): send `name:` parsed from `cloudgrid_yaml`
+  // as an explicit name/slug hint so the created entity uses it instead of an
+  // auto `drop-XXXX` slug. Harmless if the server owns slug generation; on a
+  // re-plug the entity's name is authoritative, so only send on create.
+  if (!isEdit) {
+    const manifestName = parseManifestName(cloudgrid_yaml);
+    if (manifestName) {
+      form.append("name", manifestName);
+      form.append("slug", manifestName);
+    }
   }
   if (hints?.kind) {
     // `kind_hint` is what the create orchestrator reads; `hints_kind` is the
@@ -2086,10 +2130,27 @@ export async function runPlug(ctx, input, deps = {}) {
     ...(freshOwnerToken ? { owner_token: freshOwnerToken } : {}),
   };
 
+  // Accurate status (issue #48): a runtime create/edit is an ASYNC build — the
+  // server replies `status: "building"` (+ a poll_url) while the rollout is still
+  // in flight. Do NOT claim "Live"/"Updated in place" for a build that has not
+  // finished; that reported success for apps that then rolled-out-failed. Only
+  // the terminal states get the live wording; anything still building points at
+  // the poll_url and gridctl_status.
+  const isBuilding = data.status === "building" || Boolean(data.poll_url);
   const lines = [];
-  lines.push(isEdit ? `Updated in place: ${url}` : `Live: ${url}`);
-  if (data.status === "building" && data.poll_url) {
-    lines.push(`Build dispatched — poll ${data.poll_url} (trace ${data.trace_id ?? "n/a"}).`);
+  if (isBuilding) {
+    lines.push(
+      isEdit
+        ? `Building (async): ${url} — the update is deploying, not live yet.`
+        : `Building (async): ${url} — the deploy is in progress, not live yet.`,
+    );
+    lines.push(
+      data.poll_url
+        ? `Poll ${data.poll_url} or run gridctl_status until it is ready (trace ${data.trace_id ?? "n/a"}). Do not report it as live until then.`
+        : "Run gridctl_status until it is ready. Do not report it as live until then.",
+    );
+  } else {
+    lines.push(isEdit ? `Updated in place: ${url}` : `Live: ${url}`);
   }
   if (data.entity_id) {
     lines.push(
