@@ -12,6 +12,12 @@
 #
 # Only two fields are required: name and services. Everything else is optional.
 # Full docs: docs/cloudgrid-yaml-reference.md
+#
+# THIS TEMPLATE (deck): a single self-contained static page. The active fields
+# are exactly name + services.web{type: static, path: /}; there are no needs.
+# This cloudgrid.yaml is the reference for plugging it as an OWNED static
+# runtime; the fast path is to deploy it as an INSPIRATION via gridctl_drop
+# (instant, and works on the hosted edition too).
 # ============================================================================
 
 
