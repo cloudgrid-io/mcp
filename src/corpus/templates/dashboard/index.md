@@ -17,11 +17,9 @@ The fillable HTML is the real template — fetch it with
 ## cloudgrid.yaml (reference only)
 
 ```yaml
-# static — deploys as an inspiration (instant, works on hosted) via gridctl_drop;
-# this yaml is only for plugging it as an OWNED static runtime (async, local
-# edition only). To publish the page, prefer gridctl_drop, not grid plug.
-#
-# needs: {}  # none — static, no infrastructure
+# On disk this file is the full-annotated reference (templates/_cloudgrid.yaml.reference) with EVERY
+# field present as a comment; only the fields below are uncommented, so it
+# deploys to exactly these active fields.
 name: dashboard
 services:
   web:

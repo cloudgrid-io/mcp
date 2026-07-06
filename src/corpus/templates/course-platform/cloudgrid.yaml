@@ -1,0 +1,237 @@
+# ============================================================================
+# cloudgrid.yaml — Complete Example
+# ============================================================================
+#
+# This file shows EVERY field the platform supports, with comments explaining
+# each one. It is a reference — no real project would use all of these at once.
+#
+# STANDARD: every CloudGrid template ships its cloudgrid.yaml in THIS full form.
+# Uncomment ONLY the fields the archetype needs (always: name + services; plus
+# needs: for runtime apps). Leave everything else commented. Comments are
+# ignored by the parser, so the file deploys to exactly the active fields.
+#
+# Only two fields are required: name and services. Everything else is optional.
+# Full docs: docs/cloudgrid-yaml-reference.md
+# ============================================================================
+
+
+# ─── IDENTITY ───────────────────────────────────────────────────────────────
+
+# Entity slug (REQUIRED). 2-42 chars, lowercase alphanumeric + hyphens.
+# Must start and end with a letter or digit.
+# Becomes part of your public URL: <name>-<4hex>.<org>.cloudgrid.io
+name: course-platform
+
+# One-line summary. Max 280 chars. If omitted, Grid Brain auto-generates one.
+# description: Order processing API for the e-commerce platform
+
+# Single emoji or short text shown as the entity icon. Max 64 chars.
+# icon: "📦"
+
+# Entity type: 'app' (default) or 'agent'. An agent is an app with an agent: block.
+# kind: app
+
+
+# ─── NETWORKING ─────────────────────────────────────────────────────────────
+
+# Whether this entity serves public HTTP traffic.
+# true = public URL + Ingress (default). false = internal only.
+# expose: true
+
+# Additional domain names this entity serves on (the platform URL is always active).
+# custom_domains:
+#   - orders.example.com
+#   - shop.example.com
+
+
+# ─── HEALTH PROBE (entity-level override) ──────────────────────────────────
+
+# Override the default health check for the entire entity.
+# probe:
+#   path: /healthz               # HTTP path to probe (default: /).
+#   expected: "<500"             # '<500' (default), '200', '2xx'.
+
+
+# ─── DEPLOY NOTIFICATIONS ──────────────────────────────────────────────────
+
+# Slack notification to the org's default channel on deploy failure.
+# true = notify (default), false = silent.
+# notify: true
+
+
+# ─── SCALING ────────────────────────────────────────────────────────────────
+
+# Replica scaling intent.
+#   'auto'  — platform decides from the grid tier (default).
+#   'alert' — single-replica, emit a SPOF warning at plug time.
+#   1-10    — explicit replica count, clamped to the grid max.
+# scale: auto
+
+
+# ─── INFRASTRUCTURE NEEDS ──────────────────────────────────────────────────
+#
+# Declare infrastructure; the platform provisions it and injects connection
+# details as env vars. Nine needs: database, cache, kv, queue, pubsub, vector,
+# object_storage, disk, ai. Simplest form is `true`.
+#
+# needs:
+#   # database — MongoDB. Injects DATABASE_MONGODB_URL (+ legacy MONGODB_URL).
+#   #   true | pool | dedicated | { tier: external, secret: MY_DB }
+#   database: true
+#   # cache — Redis, LRU eviction (derived data). Injects CACHE_REDIS_URL (+ REDIS_URL).
+#   #   true | redis | { engine: external, secret: MY_REDIS_URL }
+#   cache: true
+#   # kv — Redis, no eviction (durable: flags, idempotency). Injects KV_REDIS_URL.
+#   kv: true
+#   # queue — Redis job-queue substrate (BullMQ). Injects QUEUE_REDIS_URL.
+#   queue: true
+#   # pubsub — Redis broadcast pub/sub. Injects PUBSUB_REDIS_URL.
+#   pubsub: true
+#   # vector — pgvector on Postgres. Injects VECTOR_PGVECTOR_URL (+ PGVECTOR_URL).
+#   #   true | pgvector | { engine: pgvector, dim: 1536 }
+#   vector: pgvector
+#   # object_storage — GCS bucket. Injects OBJECT_STORAGE_GCS_BUCKET, _GCS_REGION.
+#   #   true | { size: 10Gi }
+#   object_storage: true
+#   # disk — persistent FS mount (PVC). Injects DISK_PATH. Pins to 1 replica.
+#   #   true | { size: 1Gi, mount: /var/data }  (forbidden: /proc /sys /dev)
+#   disk: true
+#   # ai — AI Gateway via @cloudgrid-io/ai. Injects AI_GATEWAY_URL. true | false.
+#   ai: true
+
+
+# ─── INTER-ENTITY COMMUNICATION ────────────────────────────────────────────
+
+# Entities this app calls (outbound). Service-account token injected per pair.
+# calls:
+#   - org:atomic/billing-api
+
+# Inbound caller policy — who can call YOUR entity.
+# callers:
+#   policy: auto                 # 'auto' | 'manual' (default).
+#   scope: org                   # 'org' (default) | 'space' | 'explicit'.
+#   fallback: deny               # 'deny' (default) | 'warn'.
+#   # allowed_apps:              # required only when scope: explicit
+#   #   - org:atomic/frontend
+
+
+# ─── VAULT ──────────────────────────────────────────────────────────────────
+
+# Map org vault items to env vars. Keys UPPER_SNAKE_CASE; values = vault item keys.
+# Stripe secret key for the checkout + webhook routes (course purchases). Set the
+# vault item once (`grid secrets set stripe-live-key`) and the platform injects it
+# as STRIPE_KEY. STRIPE_WEBHOOK_SECRET verifies incoming checkout webhooks.
+# AUTH_PROVIDER_KEY is the server-side secret for your auth provider (Clerk/Auth0).
+vault:
+  STRIPE_KEY: stripe-live-key
+  STRIPE_WEBHOOK_SECRET: stripe-webhook-secret
+  AUTH_PROVIDER_KEY: auth-provider-key
+
+
+# ─── CONNECTORS AND HOOKS ──────────────────────────────────────────────────
+
+# connectors:
+#   - id: team-slack
+#     target: org                # 'system' | 'org'.
+#     channel: "#deploys"
+# hooks:
+#   - on: deploy.failed          # release.published | deploy.failed | feedback.received | entity.created
+#     via: team-slack
+#     template: "Deploy failed for {entity_name}: {error}"
+#     channel: "#alerts"
+# triggers:
+#   - from: team-slack
+#     event: message
+#     channel: "#support"
+#     route: /webhooks/slack
+
+
+# ─── LOCAL DEVELOPMENT ──────────────────────────────────────────────────────
+
+# Config for `grid dev`. Redact fields in dev data snapshots.
+# dev:
+#   snapshot:
+#     mask:
+#       - users.email
+#       - users.phone
+
+
+# ─── AGENT METADATA ────────────────────────────────────────────────────────
+
+# An agent is an app with kind: agent (above) and an agent: block.
+# agent:
+#   purpose: Sync customer data from external CRM every night
+#   schedule: "0 2 * * *"
+#   trigger: webhook
+
+
+# ─── PRIVATE RESOURCE AUTO-DEPENDENCIES ────────────────────────────────────
+
+# When true (default), private resources are auto-injected as depends_on.
+# auto_depends_on_private_requires: true
+
+
+# ─── SERVICES (REQUIRED) ───────────────────────────────────────────────────
+#
+# At least one service is required. Key = service name (slug rules).
+# Types: node, nextjs, python, static, cron.
+#
+services:
+  web:
+    # type (REQUIRED): node | nextjs | python | static | cron
+    type: nextjs
+    # HTTP route: '/' | '/api' | false (internal) | omitted (=false + warning).
+    # Only one service per entity can claim '/'.
+    path: /
+    # Container port (default 8080; read process.env.PORT). Not for cron.
+    # port: 3000
+    # nextjs only: base_image: distroless (default) | alpine
+    # base_image: distroless
+    # node only: lang: javascript (default) | typescript
+    # lang: typescript
+    # Custom source location (default services/<name>/). '.' = project root.
+    # source:
+    #   path: src/worker
+    # Health probe: false/omitted (TCP) | true (/health) | "/path" | {path,expected}
+    # health:
+    #   path: /api/health
+    #   expected: "200"
+    # Static runtime env vars (strings). Reserved: PORT, APP_NAME, SERVICE_NAME,
+    # NODE_ENV, MONGODB_URL, REDIS_URL, AI_GATEWAY_URL, N8N_WEBHOOK_URL, CLOUDGRID_*.
+    # env:
+    #   LOG_LEVEL: info
+    # Sibling services/private resources that must be Ready first (no cron, no cycles).
+    # depends_on:
+    #   - worker
+    # Per-service needs override (merges with app-level needs).
+    # needs:
+    #   queue: true
+    # Static-only build step:
+    # build:
+    #   command: npm run build
+    #   output: dist
+    #   env:
+    #     VITE_API_URL: https://api.example.com
+    # node_version: "22"          # static build step: '18'|'20'|'22'|'24' (quoted)
+    # Cron-only: schedule (REQUIRED), timezone (UTC|EST|PST), run (job | https URL)
+    # schedule: "0 9 * * 1"
+    # timezone: UTC
+    # run: job
+    # Verbose per-service persistence (prefer needs.disk):
+    # persist:
+    #   - name: scratch
+    #     path: /tmp/scratch
+    #     size: 500Mi
+
+
+needs:
+  database: true
+
+
+# ============================================================================
+# NOTES
+# - NOT here: org:/entity_id: (→ .cloudgrid/link.json), secrets (→ grid secrets set),
+#   Dockerfile (platform generates from services.*.type).
+# - Deploy: grid plug   |   Local with grid resources: grid dev
+# - Full reference: docs/cloudgrid-yaml-reference.md  |  CLI: docs/cli-reference.md
+# ============================================================================

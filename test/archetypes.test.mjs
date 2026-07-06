@@ -123,8 +123,11 @@ async function fetchResolves(kind, name) {
   check(`${name} yaml has active needs: { database: true }`, /^needs:/m.test(yaml) && /database:\s*true/.test(yaml));
   check(`${name} yaml has NO active requires:`, !/^\s*requires:/m.test(yaml));
   check(`${name} yaml service type is node`, /type:\s*node/.test(yaml));
-  check(`${name} yaml does NOT declare needs: vector (blocked #1545)`, !/vector:/.test(yaml));
-  check(`${name} yaml does NOT declare a cron service (blocked #1543)`, !/type:\s*cron/.test(yaml));
+  // Active-only (the full-annotated cloudgrid.yaml lists vector/cron in COMMENTS as reference).
+  const apiActiveVector = yaml.split("\n").some((l) => !l.trim().startsWith("#") && /^\s*vector:/.test(l));
+  const apiActiveCron = yaml.split("\n").some((l) => !l.trim().startsWith("#") && /^\s*type:\s*cron/.test(l));
+  check(`${name} yaml does NOT declare active needs: vector (blocked #1545)`, !apiActiveVector);
+  check(`${name} yaml does NOT declare an active cron service (blocked #1543)`, !apiActiveCron);
 
   const server_js = read(dir + "services/api/src/index.js");
   check(`${name} server reads DATABASE_MONGODB_URL`, /process\.env\.DATABASE_MONGODB_URL/.test(server_js));

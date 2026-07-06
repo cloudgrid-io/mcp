@@ -39,6 +39,9 @@ services/web/app/api/orders/route.js    # GET / POST / DELETE on the orders coll
 ## cloudgrid.yaml
 
 ```yaml
+# On disk this file is the full-annotated reference (templates/_cloudgrid.yaml.reference) with EVERY
+# field present as a comment; only the fields below are uncommented, so it
+# deploys to exactly these active fields.
 name: my-admin
 services:
   web:

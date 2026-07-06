@@ -1,0 +1,114 @@
+---
+name: online-store
+when: online store, e-commerce store, shop with checkout, sell products online
+needs: database
+deploy: runtime
+editions: local
+kind: blueprint
+capabilities_note: persistent + payments — needs a database (Mongo) and Stripe. Runtime app, async build, local edition only. This is a BLUEPRINT — read the template's AGENTS.md for the structure, then build the app. Declare the canonical `needs: { database: true }`; the deployer injects DATABASE_MONGODB_URL (+legacy MONGODB_URL). The Stripe key comes from the vault: block → STRIPE_KEY.
+summary: Build a persistent Next.js + Mongo + Stripe online store on the grid — storefront, cart, /api/checkout Stripe session, signature-verified Stripe webhook, orders in Mongo. This is a BLUEPRINT: edition-gate first, scaffold, fetch the template and read AGENTS.md for the file tree + wiring, put the app under services/web/, wire process.env.DATABASE_MONGODB_URL lazily and STRIPE_KEY from the vault, declare needs:{database:true} (not requires:), deploy async, poll to a live URL, register the webhook in Stripe.
+---
+
+# Workflow: online-store
+
+The user wants to **sell products online** — a storefront with a cart and real
+checkout. That is a **runtime app** backed by the grid's shared Mongo (`products`
++ `orders`) plus **Stripe** for payments: a `/api/checkout` route that creates a
+Stripe Checkout Session and a signature-verified webhook that confirms payment
+and records the order. Not a static page — it must remember products and orders.
+
+**This is a BLUEPRINT.** The template ships the structure + `cloudgrid.yaml`, not
+finished app code. The build shape is proven `app-with-data` (Next.js App Router,
+lazy Mongo, app under `services/web/`) plus a second collection and Stripe wiring.
+Be honest that a runtime deploy is async (not instant) and needs the local edition.
+
+## 1. Edition check FIRST (hard gate)
+
+A persistent store is a built + deployed container. It requires the **local
+edition** (Claude Desktop / Claude Code) or the CLI.
+
+- **Hosted edition (Claude Web / hosted MCP):** you CANNOT build a runtime app —
+  hosted is inline-only and can only publish static pages. Say so plainly, offer
+  a **static storefront preview** instead, and STOP the runtime path here.
+- **Local edition:** continue.
+
+## 2. Auth + grid
+
+1. Ensure signed in: `gridctl_login_status`; if not, `gridctl_login`.
+2. A grid is required. Respect the grid picker: if the user has more than one
+   grid, ask which to use; do not assume a target.
+
+## 3. Scaffold
+
+`gridctl_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
+and writes a `cloudgrid.yaml` with an EMPTY `services: {}`. `plug` needs a linked
+directory, so run `init` FIRST.
+
+## 4. Fetch the blueprint and read AGENTS.md
+
+This is a blueprint — the structure guide is the deliverable, not copy-paste code.
+
+1. `gridctl_fetch("template", "online-store")`.
+2. **Read `AGENTS.md`** in the fetched template. It has: the file tree (app under
+   `services/web/`), the Mongo collections (`products`, `orders`) and their
+   fields, how the grid injects Mongo (`DATABASE_MONGODB_URL`) and the Stripe key
+   (the `vault:` block → `STRIPE_KEY`), the checkout + webhook wiring, and the
+   deploy steps. Build the app following it.
+3. Set `cloudgrid.yaml` to the shape below. **App code MUST live under
+   `services/web/`** — `path:` is the URL mount, NOT the filesystem path.
+   ```yaml
+   name: my-store
+   vault:
+     STRIPE_KEY: stripe-live-key
+   services:
+     web:
+       type: nextjs
+       path: /
+   needs:
+     database: true
+   ```
+   **Declare the datastore with `needs: { database: true }`** — the canonical
+   shape. The deployer provisions Mongo and injects `DATABASE_MONGODB_URL` (plus
+   the legacy `MONGODB_URL` alias). `requires:` is the deprecated v1 alias; never
+   set `needs:` and `requires:` together (the validator rejects it).
+
+## 5. Build the app (following AGENTS.md)
+
+- **Read the DB from `process.env.DATABASE_MONGODB_URL`** (legacy `MONGODB_URL`
+  fallback) inside a **lazy getter** — never at module top level, or `next build`
+  fails. Never hardcode a connection string.
+- **Read the Stripe key from `process.env.STRIPE_KEY`** (injected by the `vault:`
+  block) lazily. Build Stripe line items from the server-side `products`
+  collection — never trust prices sent by the browser.
+- The **webhook** reads the RAW request body (`await request.text()`), verifies
+  the Stripe signature, and upserts the `orders` doc by `stripeSessionId`
+  (idempotent), setting `status: "paid"` from the verified event.
+- (Optional) `grid dev` to run locally against the injected Mongo + a Stripe test
+  key before deploying.
+
+## 6. Config
+
+- Stripe secrets → the vault: `gridctl_secrets` to set `stripe-live-key` (and a
+  `stripe-webhook-secret` if you map one). The `vault:` block turns them into env
+  vars. Non-secret config → `gridctl_env`.
+- Do **NOT** set the DB connection vars yourself (`DATABASE_MONGODB_URL` /
+  `MONGODB_URL`) — the grid injects them.
+
+## 7. Deploy (async)
+
+Deploy the folder with `gridctl_plug`. A **runtime deploy is ASYNC**: the first
+response is `status: "building"`, NOT a live URL yet.
+- Poll `gridctl_status` (or the returned poll_url) until the entity is live.
+- Surface a liveness signal while it builds — never a bare silent wait.
+- Only once it is live, return the deployed app URL (NOT the build/log link).
+
+## 8. Wire the Stripe webhook + return the live URL
+
+1. Register `<live-url>/api/webhook` as a webhook endpoint in the Stripe
+   dashboard, copy its `whsec_…` secret into the vault, and re-`gridctl_plug` the
+   SAME entity if you changed the `vault:` mapping (same URL).
+2. Give the user the live store URL — that is the deliverable. To iterate, re-plug
+   the SAME entity so it updates the same URL.
+
+Keep it honest: blueprint (build from AGENTS.md), async build, local-edition only,
+Mongo + Stripe credentials injected by the grid / vault.

@@ -47,15 +47,9 @@ services/web/app/api/chat/route.js    # POST: createClient().chat(...) -> persis
 ## cloudgrid.yaml
 
 ```yaml
-# Rename this chatbot. The grid wires the AI gateway (in-grid identity — no API
-# key) and injects the DB connection string as an environment variable at
-# runtime. Do NOT set an AI key, do NOT set the DB var yourself, and never commit
-# a connection string or secret.
-#
-# `needs: { ai: true, database: true }` is the canonical shape. The deployer
-# wires the AI gateway and provisions Mongo, injecting DATABASE_MONGODB_URL (plus
-# the legacy MONGODB_URL alias). `requires:` is the deprecated v1 alias — don't
-# author new yaml with it, and never set `needs:` and `requires:` together.
+# On disk this file is the full-annotated reference (templates/_cloudgrid.yaml.reference) with EVERY
+# field present as a comment; only the fields below are uncommented, so it
+# deploys to exactly these active fields.
 name: my-chatbot
 services:
   web:
@@ -64,8 +58,6 @@ services:
 needs:
   ai: true
   database: true
-# For retrieval-augmented (RAG) over your own docs, add `needs: { vector:
-# pgvector }` once platform issue #1545 ships — not yet available.
 ```
 
 > **Capability:** this template's needs are `ai: true` (the grid AI gateway,

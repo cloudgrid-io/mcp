@@ -42,17 +42,9 @@ services/api/src/index.js      # Node http server on PORT||8080; /items GET/POST
 ## cloudgrid.yaml
 
 ```yaml
-# Rename this service. The grid injects the DB connection string as an
-# environment variable at runtime — do NOT set it yourself, and never commit a
-# connection string or secret.
-#
-# `needs: { database: true }` is the canonical, recommended shape. The deployer
-# provisions Mongo and injects DATABASE_MONGODB_URL (plus the legacy MONGODB_URL
-# alias). `requires:` is the deprecated v1 alias — don't author new yaml with it,
-# and never set `needs:` and `requires:` together (the validator rejects it).
-#
-# This is a plain Node HTTP service (type: node), not a web UI. Service code lives
-# under services/api/ — `path:` is the URL mount, not the filesystem path.
+# On disk this file is the full-annotated reference (templates/_cloudgrid.yaml.reference) with EVERY
+# field present as a comment; only the fields below are uncommented, so it
+# deploys to exactly these active fields.
 name: my-api
 services:
   api:
