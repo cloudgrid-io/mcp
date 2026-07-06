@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{COMPANY_NAME}}</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --panel: #f6f8fc;
+    --fg: #101828;
+    --muted: #667085;
+    --accent: #2f5bff;
+    --accent-fg: #ffffff;
+    --border: #e4e7ec;
+    --maxw: 1100px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.6;
+  }
+  a { color: inherit; text-decoration: none; }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 clamp(1.25rem, 5vw, 2.5rem); }
+  section { padding: clamp(3rem, 8vw, 6rem) 0; }
+
+  /* nav */
+  nav {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: saturate(180%) blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  nav .inner {
+    display: flex; align-items: center; justify-content: space-between;
+    max-width: var(--maxw); margin: 0 auto;
+    padding: 0.9rem clamp(1.25rem, 5vw, 2.5rem);
+  }
+  nav .brand { font-weight: 700; letter-spacing: -0.02em; font-size: 1.15rem; }
+  nav .links { display: flex; gap: 1.5rem; align-items: center; }
+  nav .links a { color: var(--muted); font-size: 0.95rem; }
+  nav .links a:hover { color: var(--fg); }
+  nav .links .nav-cta {
+    background: var(--accent); color: var(--accent-fg);
+    padding: 0.5rem 1rem; border-radius: 8px; font-weight: 600;
+  }
+  nav .links .nav-cta:hover { color: var(--accent-fg); filter: brightness(1.05); }
+  .menu-links a:not(.nav-cta) { display: none; }
+  @media (min-width: 720px) {
+    .menu-links a:not(.nav-cta) { display: inline; }
+  }
+
+  /* hero */
+  .hero { text-align: center; display: grid; gap: 1.5rem; place-items: center; padding-top: clamp(3.5rem, 9vw, 7rem); }
+  .eyebrow {
+    font-size: 0.85rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--accent);
+  }
+  .hero h1 { font-size: clamp(2.3rem, 6vw, 4rem); line-height: 1.08; letter-spacing: -0.03em; max-width: 18ch; }
+  .hero p { font-size: clamp(1.05rem, 2.2vw, 1.35rem); color: var(--muted); max-width: 52ch; }
+  .cta-row { display: flex; gap: 0.85rem; flex-wrap: wrap; justify-content: center; margin-top: 0.5rem; }
+  .btn {
+    display: inline-block; padding: 0.8rem 1.5rem; border-radius: 10px;
+    font-weight: 600; border: 1px solid transparent; transition: filter .15s, background .15s;
+  }
+  .btn-primary { background: var(--accent); color: var(--accent-fg); }
+  .btn-primary:hover { filter: brightness(1.06); }
+  .btn-ghost { border-color: var(--border); color: var(--fg); }
+  .btn-ghost:hover { background: var(--panel); }
+
+  /* section headings */
+  .section-head { max-width: 40ch; margin-bottom: 2.5rem; }
+  .section-head.center { margin-left: auto; margin-right: auto; text-align: center; }
+  .section-head h2 { font-size: clamp(1.8rem, 4vw, 2.6rem); letter-spacing: -0.02em; line-height: 1.15; }
+  .section-head p { color: var(--muted); margin-top: 0.75rem; font-size: 1.05rem; }
+
+  /* about */
+  .about { background: var(--panel); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .about-grid { display: grid; gap: 2rem; grid-template-columns: 1fr; }
+  @media (min-width: 820px) { .about-grid { grid-template-columns: 1.2fr 1fr; align-items: center; } }
+  .about-grid p { color: var(--muted); margin-bottom: 1rem; }
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.25rem; }
+  .stat { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; }
+  .stat .num { font-size: 1.9rem; font-weight: 700; letter-spacing: -0.02em; }
+  .stat .label { color: var(--muted); font-size: 0.9rem; }
+
+  /* services */
+  .cards { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: 14px; padding: 1.5rem; }
+  .card .icon {
+    width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center;
+    background: var(--panel); font-size: 1.4rem; margin-bottom: 1rem;
+  }
+  .card h3 { font-size: 1.2rem; letter-spacing: -0.01em; margin-bottom: 0.4rem; }
+  .card p { color: var(--muted); }
+
+  /* team */
+  .team { background: var(--panel); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .team-grid { display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+  .member { text-align: center; }
+  .avatar {
+    width: 96px; height: 96px; border-radius: 50%; margin: 0 auto 0.9rem;
+    background: linear-gradient(135deg, var(--accent), #7aa0ff);
+    color: #fff; display: grid; place-items: center; font-size: 2rem; font-weight: 700;
+  }
+  .member h3 { font-size: 1.1rem; letter-spacing: -0.01em; }
+  .member .role { color: var(--accent); font-size: 0.9rem; font-weight: 600; }
+  .member p { color: var(--muted); font-size: 0.92rem; margin-top: 0.4rem; }
+
+  /* contact */
+  .contact-grid { display: grid; gap: 2rem; grid-template-columns: 1fr; }
+  @media (min-width: 820px) { .contact-grid { grid-template-columns: 1fr 1fr; } }
+  .contact-info li { list-style: none; margin-bottom: 1rem; color: var(--muted); }
+  .contact-info .k { display: block; color: var(--fg); font-weight: 600; }
+  form { display: grid; gap: 0.9rem; }
+  label { font-size: 0.9rem; font-weight: 600; }
+  input, textarea {
+    width: 100%; font: inherit; padding: 0.7rem 0.85rem; border-radius: 9px;
+    border: 1px solid var(--border); background: var(--bg); color: var(--fg);
+  }
+  input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 120px; }
+  .form-note { font-size: 0.85rem; color: var(--muted); }
+  .form-status { font-size: 0.92rem; font-weight: 600; min-height: 1.2rem; }
+
+  /* footer */
+  footer { border-top: 1px solid var(--border); color: var(--muted); font-size: 0.9rem; }
+  footer .inner { display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; padding: 2rem 0; }
+  footer a { color: var(--muted); }
+  footer a:hover { color: var(--fg); }
+</style>
+</head>
+<body>
+  <nav>
+    <div class="inner">
+      <a class="brand" href="#top">{{COMPANY_NAME}}</a>
+      <div class="links menu-links">
+        <a href="#about">About</a>
+        <a href="#services">Services</a>
+        <a href="#team">Team</a>
+        <a href="#contact">Contact</a>
+        <a class="nav-cta" href="#contact">Get in touch</a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="hero wrap" id="top">
+    <span class="eyebrow">{{COMPANY_TAGLINE}}</span>
+    <h1>{{HERO_HEADLINE}}</h1>
+    <p>{{HERO_SUBHEAD}}</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#contact">{{PRIMARY_CTA}}</a>
+      <a class="btn btn-ghost" href="#services">{{SECONDARY_CTA}}</a>
+    </div>
+  </header>
+
+  <section class="about" id="about">
+    <div class="wrap about-grid">
+      <div>
+        <div class="section-head">
+          <h2>{{ABOUT_HEADLINE}}</h2>
+        </div>
+        <p>{{ABOUT_PARA_1}}</p>
+        <p>{{ABOUT_PARA_2}}</p>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="num">{{STAT_1_NUM}}</div><div class="label">{{STAT_1_LABEL}}</div></div>
+        <div class="stat"><div class="num">{{STAT_2_NUM}}</div><div class="label">{{STAT_2_LABEL}}</div></div>
+        <div class="stat"><div class="num">{{STAT_3_NUM}}</div><div class="label">{{STAT_3_LABEL}}</div></div>
+        <div class="stat"><div class="num">{{STAT_4_NUM}}</div><div class="label">{{STAT_4_LABEL}}</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="services">
+    <div class="wrap">
+      <div class="section-head center">
+        <h2>{{SERVICES_HEADLINE}}</h2>
+        <p>{{SERVICES_SUBHEAD}}</p>
+      </div>
+      <div class="cards">
+        <!-- SERVICES_START -->
+        <div class="card">
+          <div class="icon">{{SERVICE_1_ICON}}</div>
+          <h3>{{SERVICE_1_TITLE}}</h3>
+          <p>{{SERVICE_1_BODY}}</p>
+        </div>
+        <div class="card">
+          <div class="icon">{{SERVICE_2_ICON}}</div>
+          <h3>{{SERVICE_2_TITLE}}</h3>
+          <p>{{SERVICE_2_BODY}}</p>
+        </div>
+        <div class="card">
+          <div class="icon">{{SERVICE_3_ICON}}</div>
+          <h3>{{SERVICE_3_TITLE}}</h3>
+          <p>{{SERVICE_3_BODY}}</p>
+        </div>
+        <!-- Add more <div class="card">...</div> blocks as needed. -->
+        <!-- SERVICES_END -->
+      </div>
+    </div>
+  </section>
+
+  <section class="team" id="team">
+    <div class="wrap">
+      <div class="section-head center">
+        <h2>{{TEAM_HEADLINE}}</h2>
+        <p>{{TEAM_SUBHEAD}}</p>
+      </div>
+      <div class="team-grid">
+        <!-- TEAM_START -->
+        <div class="member">
+          <div class="avatar">{{MEMBER_1_INITIALS}}</div>
+          <h3>{{MEMBER_1_NAME}}</h3>
+          <div class="role">{{MEMBER_1_ROLE}}</div>
+          <p>{{MEMBER_1_BIO}}</p>
+        </div>
+        <div class="member">
+          <div class="avatar">{{MEMBER_2_INITIALS}}</div>
+          <h3>{{MEMBER_2_NAME}}</h3>
+          <div class="role">{{MEMBER_2_ROLE}}</div>
+          <p>{{MEMBER_2_BIO}}</p>
+        </div>
+        <div class="member">
+          <div class="avatar">{{MEMBER_3_INITIALS}}</div>
+          <h3>{{MEMBER_3_NAME}}</h3>
+          <div class="role">{{MEMBER_3_ROLE}}</div>
+          <p>{{MEMBER_3_BIO}}</p>
+        </div>
+        <!-- Add more <div class="member">...</div> blocks as needed. -->
+        <!-- TEAM_END -->
+      </div>
+    </div>
+  </section>
+
+  <section id="contact">
+    <div class="wrap">
+      <div class="section-head center">
+        <h2>{{CONTACT_HEADLINE}}</h2>
+        <p>{{CONTACT_SUBHEAD}}</p>
+      </div>
+      <div class="contact-grid">
+        <ul class="contact-info">
+          <li><span class="k">Email</span><a href="mailto:{{CONTACT_EMAIL}}">{{CONTACT_EMAIL}}</a></li>
+          <li><span class="k">Phone</span>{{CONTACT_PHONE}}</li>
+          <li><span class="k">Address</span>{{CONTACT_ADDRESS}}</li>
+          <li><span class="k">Hours</span>{{CONTACT_HOURS}}</li>
+        </ul>
+        <form id="contact-form" novalidate>
+          <div>
+            <label for="cf-name">Name</label>
+            <input id="cf-name" name="name" type="text" required autocomplete="name" />
+          </div>
+          <div>
+            <label for="cf-email">Email</label>
+            <input id="cf-email" name="email" type="email" required autocomplete="email" />
+          </div>
+          <div>
+            <label for="cf-message">Message</label>
+            <textarea id="cf-message" name="message" required></textarea>
+          </div>
+          <button class="btn btn-primary" type="submit">Send message</button>
+          <p class="form-status" id="cf-status" role="status" aria-live="polite"></p>
+          <p class="form-note">This demo form does not send anything yet — wire it to your email service or form endpoint.</p>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap inner">
+      <span>&copy; <span id="year"></span> {{COMPANY_NAME}}. All rights reserved.</span>
+      <span><a href="#top">Back to top</a></span>
+    </div>
+  </footer>
+
+<script>
+  // Footer year
+  document.getElementById('year').textContent = new Date().getFullYear();
+
+  // Client-side contact form validation (no backend — placeholder behavior)
+  var form = document.getElementById('contact-form');
+  var status = document.getElementById('cf-status');
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var name = form.name.value.trim();
+    var email = form.email.value.trim();
+    var message = form.message.value.trim();
+    if (!name || !email || !message) {
+      status.textContent = 'Please fill in every field.';
+      status.style.color = '#b42318';
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      status.textContent = 'Please enter a valid email address.';
+      status.style.color = '#b42318';
+      return;
+    }
+    status.textContent = 'Thanks, ' + name + '! We will be in touch shortly.';
+    status.style.color = '#067647';
+    form.reset();
+  });
+</script>
+</body>
+</html>

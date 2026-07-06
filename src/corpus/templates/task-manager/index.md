@@ -37,6 +37,9 @@ services/web/app/api/tasks/route.js    # GET (list) / POST (add) / PATCH (toggle
 ## cloudgrid.yaml
 
 ```yaml
+# On disk this file is the full-annotated reference (templates/_cloudgrid.yaml.reference) with EVERY
+# field present as a comment; only the fields below are uncommented, so it
+# deploys to exactly these active fields.
 name: my-tasks
 services:
   web:

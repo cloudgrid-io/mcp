@@ -42,14 +42,9 @@ services/web/app/api/todos/route.js     # GET (list) / POST (add) / DELETE (remo
 ## cloudgrid.yaml
 
 ```yaml
-# Rename this app. The grid injects the DB connection string (and a Redis URL if
-# you add a cache) as environment variables at runtime — do NOT set them
-# yourself, and never commit a connection string or secret.
-#
-# `needs: { database: true }` is the canonical, recommended shape. The deployer
-# provisions Mongo and injects DATABASE_MONGODB_URL (plus the legacy MONGODB_URL
-# alias). `requires:` is the deprecated v1 alias — don't author new yaml with it,
-# and never set `needs:` and `requires:` together (the validator rejects it).
+# On disk this file is the full-annotated reference (templates/_cloudgrid.yaml.reference) with EVERY
+# field present as a comment; only the fields below are uncommented, so it
+# deploys to exactly these active fields.
 name: my-app
 services:
   web:

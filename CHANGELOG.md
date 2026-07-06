@@ -1,3 +1,7 @@
+## 0.14.0
+
+- Template library: 35 new templates (17 Tier A/B full apps + 18 Tier C/D blueprints), synced from cloudgrid-io/skills 0.10.0. Library now 58 templates. blog-cms + kanban + invoice-family live-verified.
+
 ## 0.13.0
 
 - Template library Wave 1: 7 static (saas-marketing, docs-site, status-page, changelog, portfolio, api-docs, waitlist) + 4 DB-CRUD (crm, kanban, task-manager, admin-dashboard). Synced from cloudgrid-io/skills. kanban live-verified.
