@@ -11,7 +11,7 @@
 //     when the server left it empty.
 // Run: node test/plug-wire.test.mjs
 
-import { runDrop, runPlug, resolvePlugUrl } from "../src/tools.js";
+import { runDrop, runPlug, resolvePlugUrl, parseManifestName } from "../src/tools.js";
 
 let failures = 0;
 function check(label, cond) {
@@ -253,6 +253,115 @@ try {
     xorErr = e;
   }
   check("plug rejects path + artifact_files together", xorErr !== null);
+
+  // ── issue #48: artifact_files runtime create — payload alignment ────────────
+  // A multi-service runtime create via inline artifact_files must send a
+  // byte-equivalent /api/v2/plug bundle to the folder-walk path for the same
+  // files: the cloudgrid.yaml manifest FIRST, as an octet-stream `artifact`
+  // part, followed by the service files under their paths, plus the kind hints.
+  {
+    const manifest = "name: af-probe2\nservices:\n  web: {type: node, path: /}\nneeds: {database: true}\n";
+    const pkg = '{"name":"web","main":"src/index.js"}';
+    const idx = "require('http').createServer((_,r)=>r.end('ok')).listen(process.env.PORT||3000)";
+
+    // Folder-walk reference: real dir with cloudgrid.yaml + services/web/*.
+    const { mkdtempSync, mkdirSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "af48-"));
+    writeFileSync(join(dir, "cloudgrid.yaml"), manifest);
+    mkdirSync(join(dir, "services", "web", "src"), { recursive: true });
+    writeFileSync(join(dir, "services", "web", "package.json"), pkg);
+    writeFileSync(join(dir, "services", "web", "src", "index.js"), idx);
+
+    const buildReply = () => [{
+      status: 202,
+      body: { entity_id: "ent-rt", slug: "af-probe2", grid: "cg", url: "https://af-probe2--cg.cloudgrid.io", status: "building", poll_url: "https://api.cloudgrid.io/api/v2/runtimes/ent-rt/status", trace_id: "tr-1" },
+    }];
+
+    const serializeArtifacts = async (form) => {
+      const out = [];
+      for (const f of form.getAll("artifact")) {
+        out.push({ name: f.name, type: f.type, bytes: Buffer.from(await f.arrayBuffer()).toString("utf8") });
+      }
+      return out;
+    };
+
+    const folderCtx = makeCtx({ token: "jwt-rt", edition: "local" });
+    folderCtx.getActiveGrid = async () => "cg";
+    replies = buildReply();
+    await runPlug(folderCtx, { path: dir, hints: { kind: "app" }, grid: "cg" });
+    const folderArtifacts = await serializeArtifacts(lastCall().form);
+
+    const inlineCtx = makeCtx({ token: "jwt-rt", edition: "web" });
+    inlineCtx.getActiveGrid = async () => "cg";
+    replies = buildReply();
+    const rt = await runPlug(inlineCtx, {
+      cloudgrid_yaml: manifest,
+      artifact_files: [
+        { path: "services/web/package.json", content: pkg },
+        { path: "services/web/src/index.js", content: idx },
+      ],
+      hints: { kind: "app" },
+      grid: "cg",
+    });
+    const inlineArtifacts = await serializeArtifacts(lastCall().form);
+
+    check(
+      "issue#48: artifact_files bundle == folder-walk bundle (same parts, order, bytes, type)",
+      JSON.stringify(inlineArtifacts) === JSON.stringify(folderArtifacts),
+    );
+    check(
+      "issue#48: cloudgrid.yaml is the FIRST artifact part on the inline create",
+      inlineArtifacts[0]?.name === "cloudgrid.yaml",
+    );
+    check(
+      "issue#48: manifest part is octet-stream (matches the folder walk)",
+      inlineArtifacts[0]?.type === "application/octet-stream",
+    );
+    check("issue#48: kind hints still sent on the inline create", formField("kind_hint") === "app" && formField("hints_kind") === "app");
+
+    // ── Honor the manifest name ──────────────────────────────────────────────
+    check("issue#48: manifest name is sent as the name field", formField("name") === "af-probe2");
+    check("issue#48: manifest name is sent as the slug field", formField("slug") === "af-probe2");
+
+    // ── Accurate build status: building → NOT Live ────────────────────────────
+    check("issue#48: building response reports status building", rt.structured.status === "building");
+    check("issue#48: building response surfaces the poll_url", rt.structured.poll_url === "https://api.cloudgrid.io/api/v2/runtimes/ent-rt/status");
+    check("issue#48: building result does NOT claim Live", !/^Live:/m.test(rt.text) && !/Live:/.test(rt.text));
+    check("issue#48: building result says Building + points at poll", /Building \(async\)/.test(rt.text) && rt.text.includes("gridctl_status"));
+    check("issue#48: building result uses the server (flat-arch) url", rt.text.includes("https://af-probe2--cg.cloudgrid.io"));
+
+    const { rmSync } = await import("node:fs");
+    rmSync(dir, { recursive: true, force: true });
+  }
+
+  // A dedupe guard: if the caller inlines a cloudgrid.yaml AND passes cloudgrid_yaml,
+  // only ONE manifest part is sent (the cloudgrid_yaml wins, first, no duplicate).
+  {
+    const dupCtx = makeCtx({ token: "jwt-d", edition: "web" });
+    dupCtx.getActiveGrid = async () => "cg";
+    replies = [{ status: 202, body: { entity_id: "e", slug: "s", grid: "cg", url: "https://x", status: "live" } }];
+    await runPlug(dupCtx, {
+      cloudgrid_yaml: "name: only-once\n",
+      artifact_files: [
+        { path: "cloudgrid.yaml", content: "name: stale\n" },
+        { path: "index.js", content: "x" },
+      ],
+      hints: { kind: "app" },
+    });
+    const names = lastCall().form.getAll("artifact").map((f) => f.name);
+    check("issue#48: no duplicate cloudgrid.yaml part when both inlined + param", names.filter((n) => n === "cloudgrid.yaml").length === 1);
+    check("issue#48: the cloudgrid_yaml param wins over an inlined stale manifest", formField("name") === "only-once");
+  }
+
+  // ── parseManifestName unit checks ──────────────────────────────────────────
+  check("parseManifestName: top-level name", parseManifestName("name: foo\nservices: {}\n") === "foo");
+  check("parseManifestName: quoted", parseManifestName('name: "bar baz"\n') === "bar baz");
+  check("parseManifestName: strips inline comment", parseManifestName("name: qux # a comment\n") === "qux");
+  check("parseManifestName: ignores nested name", parseManifestName("services:\n  web:\n    name: nested\n") === null);
+  check("parseManifestName: absent → null", parseManifestName("services: {}\n") === null);
+  check("parseManifestName: empty/undefined → null", parseManifestName("") === null && parseManifestName(undefined) === null);
 } finally {
   globalThis.fetch = realFetch;
 }
