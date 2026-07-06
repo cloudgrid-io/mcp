@@ -13,7 +13,7 @@ cloudgrid.yaml schema (every field, the `needs:` injection table, the
 requires-vs-needs caveat, validation rules), fetch the companion reference:
 `gridctl_fetch("doc", "cloudgrid-yaml")`.
 
-## The 58 templates
+## The 59 templates
 
 | Intent (match on `when:`) | Template | `needs:` | Deploy | Edition |
 |---|---|---|---|---|
@@ -57,6 +57,7 @@ requires-vs-needs caveat, validation rules), fetch the companion reference:
 | revenue dashboard, sales dashboard, MRR/revenue view | `revenue-dashboard` | `database: true` | runtime (async, poll) | local |
 | property listings, real estate site, rentals/homes listings | `property-listings` | `database: true` | runtime (async, poll) | local |
 | project management, projects and tasks tracker, team project board | `project-management` | `database: true` | runtime (async, poll) | local |
+| search over my documents / PDFs / notes / knowledge base, semantic search, document search, find across my files, searchable archive | `semantic-search` | `database: true` (NO `vector` #1545; NO cron #1585) | runtime (async, poll) | local |
 
 **Rule of thumb:** if the app must SAVE/remember data, share state across
 users/sessions, log in, or store submissions → it is persistent → runtime, local
@@ -72,6 +73,18 @@ differ only by domain schema + UI. Match the request to the closest one by its
 `when:`; if it is a bare to-do or generic "save this data" with no specific
 domain, use `app-with-data` (the minimal reference). Deploy path is identical for
 all of them.
+
+**Document search (`semantic-search`).** For "search over my own documents / PDFs
+/ notes / knowledge base" with keyword **and** meaning, `semantic-search` ships
+real runnable code in a different shape from the Next.js family: a React (Vite)
+**static** frontend at `/` plus a **Python FastAPI** backend at `/backend`, on the
+same grid-shared Mongo (`needs: { database: true }`). Hybrid search = Mongo
+`$text` + in-app NumPy cosine over embedding arrays + metadata filters. It stores
+embeddings in the Mongo `chunks` collection (NO `needs: vector` — pgvector is
+blocked on **#1545**) and refreshes via a manager endpoint (NO active cron — a
+Python `type: cron` is blocked on **#1585**). Read its `AGENTS.md` for the source
+adapter (dropbox/local/url) + embeddings wiring and the health-without-secrets /
+startup-index patterns.
 
 ## Held / pending platform (not yet buildable)
 
