@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{SERVICE_NAME}} status</title>
+<style>
+  :root {
+    --bg: #0b0f17; --panel: #121826; --fg: #e8edf5; --muted: #9aa7bd;
+    --border: #223049; --ok: #34d399; --degraded: #fbbf24; --down: #f87171;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased; line-height: 1.5;
+  }
+  .wrap { max-width: 840px; margin: 0 auto; padding: clamp(1.5rem, 5vw, 3rem) 1.25rem; }
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.75rem; gap: 1rem; flex-wrap: wrap; }
+  header .brand { font-weight: 600; font-size: 1.15rem; letter-spacing: -0.01em; }
+  header .updated { color: var(--muted); font-size: 0.85rem; }
+
+  .banner { border-radius: 14px; padding: 1.25rem 1.5rem; margin-bottom: 2rem; font-weight: 600; display: flex; align-items: center; gap: 0.75rem; border: 1px solid var(--border); }
+  .banner .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .banner.ok { background: rgba(52,211,153,0.1); } .banner.ok .dot { background: var(--ok); }
+  .banner.degraded { background: rgba(251,191,36,0.1); } .banner.degraded .dot { background: var(--degraded); }
+  .banner.down { background: rgba(248,113,113,0.1); } .banner.down .dot { background: var(--down); }
+
+  h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 2rem 0 0.75rem; }
+  .component { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 1.1rem 1.25rem; margin-bottom: 0.75rem; }
+  .component .top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; }
+  .component .name { font-weight: 600; }
+  .pill { font-size: 0.8rem; padding: 0.2rem 0.65rem; border-radius: 999px; font-weight: 600; }
+  .pill.ok { color: var(--ok); background: rgba(52,211,153,0.12); }
+  .pill.degraded { color: var(--degraded); background: rgba(251,191,36,0.12); }
+  .pill.down { color: var(--down); background: rgba(248,113,113,0.12); }
+  .uptime { display: flex; gap: 2px; align-items: flex-end; height: 30px; }
+  .uptime span { flex: 1; height: 100%; border-radius: 2px; background: var(--ok); opacity: 0.85; }
+  .uptime span.degraded { background: var(--degraded); }
+  .uptime span.down { background: var(--down); }
+  .uptime-label { display: flex; justify-content: space-between; color: var(--muted); font-size: 0.75rem; margin-top: 0.4rem; }
+
+  .incident { border-left: 3px solid var(--border); padding: 0.5rem 0 0.5rem 1rem; margin-bottom: 1.5rem; }
+  .incident.ok { border-color: var(--ok); }
+  .incident.degraded { border-color: var(--degraded); }
+  .incident.down { border-color: var(--down); }
+  .incident .date { color: var(--muted); font-size: 0.8rem; }
+  .incident .title { font-weight: 600; margin: 0.2rem 0; }
+  .incident p { color: var(--muted); font-size: 0.92rem; }
+  footer { color: var(--muted); font-size: 0.85rem; margin-top: 2.5rem; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <span class="brand">{{SERVICE_NAME}}</span>
+      <span class="updated">Last updated {{LAST_UPDATED}}</span>
+    </header>
+
+    <!-- Overall banner: set the class to ok / degraded / down. -->
+    <div class="banner ok">
+      <span class="dot"></span>
+      <span>{{OVERALL_STATUS_TEXT}}</span>
+    </div>
+
+    <h2>Components</h2>
+    <!-- COMPONENTS_START -->
+    <!-- One .component per service. Set the .pill class (ok/degraded/down) and
+         mark any non-ok bars in .uptime with class degraded or down. -->
+    <div class="component">
+      <div class="top"><span class="name">{{COMPONENT_1_NAME}}</span><span class="pill ok">Operational</span></div>
+      <div class="uptime">
+        <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <div class="uptime-label"><span>90 days ago</span><span>{{COMPONENT_1_UPTIME}} uptime</span><span>today</span></div>
+    </div>
+    <div class="component">
+      <div class="top"><span class="name">{{COMPONENT_2_NAME}}</span><span class="pill degraded">Degraded</span></div>
+      <div class="uptime">
+        <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span class="degraded"></span><span class="degraded"></span>
+        <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <div class="uptime-label"><span>90 days ago</span><span>{{COMPONENT_2_UPTIME}} uptime</span><span>today</span></div>
+    </div>
+    <div class="component">
+      <div class="top"><span class="name">{{COMPONENT_3_NAME}}</span><span class="pill ok">Operational</span></div>
+      <div class="uptime">
+        <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <div class="uptime-label"><span>90 days ago</span><span>{{COMPONENT_3_UPTIME}} uptime</span><span>today</span></div>
+    </div>
+    <!-- COMPONENTS_END -->
+
+    <h2>Incident history</h2>
+    <!-- INCIDENTS_START -->
+    <div class="incident ok">
+      <div class="date">{{INCIDENT_1_DATE}}</div>
+      <div class="title">{{INCIDENT_1_TITLE}}</div>
+      <p>{{INCIDENT_1_BODY}}</p>
+    </div>
+    <div class="incident down">
+      <div class="date">{{INCIDENT_2_DATE}}</div>
+      <div class="title">{{INCIDENT_2_TITLE}}</div>
+      <p>{{INCIDENT_2_BODY}}</p>
+    </div>
+    <!-- Add more .incident blocks (class ok/degraded/down) as needed. -->
+    <!-- INCIDENTS_END -->
+
+    <footer>{{FOOTER_TEXT}}</footer>
+  </div>
+</body>
+</html>

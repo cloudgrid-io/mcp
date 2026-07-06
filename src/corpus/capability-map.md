@@ -13,16 +13,27 @@ cloudgrid.yaml schema (every field, the `needs:` injection table, the
 requires-vs-needs caveat, validation rules), fetch the companion reference:
 `gridctl_fetch("doc", "cloudgrid-yaml")`.
 
-## The 8 templates
+## The 19 templates
 
 | Intent (match on `when:`) | Template | `needs:` | Deploy | Edition |
 |---|---|---|---|---|
-| landing page, marketing/product/hero page, coming-soon, waitlist, pricing, portfolio, link-in-bio, event page | `landing-page` | none | inspiration (instant) | all |
+| landing page, marketing/product/hero page, coming-soon, link-in-bio, event page — a single-section page | `landing-page` | none | inspiration (instant) | all |
+| SaaS marketing site, product marketing page, features + pricing page — multi-section with pricing tiers, testimonials, FAQ | `saas-marketing` | none | inspiration (instant) | all |
+| documentation site, docs, developer docs, guide, manual, knowledge base — prose docs with sidebar + search | `docs-site` | none | inspiration (instant) | all |
+| API documentation, API reference, endpoint docs, REST API docs — method badges, params tables, request/response examples | `api-docs` | none | inspiration (instant) | all |
+| status page, service status, uptime page, incident history, is-it-down page — display-only, status baked in | `status-page` | none | inspiration (instant) | all |
+| changelog, release notes, what's new, product updates, version history | `changelog` | none | inspiration (instant) | all |
+| portfolio, personal site, freelancer site, my work, showcase — projects grid + about + skills + contact | `portfolio` | none | inspiration (instant) | all |
+| waitlist, coming soon, early access, join the list, launch page — email capture form (form is static; storing signups needs a runtime crud-app) | `waitlist` | none | inspiration (instant) | all |
 | calculator, converter, generator, timer, quiz, interactive tool, mini-app, widget — computed client-side, no saved data | `web-app` | none | inspiration (instant) | all |
 | dashboard, metrics, KPIs, stats page, status board, charts, analytics view — display-only, static data baked in | `dashboard` | none | inspiration (instant) | all |
 | report, one-pager, summary, brief, whitepaper, case study, formatted document | `report` | none | inspiration (instant) | all |
 | slides, deck, pitch, presentation, slideshow | `presentation` (dir: `deck`) | none | inspiration (instant) | all |
 | to-do, task list, notes app, guestbook, CRUD app, a form that SAVES/STORES submissions, anything that PERSISTS data or shares state across users/sessions, sign-in/accounts | `app-with-data` | `database: true` | runtime (async, poll) | local |
+| CRM, contacts, leads, sales pipeline, customer manager, deal tracker | `crm` | `database: true` | runtime (async, poll) | local |
+| kanban board, task board, trello-style board, workflow columns | `kanban` | `database: true` | runtime (async, poll) | local |
+| task manager, to-do app (richer than the app-with-data starter), task list with due dates/priorities | `task-manager` | `database: true` | runtime (async, poll) | local |
+| admin dashboard, admin panel, back-office, CRUD admin, manage records | `admin-dashboard` | `database: true` | runtime (async, poll) | local |
 | REST API, backend for X, API endpoint(s), CRUD API, JSON API, webhook receiver — a backend/service that stores data and isn't a full web UI | `api-service` | `database: true` | runtime (async, poll) | local |
 | chatbot, AI assistant, Q&A bot, conversational app, support bot, ask-me-anything, an app that talks to an LLM / generates text with AI | `ai-app` | `ai: true, database: true` | runtime (async, poll) | local |
 
@@ -31,6 +42,14 @@ users/sessions, log in, or store submissions → it is persistent → runtime, l
 edition. Pick by shape: a full web UI → `app-with-data`; a plain backend/JSON API
 (no UI) → `api-service`; an app that talks to an LLM → `ai-app` (adds `ai:`).
 Otherwise a static template deploys instantly anywhere.
+
+**The DB-CRUD family.** `crm`, `kanban`, `task-manager`, and `admin-dashboard`
+all share the exact `app-with-data` shape (nextjs + `needs: { database: true }`,
+app under `services/web/`, lazy Mongo getter, force-dynamic App-Router routes) —
+they differ only by domain schema + UI. Match the request to the closest one by
+its `when:`; if it is a bare to-do or generic "save this data" with no specific
+domain, use `app-with-data` (the minimal reference). Deploy path is identical for
+all five.
 
 ## Held / pending platform (not yet buildable)
 

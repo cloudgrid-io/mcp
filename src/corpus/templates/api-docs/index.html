@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{API_NAME}} API reference</title>
+<style>
+  :root {
+    --bg: #0b0f17; --panel: #121826; --fg: #e8edf5; --muted: #9aa7bd;
+    --accent: #5b8cff; --border: #223049; --code-bg: #0f1523;
+    --get: #34d399; --post: #5b8cff; --put: #fbbf24; --delete: #f87171;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased; line-height: 1.6;
+  }
+  .layout { display: grid; grid-template-columns: 250px 1fr; min-height: 100vh; }
+  aside { border-right: 1px solid var(--border); padding: 1.5rem 1.25rem; position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto; }
+  aside .brand { font-weight: 600; letter-spacing: -0.01em; display: block; margin-bottom: 1rem; }
+  .filter { width: 100%; padding: 0.55rem 0.75rem; border-radius: 8px; border: 1px solid var(--border); background: var(--code-bg); color: var(--fg); font-size: 0.9rem; margin-bottom: 1.25rem; }
+  .filter::placeholder { color: var(--muted); }
+  nav.eps { display: grid; gap: 0.15rem; }
+  nav.eps a { display: flex; align-items: center; gap: 0.5rem; color: var(--muted); text-decoration: none; padding: 0.35rem 0.5rem; border-radius: 6px; font-size: 0.88rem; }
+  nav.eps a:hover { background: var(--panel); color: var(--fg); }
+  .method { flex: none; font-size: 0.65rem; font-weight: 700; padding: 0.1rem 0.4rem; border-radius: 4px; letter-spacing: 0.03em; }
+  .method.get { color: var(--get); background: rgba(52,211,153,0.14); }
+  .method.post { color: var(--post); background: rgba(91,140,255,0.14); }
+  .method.put { color: var(--put); background: rgba(251,191,36,0.14); }
+  .method.delete { color: var(--delete); background: rgba(248,113,113,0.14); }
+
+  main { padding: clamp(1.5rem, 4vw, 3rem); max-width: 860px; }
+  main h1 { font-size: clamp(2rem, 5vw, 2.6rem); letter-spacing: -0.02em; margin-bottom: 0.5rem; }
+  main .lede { color: var(--muted); margin-bottom: 1rem; }
+  .base { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem 0.9rem; font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 0.9rem; margin-bottom: 2.5rem; display: inline-block; }
+
+  .endpoint { padding-top: 2rem; margin-bottom: 2.5rem; border-top: 1px solid var(--border); }
+  .endpoint .sig { display: flex; align-items: center; gap: 0.65rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+  .endpoint .sig .path { font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 1.05rem; }
+  .endpoint p { color: var(--muted); margin-bottom: 1rem; }
+  h3 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 1.5rem 0 0.6rem; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; }
+  td code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 5px; padding: 0.1rem 0.35rem; }
+  .table-scroll { overflow-x: auto; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.1rem; overflow-x: auto; margin-bottom: 1rem; }
+  code { font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 0.88rem; }
+  @media (max-width: 720px) {
+    .layout { grid-template-columns: 1fr; }
+    aside { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border); }
+  }
+</style>
+</head>
+<body>
+  <div class="layout">
+    <aside>
+      <span class="brand">{{API_NAME}} API</span>
+      <input class="filter" id="filter" type="search" placeholder="Filter endpoints" aria-label="Filter endpoints" />
+      <nav class="eps" id="eps">
+        <!-- NAV_START -->
+        <a href="#list-items"><span class="method get">GET</span>List items</a>
+        <a href="#create-item"><span class="method post">POST</span>Create item</a>
+        <a href="#update-item"><span class="method put">PUT</span>Update item</a>
+        <a href="#delete-item"><span class="method delete">DEL</span>Delete item</a>
+        <!-- Add more <a> links; keep them matching endpoint anchor ids. -->
+        <!-- NAV_END -->
+      </nav>
+    </aside>
+
+    <main>
+      <h1>{{API_NAME}} API reference</h1>
+      <p class="lede">{{API_LEDE}}</p>
+      <div class="base">Base URL: {{BASE_URL}}</div>
+      <p class="lede" style="margin-top:-1.5rem">{{AUTH_NOTE}}</p>
+
+      <!-- ENDPOINTS_START -->
+      <section class="endpoint" id="list-items">
+        <div class="sig"><span class="method get">GET</span><span class="path">{{EP_1_PATH}}</span></div>
+        <p>{{EP_1_DESC}}</p>
+        <h3>Query parameters</h3>
+        <div class="table-scroll"><table>
+          <tr><th>Name</th><th>Type</th><th>Description</th></tr>
+          <tr><td><code>{{EP_1_PARAM_1}}</code></td><td>{{EP_1_PARAM_1_TYPE}}</td><td>{{EP_1_PARAM_1_DESC}}</td></tr>
+          <tr><td><code>{{EP_1_PARAM_2}}</code></td><td>{{EP_1_PARAM_2_TYPE}}</td><td>{{EP_1_PARAM_2_DESC}}</td></tr>
+        </table></div>
+        <h3>Response</h3>
+        <pre><code>{{EP_1_RESPONSE}}</code></pre>
+      </section>
+
+      <section class="endpoint" id="create-item">
+        <div class="sig"><span class="method post">POST</span><span class="path">{{EP_2_PATH}}</span></div>
+        <p>{{EP_2_DESC}}</p>
+        <h3>Request body</h3>
+        <pre><code>{{EP_2_REQUEST}}</code></pre>
+        <h3>Response</h3>
+        <pre><code>{{EP_2_RESPONSE}}</code></pre>
+      </section>
+
+      <section class="endpoint" id="update-item">
+        <div class="sig"><span class="method put">PUT</span><span class="path">{{EP_3_PATH}}</span></div>
+        <p>{{EP_3_DESC}}</p>
+        <h3>Request body</h3>
+        <pre><code>{{EP_3_REQUEST}}</code></pre>
+        <h3>Response</h3>
+        <pre><code>{{EP_3_RESPONSE}}</code></pre>
+      </section>
+
+      <section class="endpoint" id="delete-item">
+        <div class="sig"><span class="method delete">DELETE</span><span class="path">{{EP_4_PATH}}</span></div>
+        <p>{{EP_4_DESC}}</p>
+        <h3>Response</h3>
+        <pre><code>{{EP_4_RESPONSE}}</code></pre>
+      </section>
+      <!-- Add more .endpoint sections (with matching nav links) as needed. -->
+      <!-- ENDPOINTS_END -->
+    </main>
+  </div>
+
+  <script>
+    // Client-side endpoint filter. No network, no dependencies.
+    (function () {
+      var filter = document.getElementById("filter");
+      var links = Array.prototype.slice.call(document.querySelectorAll("#eps a"));
+      filter.addEventListener("input", function () {
+        var q = filter.value.trim().toLowerCase();
+        links.forEach(function (a) {
+          a.style.display = a.textContent.toLowerCase().indexOf(q) !== -1 ? "" : "none";
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

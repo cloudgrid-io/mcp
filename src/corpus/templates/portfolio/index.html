@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{FULL_NAME}} — {{ROLE}}</title>
+<style>
+  :root {
+    --bg: #0b0f17; --panel: #121826; --fg: #e8edf5; --muted: #9aa7bd;
+    --accent: #5b8cff; --border: #223049;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased; line-height: 1.6;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 0 1.25rem; }
+  nav { display: flex; justify-content: space-between; align-items: center; padding: 1.25rem; max-width: 900px; margin: 0 auto; }
+  nav .brand { font-weight: 600; letter-spacing: -0.01em; }
+  nav .links { display: flex; gap: 1.25rem; }
+  nav .links a { color: var(--muted); text-decoration: none; font-size: 0.92rem; }
+  nav .links a:hover { color: var(--fg); }
+
+  section { padding: clamp(2.5rem, 7vw, 5rem) 0; }
+  .hero { text-align: left; }
+  .hero .eyebrow { color: var(--accent); font-weight: 600; font-size: 0.9rem; }
+  .hero h1 { font-size: clamp(2.4rem, 7vw, 4rem); letter-spacing: -0.02em; line-height: 1.05; margin: 0.5rem 0; }
+  .hero .role { color: var(--muted); font-size: 1.3rem; margin-bottom: 1rem; }
+  .hero p { color: var(--muted); max-width: 54ch; font-size: 1.1rem; }
+
+  h2 { font-size: clamp(1.5rem, 4vw, 2rem); letter-spacing: -0.01em; margin-bottom: 1.25rem; }
+  .about p { color: var(--muted); max-width: 60ch; }
+
+  .skills { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+  .skill { background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 0.4rem 0.9rem; font-size: 0.9rem; }
+
+  .projects { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .project { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 1.5rem; display: grid; gap: 0.6rem; align-content: start; }
+  .project h3 { font-size: 1.2rem; letter-spacing: -0.01em; }
+  .project p { color: var(--muted); }
+  .project .tags { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .project .tags span { font-size: 0.75rem; color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 0.1rem 0.5rem; }
+  .project a { color: var(--accent); text-decoration: none; font-size: 0.9rem; font-weight: 600; }
+
+  .contact { text-align: center; border-top: 1px solid var(--border); }
+  .contact .actions { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-top: 1rem; }
+  .btn { display: inline-block; background: var(--accent); color: #fff; text-decoration: none; padding: 0.75rem 1.4rem; border-radius: 10px; font-weight: 600; }
+  .btn.ghost { background: transparent; border: 1px solid var(--border); color: var(--fg); }
+  footer { color: var(--muted); font-size: 0.85rem; text-align: center; padding-bottom: 2.5rem; }
+</style>
+</head>
+<body>
+  <nav>
+    <span class="brand">{{FULL_NAME}}</span>
+    <div class="links">
+      <a href="#about">About</a>
+      <a href="#work">Work</a>
+      <a href="#contact">Contact</a>
+    </div>
+  </nav>
+
+  <div class="wrap">
+    <section class="hero">
+      <span class="eyebrow">{{HERO_EYEBROW}}</span>
+      <h1>{{FULL_NAME}}</h1>
+      <div class="role">{{ROLE}}</div>
+      <p>{{HERO_INTRO}}</p>
+    </section>
+
+    <section id="about" class="about">
+      <h2>About</h2>
+      <p>{{ABOUT_BODY}}</p>
+      <div class="skills" style="margin-top:1.25rem">
+        <!-- SKILLS_START -->
+        <span class="skill">{{SKILL_1}}</span>
+        <span class="skill">{{SKILL_2}}</span>
+        <span class="skill">{{SKILL_3}}</span>
+        <span class="skill">{{SKILL_4}}</span>
+        <span class="skill">{{SKILL_5}}</span>
+        <!-- Add more <span class="skill">...</span> as needed. -->
+        <!-- SKILLS_END -->
+      </div>
+    </section>
+
+    <section id="work">
+      <h2>Selected work</h2>
+      <div class="projects">
+        <!-- PROJECTS_START -->
+        <div class="project">
+          <h3>{{PROJECT_1_TITLE}}</h3>
+          <p>{{PROJECT_1_BODY}}</p>
+          <div class="tags"><span>{{PROJECT_1_TAG_1}}</span><span>{{PROJECT_1_TAG_2}}</span></div>
+          <a href="{{PROJECT_1_LINK}}">View project</a>
+        </div>
+        <div class="project">
+          <h3>{{PROJECT_2_TITLE}}</h3>
+          <p>{{PROJECT_2_BODY}}</p>
+          <div class="tags"><span>{{PROJECT_2_TAG_1}}</span><span>{{PROJECT_2_TAG_2}}</span></div>
+          <a href="{{PROJECT_2_LINK}}">View project</a>
+        </div>
+        <div class="project">
+          <h3>{{PROJECT_3_TITLE}}</h3>
+          <p>{{PROJECT_3_BODY}}</p>
+          <div class="tags"><span>{{PROJECT_3_TAG_1}}</span><span>{{PROJECT_3_TAG_2}}</span></div>
+          <a href="{{PROJECT_3_LINK}}">View project</a>
+        </div>
+        <!-- Add more .project cards as needed. -->
+        <!-- PROJECTS_END -->
+      </div>
+    </section>
+
+    <section id="contact" class="contact">
+      <h2>Get in touch</h2>
+      <p style="color:var(--muted)">{{CONTACT_BODY}}</p>
+      <div class="actions">
+        <a class="btn" href="mailto:{{EMAIL}}">Email me</a>
+        <a class="btn ghost" href="{{PROFILE_LINK}}">{{PROFILE_LABEL}}</a>
+      </div>
+    </section>
+
+    <footer>{{FOOTER_TEXT}}</footer>
+  </div>
+</body>
+</html>
