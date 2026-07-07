@@ -19,8 +19,9 @@ aggregated to the document level with a best-passage highlight.
 `needs: { database: true }` → CloudGrid injects `DATABASE_MONGODB_URL` (fallback
 `MONGODB_URL`). **No `needs: vector`** — pgvector runtime role-grant is blocked
 (platform #1545), so embeddings live in the Mongo `chunks` collection and are
-cosine-ranked in-app. A scheduled (cron) refresh is a follow-up, blocked on
-platform #1585 — ship the manager "Refresh now" endpoint for now (see AGENTS.md).
+cosine-ranked in-app. Refresh runs two ways: the manager "Refresh now" endpoint
+(on demand) and an active Python `type: cron` job (`services/refresh/`, daily 03:00
+UTC) — both call the same `indexing.run_sync` (see AGENTS.md §8).
 
 ## Pluggable document source
 

@@ -191,16 +191,18 @@ services:
   backend:
     type: python
     path: /backend
-  # A scheduled `type: cron` refresh service is a follow-up — a Python cron
-  # entity is currently blocked on platform issue #1585. Until it lands, use the
-  # manager "Refresh now" endpoint (POST /backend/admin/refresh). See AGENTS.md.
-  # refresh:
-  #   type: cron
-  #   schedule: "0 3 * * *"
-  #   timezone: UTC
-  #   run: job
-  #   source:
-  #     path: services/refresh
+  # Scheduled reindex — Python `type: cron` job. Runs the SAME incremental
+  # pipeline as the manager "Refresh now" endpoint (app.indexing.run_sync),
+  # connecting directly to the injected DATABASE_MONGODB_URL. `run: job` = batch
+  # (no HTTP server, no path/port). Cron has no injected self-URL, so the backend
+  # `app/` package is vendored into services/refresh/src/app/ and called locally —
+  # see services/refresh/README.md (incl. the drift note). Degrades gracefully:
+  # with no source/embeddings secrets it records a report and exits 0 (no-op).
+  refresh:
+    type: cron
+    schedule: "0 3 * * *"       # daily at 03:00
+    timezone: UTC
+    run: job                    # batch job — runs services/refresh/src/main.py once
 # CloudGrid managed Mongo → injects DATABASE_MONGODB_URL (+ legacy MONGODB_URL).
 # NO `needs: vector` — pgvector runtime role-grant is still blocked (#1545);
 # embeddings live in the Mongo `chunks` collection and are cosine-ranked in-app.

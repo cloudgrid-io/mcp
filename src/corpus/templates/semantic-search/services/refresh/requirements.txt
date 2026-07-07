@@ -1,0 +1,9 @@
+# Cron-job deps — the subset of the backend's requirements that the vendored
+# indexing pipeline (app/config,db,source,embeddings,indexing) actually needs.
+# No fastapi/uvicorn (this is a batch job, not a server) and no numpy (in-app
+# cosine ranking lives in the backend's search.py, which the cron does not run).
+# pypdf / python-docx are imported lazily by source.extract_text for pdf/docx.
+pymongo==4.8.0
+httpx==0.27.0
+pypdf==4.2.0
+python-docx==1.1.2

@@ -205,8 +205,8 @@ def index_report():
 def refresh_now():
     """Manager-only on-demand incremental sync.
 
-    This is the supported refresh path today. A scheduled `type: cron` refresh
-    service is a follow-up (blocked on platform issue #1585); see AGENTS.md.
+    Runs the same pipeline as the scheduled `type: cron` refresh service
+    (services/refresh); this is the on-demand path. See AGENTS.md §8.
     """
     report = indexing.run_sync(triggered_by="manager")
     report.pop("_id", None)
