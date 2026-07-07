@@ -26,13 +26,15 @@ level with a best-passage highlight.
    `except OperationFailure` as belt-and-suspenders.
 5. **No `needs: vector`** — pgvector runtime role-grant is blocked (#1545), so
    embeddings live in the Mongo `chunks` collection (a float array) and are
-   cosine-ranked in-app. **No active cron** — a Python `type: cron` refresh is
-   blocked (#1585); ship the manager "Refresh now" endpoint and add cron later.
+   cosine-ranked in-app. **The refresh cron IS active** — a Python `type: cron`,
+   `run: job` service (`services/refresh/`) reindexes daily at 03:00 UTC, and the
+   manager "Refresh now" endpoint reindexes on demand; both call the same
+   `indexing.run_sync` (the cron vendors the backend `app/` modules — see AGENTS.md §8).
 
 ## File tree
 
 ```
-cloudgrid.yaml                                 # name + services(web static+build, backend python) + needs:{database:true}
+cloudgrid.yaml                                 # name + services(web static+build, backend python, refresh cron) + needs:{database:true}
 services/web/                                  # React + Vite static frontend (LTR, neutral)
   package.json  vite.config.js  index.html
   src/main.jsx  App.jsx  api.js  styles.css
@@ -50,6 +52,10 @@ services/backend/                              # FastAPI backend, mounted at /ba
     embeddings.py                               # one config point (OpenAI-compatible)
     answer.py                                   # grounded answer + citations (extractive fallback)
     auth.py                                     # manager session auth (MANAGER_PASSWORD_HASH)
+services/refresh/                              # type: cron, run: job — scheduled reindex (daily 03:00 UTC)
+  requirements.txt  README.md
+  src/main.py                                  # calls app.indexing.run_sync(triggered_by="cron")
+  src/app/                                     # VENDORED copies: config db source embeddings indexing __init__
 ```
 
 ## cloudgrid.yaml (active fields)
@@ -69,14 +75,19 @@ services:
   backend:
     type: python
     path: /backend
+  refresh:
+    type: cron
+    schedule: "0 3 * * *"
+    timezone: UTC
+    run: job
 needs:
   database: true
 ```
 
 > **Capability:** the need is `database: true` — the deployer provisions Mongo and
 > injects `DATABASE_MONGODB_URL` (+ legacy `MONGODB_URL`). NO `needs: vector`
-> (#1545) and NO active cron (#1585). `requires:` is the deprecated v1 alias —
-> don't mix it with `needs:`.
+> (#1545). Three services: `web` (static), `backend` (python), `refresh` (cron).
+> `requires:` is the deprecated v1 alias — don't mix it with `needs:`.
 
 ## Configure + deploy
 

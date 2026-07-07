@@ -3,7 +3,7 @@
 This template is a **runnable app**, not a blueprint — it ships real FastAPI +
 React code. Read this guide, adapt the naming/metadata to the user's domain, wire
 the secrets, and deploy. The four "baked-in learnings" (health-without-secrets,
-startup index, `$text` guard, no vector/no cron) are already in the code — do not
+startup index, `$text` guard, no `needs: vector`) are already in the code — do not
 regress them.
 
 ---
@@ -15,7 +15,7 @@ is the URL mount, NOT the filesystem path. Files at the repo root fail with
 `Error: Service directory not found: …/services/<name>`.
 
 ```
-cloudgrid.yaml                          # name + services(web,backend) + needs:{database:true}
+cloudgrid.yaml                          # name + services(web,backend,refresh) + needs:{database:true}
 services/web/                           # React + Vite static frontend, served at /
   package.json  vite.config.js  index.html
   src/main.jsx  App.jsx  api.js  styles.css
@@ -26,6 +26,11 @@ services/backend/                       # FastAPI, mounted at /backend
   src/app/
     main.py       config.py   db.py      search.py   indexing.py
     source.py     embeddings.py  answer.py  auth.py
+services/refresh/                       # type: cron, run: job — scheduled reindex (§8)
+  requirements.txt  README.md
+  src/main.py                           # calls app.indexing.run_sync(triggered_by="cron")
+  src/app/                              # VENDORED copies of the backend modules run_sync needs:
+    config.py  db.py  source.py  embeddings.py  indexing.py  __init__.py
 ```
 
 ---
@@ -150,23 +155,42 @@ to store the same way. Non-secret public config can also go via `grid env`.
    source or embeddings are unconfigured. `GET /backend/status` reports capability
    **booleans** (`source_configured`, `embeddings_configured`, …), never secret
    values.
-4. **No `needs: vector` / no active cron.** `needs:` is `database` only (#1545).
-   The cron refresh service is commented out (#1585) — see §8.
+4. **No `needs: vector`.** `needs:` is `database` only — pgvector's runtime
+   role-grant is still blocked (#1545). (The scheduled cron refresh IS active — see
+   §8.)
 
 ---
 
-## 8. Refresh: manager endpoint now, cron later
+## 8. Refresh: on-demand endpoint + scheduled cron
 
-The supported refresh path today is the manager-only endpoint
-`POST /backend/admin/refresh` (wired to the "Refresh now" button in Settings). It
-runs the same incremental sync pipeline (`indexing.run_sync`) a cron would.
+Two refresh paths, both running the same incremental pipeline
+(`indexing.run_sync`):
 
-A scheduled `type: cron` refresh service is a **follow-up**: a Python cron entity
-is currently blocked on **platform issue #1585**. The `cloudgrid.yaml` keeps a
-`refresh:` cron service commented out with a `services/refresh` source pointing at
-the same `indexing.run_sync`. When #1585 lands, uncomment it (`schedule`,
-`timezone`, `run: job`) and add a thin `services/refresh/src/main.py` that calls
-`app.indexing.run_sync(triggered_by="cron")`.
+1. **On-demand** — the manager-only endpoint `POST /backend/admin/refresh` (wired
+   to the "Refresh now" button in Settings). `triggered_by="manager"`.
+2. **Scheduled** — a `type: cron`, `run: job` Python service (`services/refresh/`)
+   that runs daily at `0 3 * * *` UTC and calls
+   `app.indexing.run_sync(triggered_by="cron")`. This is ACTIVE — Python `type:
+   cron` now validates, deploys, and fires on CLI 0.14.0 (platform #1585 fixed).
+
+**How the cron reuses the pipeline (and the drift note).** Each CloudGrid service
+builds in its own isolated container from its own folder, so a cross-folder import
+of `services/backend/src/app` will not resolve. The reuse mechanism is a
+**vendored copy**: the backend modules `run_sync` transitively needs —
+`config.py db.py source.py embeddings.py indexing.py __init__.py` — are copied
+verbatim into `services/refresh/src/app/`. The cron connects directly to the
+grid-injected `DATABASE_MONGODB_URL` (no HTTP hop to the backend, no self-URL
+dependency). If you change the pipeline, chunking, source adapters, embeddings, or
+the schema in the backend, **re-copy the changed module(s)** into
+`services/refresh/src/app/` so the scheduled run matches the endpoint. See
+`services/refresh/README.md`.
+
+**Secrets the cron needs:** the same ones as the backend, read lazily — `SOURCE_TYPE`
++ its source creds (`DROPBOX_*` / `LOCAL_SOURCE_PATH` / `URL_SOURCE_MANIFEST`) and
+`EMBEDDINGS_API_KEY` (+ `EMBEDDINGS_MODEL`, `EMBEDDINGS_BASE_URL`). With none set,
+the scheduled run is a clean no-op (`status: skipped`, 0 documents, exit 0), never a
+crash. Its outcome lands in the same `index_reports` collection, visible via the
+manager index-report and in `grid logs` as a `cron refresh: status=… files=…` line.
 
 ---
 

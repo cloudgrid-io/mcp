@@ -57,7 +57,7 @@ requires-vs-needs caveat, validation rules), fetch the companion reference:
 | revenue dashboard, sales dashboard, MRR/revenue view | `revenue-dashboard` | `database: true` | runtime (async, poll) | local |
 | property listings, real estate site, rentals/homes listings | `property-listings` | `database: true` | runtime (async, poll) | local |
 | project management, projects and tasks tracker, team project board | `project-management` | `database: true` | runtime (async, poll) | local |
-| search over my documents / PDFs / notes / knowledge base, semantic search, document search, find across my files, searchable archive | `semantic-search` | `database: true` (NO `vector` #1545; NO cron #1585) | runtime (async, poll) | local |
+| search over my documents / PDFs / notes / knowledge base, semantic search, document search, find across my files, searchable archive | `semantic-search` | `database: true` (NO `vector` #1545; active daily refresh cron) | runtime (async, poll) | local |
 
 **Rule of thumb:** if the app must SAVE/remember data, share state across
 users/sessions, log in, or store submissions → it is persistent → runtime, local
@@ -86,14 +86,11 @@ Python `type: cron` is blocked on **#1585**). Read its `AGENTS.md` for the sourc
 adapter (dropbox/local/url) + embeddings wiring and the health-without-secrets /
 startup-index patterns.
 
-## Held / pending platform (not yet buildable)
-
-Two more archetypes are designed but blocked on platform work — the LLM should
-know they are coming but must NOT author them yet:
+## Held / pending platform
 
 | Intent | Would need | Status |
 |---|---|---|
-| scheduled task, cron job, "run every day/hour", periodic worker | a `type: cron` service (`schedule`, `timezone`) | **HELD** — platform issue #1543 (cron entities crash the online-check). Do not build. |
+| scheduled task, cron job, "run every day/hour", periodic worker | a `type: cron` service (`schedule`, `timezone`) | **SUPPORTED** on CLI 0.14.0 — Python and Node `type: cron` services validate, deploy, and fire (platform #1585 fixed). See the semantic-search `refresh` cron for a working Python-job example. |
 | RAG chatbot, "answer over my own docs", semantic search, retrieval-augmented Q&A | `ai-app` + `needs: { vector: pgvector }` | **HELD** — platform issue #1545 (pgvector crashes the deploy). Ship the plain `ai-app` (no vector) for now. |
 
 ## Blueprints (structure + cloudgrid.yaml; adapt the app — some pending platform support)
@@ -121,17 +118,17 @@ runtime, async build, **local edition only**. Auth/payment secrets map through a
 | billing dashboard, invoicing and payments dashboard, SaaS billing | `billing-dashboard` | `database: true` (+ Stripe via `vault:`) | runtime (async, poll) | local |
 | internal tools portal, admin tools hub, back-office portal | `internal-tools-portal` | `database: true` (+ auth via `vault:`) | runtime (async, poll) | local |
 | approval workflow, request approvals, multi-step approval system | `approval-workflow` | `database: true` (+ auth via `vault:`) | runtime (async, poll) | local |
-| booking system, reservations, appointment booking, scheduling | `booking-system` | `database: true` (+ Stripe/auth via `vault:`); reminder **cron pending #1543** | runtime (async, poll) | local |
-| calendar scheduler, team calendar, scheduling app, meeting scheduler | `calendar-scheduler` | `database: true` (+ optional auth/Stripe via `vault:`); reminder **cron pending #1543** | runtime (async, poll) | local |
-| appointment booking, clinic/salon booking, appointment scheduler | `appointment-booking` | `database: true` (+ auth/Stripe via `vault:`); reminder **cron pending #1543** | runtime (async, poll) | local |
-| restaurant website with reservations, table booking, restaurant site | `restaurant-reservations` | `database: true` (+ Stripe/email via `vault:`); reminder **cron pending #1543** | runtime (async, poll) | local |
-| travel booking portal, trip booking, flights/hotels booking, travel reservations | `travel-booking` | `database: true` (+ Stripe/auth via `vault:`); reminder **cron pending #1543** | runtime (async, poll) | local |
+| booking system, reservations, appointment booking, scheduling | `booking-system` | `database: true` (+ Stripe/auth via `vault:`); reminder cron supported (Python/Node `type: cron`, 0.14.0) | runtime (async, poll) | local |
+| calendar scheduler, team calendar, scheduling app, meeting scheduler | `calendar-scheduler` | `database: true` (+ optional auth/Stripe via `vault:`); reminder cron supported (Python/Node `type: cron`, 0.14.0) | runtime (async, poll) | local |
+| appointment booking, clinic/salon booking, appointment scheduler | `appointment-booking` | `database: true` (+ auth/Stripe via `vault:`); reminder cron supported (Python/Node `type: cron`, 0.14.0) | runtime (async, poll) | local |
+| restaurant website with reservations, table booking, restaurant site | `restaurant-reservations` | `database: true` (+ Stripe/email via `vault:`); reminder cron supported (Python/Node `type: cron`, 0.14.0) | runtime (async, poll) | local |
+| travel booking portal, trip booking, flights/hotels booking, travel reservations | `travel-booking` | `database: true` (+ Stripe/auth via `vault:`); reminder cron supported (Python/Node `type: cron`, 0.14.0) | runtime (async, poll) | local |
 | RAG, ask my docs, knowledge base chatbot, retrieval-augmented search over documents | `ai-knowledge-base` | `ai: true, database: true`; ideal `vector: pgvector` **pending #1545** (store embeddings in Mongo + cosine-rank until it lands) | runtime (async, poll) | local |
 
 The booking family (`booking-system`, `calendar-scheduler`, `appointment-booking`,
-`restaurant-reservations`, `travel-booking`) is fully buildable today **minus**
-the reminder cron — a `type: cron` service is HELD on platform issue **#1543**, so
-ship without it. `ai-knowledge-base` builds today on the AI Gateway + Mongo; its
+`restaurant-reservations`, `travel-booking`) is fully buildable today, **including**
+the reminder cron — Python and Node `type: cron` services work on CLI 0.14.0
+(platform #1585 fixed). `ai-knowledge-base` builds today on the AI Gateway + Mongo; its
 ideal `needs: { vector: pgvector }` embedding store is HELD on **#1545**, so store
 chunks in Mongo and cosine-rank in-app until it lands.
 
@@ -173,8 +170,27 @@ engine hint. Cron is NOT a need — it is a **service type** (`type: cron` with
 
 1. Read the request; match it against the workflow `when:` triggers above.
 2. Adopt that template's `needs:`. Persistence → `database` (`app-with-data` or
-   `api-service`); talks to an LLM → `ai: true` + `database` (`ai-app`). (Held for
-   now: scheduled → a `cron` service, #1543; RAG → `vector: pgvector`, #1545.)
+   `api-service`); talks to an LLM → `ai: true` + `database` (`ai-app`); scheduled
+   work → a `type: cron` service (Python/Node, supported on 0.14.0). (Held for now:
+   RAG's ideal `vector: pgvector`, #1545 — store embeddings in Mongo until it lands.)
 3. Static (`needs: none`) → publish as an inspiration with `gridctl_drop`
    (instant, any edition). Anything with a `needs:` → runtime, local edition,
    `gridctl_plug` a linked folder, then poll to a live URL.
+
+## FAQ
+
+**"What database does CloudGrid support?"**
+> All of them — use CloudGrid's managed database out of the box, or bring your own
+> by giving me the connection keys (Postgres, MySQL, MongoDB, Supabase, Neon, and
+> more). Which would you like?
+
+Under the hood: **managed** is `needs: { database: true }` (grid provisions Mongo,
+injects `DATABASE_MONGODB_URL`); **bring-your-own** is
+`needs: { database: { tier: external, secret: MY_DB } }` plus
+`grid secrets set MY_DB=<connection-string>` (the connection string lives in env
+secrets, never committed).
+
+**"Can I run something on a schedule / every day?"**
+> Yes — add a `type: cron` service (`schedule` + `timezone`). Python and Node cron
+> jobs are supported on CLI 0.14.0. See the semantic-search `refresh` cron for a
+> working Python-job example.

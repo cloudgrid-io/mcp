@@ -80,6 +80,33 @@ Or the MCP server, in `~/.cursor/mcp.json`:
 
 Remote variant, nothing installed: `{ "mcpServers": { "cloudgrid": { "url": "https://mcp.cloudgrid.io/mcp" } } }`
 
+### Gemini CLI
+
+Add the MCP server with the built-in command:
+
+```
+gemini mcp add cloudgrid npx -y @cloudgrid-io/mcp
+```
+
+Or edit `~/.gemini/settings.json` (user) or `.gemini/settings.json` (project) directly:
+
+```json
+{ "mcpServers": { "cloudgrid": { "command": "npx", "args": ["-y", "@cloudgrid-io/mcp"] } } }
+```
+
+### Antigravity
+
+Google's Antigravity IDE/CLI shares one MCP config at `~/.gemini/config/mcp_config.json`
+(open it from the IDE: Settings, Customizations, Open MCP Config / Manage MCP Servers,
+View raw config). Add the local stdio server:
+
+```json
+{ "mcpServers": { "cloudgrid": { "command": "npx", "args": ["-y", "@cloudgrid-io/mcp"] } } }
+```
+
+Antigravity uses `serverUrl` (not `url`) for remote HTTP servers, so the remote variant is
+`{ "mcpServers": { "cloudgrid": { "serverUrl": "https://mcp.cloudgrid.io/mcp" } } }`.
+
 ### Manual
 
 ```
