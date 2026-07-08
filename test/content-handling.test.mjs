@@ -1,10 +1,10 @@
-// Offline unit test for robust content handling in runDrop (0.8.4).
-// Verifies: base64-of-HTML decode (inline + via path), garbage rejection,
-// small-fragment wrap preserved, @-prefixed / mistaken-path handling, the
-// path→text/html content-type sniff, and the auth-aware inline size cap.
-// Mocks global fetch and the fs deps seam. Run: node test/content-handling.test.mjs
+// Offline unit test for robust content handling on grid_plug's inline `html`
+// single-file path (the hardening folded in from the old drop verb, 0.18.0).
+// Verifies: base64-of-HTML decode, garbage rejection, small-fragment wrap, the
+// @-prefixed / mistaken-path rejection, and the auth-aware inline size cap.
+// Mocks global fetch. Run: node test/content-handling.test.mjs
 
-import { runDrop } from "../src/tools.js";
+import { runPlug } from "../src/tools.js";
 
 let failures = 0;
 function check(label, cond) {
@@ -52,97 +52,81 @@ try {
   {
     const b64 = Buffer.from(FULL_HTML, "utf8").toString("base64");
     const before = calls.length;
-    await runDrop(makeCtx(), { html: b64, anonymous: true });
+    await runPlug(makeCtx(), { html: b64, anon: true });
     check("base64 html → published (a fetch happened)", calls.length === before + 1);
     const { type, text } = await artifactPart();
     check("base64 html → text/html", type === "text/html");
+    check("base64 html → materialized as index.html", lastForm().get("artifact").name === "index.html");
     check("base64 html → decoded, not wrapped in a shell", text === FULL_HTML);
     check("base64 html → NOT a base64 wall of text", !text.includes(b64));
   }
 
-  // 2. base64-of-HTML in a file read via `path` → decoded, text/html.
+  // 2. Non-HTML large blob that is NOT decodable → throws, does NOT publish.
   {
-    const b64 = Buffer.from(FULL_HTML, "utf8").toString("base64");
-    const deps = { readFile: async () => Buffer.from(b64, "utf8"), fsExists: () => true };
-    await runDrop(makeCtx(), { path: "/tmp/deck_b64.txt", anonymous: true }, deps);
-    const { type, text } = await artifactPart();
-    check("base64-in-file via path → text/html", type === "text/html");
-    check("base64-in-file via path → decoded HTML", text === FULL_HTML);
-  }
-
-  // 3. Non-HTML large blob that is NOT decodable → throws, does NOT publish.
-  {
-    const garbage = "x".repeat(20000); // large, not base64 (x-only IS base64 alphabet though)
-    // Use content that is clearly not base64-of-html and large.
     const notHtml = "This is a plain sentence that is not HTML. ".repeat(500);
     const before = calls.length;
     let err = null;
     try {
-      await runDrop(makeCtx(), { html: notHtml, anonymous: true });
+      await runPlug(makeCtx(), { html: notHtml, anon: true });
     } catch (e) {
       err = e;
     }
     check("large non-HTML blob → throws", err !== null);
     check("large non-HTML blob → did NOT publish", calls.length === before);
-    check("error mentions no artifact_files", /artifact_files/.test(err?.message || ""));
-    void garbage;
+    check("error says it does not look like an HTML document", /HTML document/.test(err?.message || ""));
   }
 
-  // 4. Small HTML fragment/snippet → still wrapped-and-published.
+  // 3. Small HTML fragment/snippet → still wrapped-and-published.
   {
     const before = calls.length;
-    await runDrop(makeCtx(), { html: "<h1>hello snippet</h1>", anonymous: true });
+    await runPlug(makeCtx(), { html: "<h1>hello snippet</h1>", anon: true });
     check("small fragment → published", calls.length === before + 1);
     const { type, text } = await artifactPart();
     check("small fragment → text/html", type === "text/html");
     check("small fragment → wrapped in a full document", /^<!doctype html>/i.test(text) && text.includes("hello snippet"));
   }
 
-  // 5a. @-prefixed path (local, file exists) → read as path.
+  // 4. A file-path-looking `html` (bare or @-prefixed) → rejected, steer to `path`.
+  //    The single-file html path takes CONTENT, never a path — protects against
+  //    publishing a file path as page text.
   {
-    const deps = { readFile: async () => Buffer.from(FULL_HTML, "utf8"), fsExists: () => true };
-    await runDrop(makeCtx(), { html: "@/home/claude/deck.html", anonymous: true }, deps);
-    const { type, text } = await artifactPart();
-    check("@-path (exists) → read from disk as text/html", type === "text/html" && text === FULL_HTML);
-  }
-  // 5b. @-prefixed path (local, file missing) → clear error naming the path.
-  {
-    const deps = { fsExists: () => false };
+    const before = calls.length;
     let err = null;
     try {
-      await runDrop(makeCtx(), { html: "@/home/claude/missing.html", anonymous: true }, deps);
+      await runPlug(makeCtx(), { html: "@/home/claude/deck.html", anon: true });
     } catch (e) {
       err = e;
     }
-    check("@-path (missing) → throws naming the path", /\/home\/claude\/missing\.html/.test(err?.message || ""));
+    check("@-path html → throws (never published)", err !== null && calls.length === before);
+    check("@-path html → error steers to `path`", /file path/i.test(err?.message || "") && /`path`/.test(err?.message || ""));
+
+    let err2 = null;
+    try {
+      await runPlug(makeCtx(), { html: "/home/claude/missing.html", anon: true });
+    } catch (e) {
+      err2 = e;
+    }
+    check("bare path-looking html → error names the path", /\/home\/claude\/missing\.html/.test(err2?.message || ""));
   }
-  // 5c. path-looking html on web edition → hosted error, steers to inline.
+
+  // 5. path-looking html on the web edition → hosted error, steers to inline HTML.
   {
     let err = null;
     try {
-      await runDrop(makeCtx({ edition: "web" }), { html: "/home/claude/deck.html", anonymous: true });
+      await runPlug(makeCtx({ edition: "web" }), { html: "/home/claude/deck.html", anon: true });
     } catch (e) {
       err = e;
     }
-    check("web path-looking html → hosted error, mentions inline", /raw HTML inline/i.test(err?.message || ""));
+    check("web path-looking html → error mentions inline HTML", /raw HTML inline/i.test(err?.message || ""));
   }
 
-  // 6. path to a real .html file (plain HTML, no base64) → uploaded as text/html.
-  {
-    const deps = { readFile: async () => Buffer.from(FULL_HTML, "utf8"), fsExists: () => true };
-    await runDrop(makeCtx(), { path: "/tmp/index.html", anonymous: true }, deps);
-    const { type, text } = await artifactPart();
-    check("path .html → text/html Blob type", type === "text/html");
-    check("path .html → bytes unchanged", text === FULL_HTML);
-  }
-
-  // 7. Auth-aware cap.
+  // 6. Auth-aware inline size cap.
   {
     // anon inline > 2MB → anon message.
     const big = "<!doctype html><html><body>" + "a".repeat(2_100_000) + "</body></html>";
     let err = null;
     try {
-      await runDrop(makeCtx(), { html: big, anonymous: true });
+      await runPlug(makeCtx(), { html: big, anon: true });
     } catch (e) {
       err = e;
     }
@@ -150,14 +134,14 @@ try {
 
     // authed inline between 2MB and AUTHED cap → allowed.
     const before = calls.length;
-    await runDrop(makeCtx({ token: "jwt-1" }), { html: big });
+    await runPlug(makeCtx({ token: "jwt-1" }), { html: big });
     check("authed inline > 2MB (< 25MB) → allowed (published)", calls.length === before + 1);
 
     // authed over AUTHED cap → authed-limit message.
     const huge = "<!doctype html><html><body>" + "a".repeat(26_000_000) + "</body></html>";
     let err2 = null;
     try {
-      await runDrop(makeCtx({ token: "jwt-1" }), { html: huge });
+      await runPlug(makeCtx({ token: "jwt-1" }), { html: huge });
     } catch (e) {
       err2 = e;
     }

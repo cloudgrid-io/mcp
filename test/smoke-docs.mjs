@@ -61,14 +61,12 @@ try {
   // Must NOT expose any write/auth/deploy tools — neither the new names, the
   // aliases, nor the Agent Core tools (the anon docs edition has no auth/deploy).
   for (const forbidden of [
-    "cloudgrid_drop",
     "cloudgrid_login",
     "cloudgrid_init",
     "cloudgrid_plug",
     "cloudgrid_claim",
     "cloudgrid_secrets",
     "cloudgrid_delete",
-    "grid_drop",
     "grid_login",
     "grid_plug",
     "grid_start",

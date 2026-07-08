@@ -3,7 +3,7 @@
 // Two editions register from here:
 //   - local (stdio): full toolset, including the CLI-wrapping tools. Identity
 //     comes from ~/.cloudgrid/credentials.
-//   - web (HTTP, hosted): the light, CLI-free toolset (drop, claim, login).
+//   - web (HTTP, hosted): the light, CLI-free toolset (plug, claim, login).
 //     Identity is a per-session token held in memory.
 //
 // The difference is injected as a `ctx` object, so the tool logic is written once.
@@ -42,7 +42,6 @@ const ANON_HTML_MAX_BYTES = 2_000_000;
 // folder-plug path uses PLUG_MAX_TOTAL_BYTES = 100MB, but the single-artifact
 // inline limit is not yet confirmed) and raise this to match.
 const AUTHED_HTML_MAX_BYTES = 25_000_000;
-const CONSOLE_URL = "https://console.cloudgrid.io/";
 
 // ── Widget resources (ChatGPT Apps SDK, web edition only) ────────────────────
 // The Apps-SDK UI widgets (openai/outputTemplate → a ui:// html resource) render
@@ -62,14 +61,6 @@ const GRID_PICKER_HTML = readFileSync(new URL("./widgets/org-picker.html", impor
 const WIDGET_CSP = {
   connectDomains: ["https://*.cloudgrid.io"],
   resourceDomains: ["https://*.cloudgrid.io"],
-};
-
-const VISIBILITY_LABELS = {
-  private: "Only you",
-  org: "Your org",
-  authenticated: "Anyone signed in",
-  space: "A space",
-  link: "Anyone with the link",
 };
 
 function ok(text) {
@@ -94,14 +85,14 @@ Operating rules:
 6. If a signed-in publish fails with a server error, do not fall back to anonymous publishing (it burns the anonymous quota and downgrades ownership); surface the error, use the CLI fallback if offered, or ask the user.
 7. When signed in and the user has more than one grid, do not assume a target — the publish tools will ask; relay the choice to the user and pass the chosen grid.
 8. When a build/deploy fails unexpectedly, offer to report it to the CloudGrid team — only with the user's explicit consent (ask first). Send just the error + the failed request by default (call grid_report), and never send the whole conversation unless the user agrees (include_conversation). Respect privacy.
-9. To modify an existing drop when you don't already have its HTML in context, first call grid_source to fetch the current HTML, apply your change, then call grid_drop/grid_plug with target_entity_id (the drop's entity_id) to update the SAME URL in place. Do not ask the user to paste the HTML back.
-10. Publishing a heavy or local file: in the local edition use the path parameter so it is read from disk (no inline size limit); never base64-encode HTML and never pass a file path (or an @-prefixed path) as html. If a drop looks empty, use grid_source to check what was actually published, then re-plug with the real HTML/path and target_entity_id.
+9. To modify an existing page when you don't already have its HTML in context, first call grid_source to fetch the current HTML, apply your change, then call grid_plug with target_entity_id (the entity_id) to update the SAME URL in place. Do not ask the user to paste the HTML back.
+10. Publishing a single HTML page: pass it inline as grid_plug's html parameter (a full self-contained document). For a heavy or image-heavy page in the local edition, pass the path parameter instead so it is read from disk (no inline size limit); never base64-encode HTML and never pass a file path (or an @-prefixed path) as html. If a page looks empty, use grid_source to check what was actually published, then re-plug with the real HTML/path and target_entity_id.
 11. Persistence check: if the user needs to SAVE data, share state across users/sessions, log in, or store submissions, that's a runtime app-with-data (Mongo-backed), NOT a static page — static templates keep state only in memory and lose it on refresh. Use the app-with-data workflow. This requires the LOCAL edition (Claude Desktop/Code or the CLI); on the hosted edition, tell the user persistence isn't available there and offer a static version.
-12. To choose what to build: match the request against the workflow when: triggers and the capability-map (grid_fetch({kind:"doc", name:"capability-map"})). Pick the template whose needs: matches what the app requires (persistence → database; scheduled → cron; etc.). Static (needs: none) deploys as an inspiration (instant, any edition); anything needing needs: is a runtime (async, local edition).
+12. To choose what to build: match the request against the workflow when: triggers and the capability-map (grid_fetch({kind:"doc", name:"capability-map"})). Pick the template whose needs: matches what the app requires (persistence → database; scheduled → cron; etc.). Classify the ARTIFACT to pick the deploy: ONE self-contained HTML page (a single file — CSS+JS inline, images/fonts as data: URIs; that is the normal hosted output) → an inspiration — instant, ANY edition, deploy via grid_plug with the inline html param. Only genuinely SEPARATE files/folders (a real assets/ dir, separate .css/.js files, multiple pages, a SPA build) — OR anything needing needs: (data/server/LLM/cron) → a runtime app — grid_plug on a linked folder with a cloudgrid.yaml, local edition only, async build.
 13. Before writing a cloudgrid.yaml, fetch the reference: grid_fetch({kind:"doc", name:"cloudgrid-yaml"}) — it has the full schema and the needs: vocabulary. Declare infrastructure with needs: (the deployer injects from it): needs: { database: true } → Mongo (DATABASE_MONGODB_URL); needs: { cache: true } → Redis; scheduled work → a service of type: cron (Python or Node). Use needs: OR requires:, never both — declaring both is rejected.
 14. Databases — CloudGrid supports both, so never tell the user to self-host. Managed: needs: { database: true } provisions Mongo and injects DATABASE_MONGODB_URL. Bring-your-own (they already run Postgres / MySQL / MongoDB / Supabase / Neon / PlanetScale / etc.): needs: { database: { tier: external, secret: MY_DB } } plus grid secrets set MY_DB=<connection-string> — the connection string lives in env SECRETS, never committed. If asked "what databases does CloudGrid support?": all of them — the managed CloudGrid database out of the box, or bring your own via keys — ask which they want.
 
-Deploy is edition-dependent: on the hosted MCP call the drop tool with the HTML; on local MCP / CLI write the file and run the plug tool. An HTML page deploys synchronously, so you get a URL right away.`;
+Deploy is via grid_plug on every edition: for a single HTML page pass it inline as the html param (works on the hosted MCP too); for a multi-file app write the files and pass a folder path (local MCP / CLI). A single HTML page deploys synchronously as an inspiration, so you get a URL right away.`;
 
 // The corpus subdirectories that grid_fetch serves, keyed by `kind`. Each
 // lives in its own subtree of src/corpus/ (populated by scripts/snapshot-corpus.mjs
@@ -710,9 +701,9 @@ async function fetchUserOrgs(token) {
   }
 }
 
-// ── Shared grid disambiguation (grid_drop + grid_plug) ──────────────────
-// The stateless "which grid?" ask, used identically by both publish verbs so
-// they never drift. Given the caller's token and a supplied grid, it decides:
+// ── Shared grid disambiguation (grid_plug) ──────────────────
+// The stateless "which grid?" ask on an authed create. Given the caller's token
+// and a supplied grid, it decides:
 //   - supplied grid matches a membership  → { proceed: true, grid }
 //   - >1 grid and none supplied           → { picker } (a ready-to-return result)
 //   - exactly one grid                    → { single: annotatedOrg } — the caller
@@ -771,31 +762,6 @@ export async function resolveGridOrAsk(ctx, { token, suppliedGrid, edition }, de
   return { proceed: true };
 }
 
-// After an authenticated web drop, upgrade visibility to "link" so the artifact
-// is shareable and its preview renders without a sign-in wall. Best-effort — a
-// failure here does not fail the drop; the user can always call grid_visibility.
-async function upgradeVisibilityToLink(ctx, entityId, orgSlug) {
-  const token = await ctx.getToken();
-  if (!token || !entityId) return false;
-  try {
-    const hdrs = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-    // Send the grid-native header; keep X-CloudGrid-Org in parallel (same value)
-    // during the org→grid soak. Never send conflicting values → 400 GRID_HEADER_CONFLICT.
-    if (orgSlug) {
-      hdrs["X-CloudGrid-Grid"] = orgSlug;
-      hdrs["X-CloudGrid-Org"] = orgSlug;
-    }
-    const res = await fetch(`${API_BASE}/api/v2/inspirations/${encodeURIComponent(entityId)}`, {
-      method: "PATCH",
-      headers: hdrs,
-      body: JSON.stringify({ visibility: "link" }),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
 // ── Direct-API tools (both editions) ───────────────────────────────────────────
 function looksLikeFullHtml(s) {
   const head = s.replace(/^﻿/, "").trimStart().slice(0, 256).toLowerCase();
@@ -844,6 +810,55 @@ function looksLikePath(s) {
   if (/[\n\r]/.test(t)) return false;
   if (/<[a-z!/]/i.test(t)) return false; // contains a tag → not a path
   return /^(~|\.{0,2}\/|[A-Za-z]:[\\/]|\/)/.test(t) || /\.[A-Za-z0-9]{1,8}$/.test(t);
+}
+
+// Normalize an inline `html` string — grid_plug's ergonomic single-file publish
+// path — into ONE index.html artifact, reusing the same hardening the old drop
+// verb used (decodeIfBase64Html, the @-path/file-path rejection, the base64
+// guard, and the small-fragment wrap). Returns { path, buffer, type }. Throws on
+// a file-path-looking or non-HTML input so a path/base64 blob is never published
+// as page content. The auth-aware inline size cap is enforced later in runPlug
+// (it depends on the anon-vs-authed wire).
+function htmlToArtifact(html, filename) {
+  if (typeof html !== "string" || html.length === 0) {
+    throw new Error("`html` must be the complete HTML document as a string.");
+  }
+  // Strip an invented `@`-prefix shorthand, then reject a bare file path — the
+  // inline html path takes HTML CONTENT, not a path (use `path` for a file).
+  let candidate = html.startsWith("@") ? html.slice(1) : html;
+  if (!looksLikeFullHtml(candidate) && looksLikePath(candidate)) {
+    throw new Error(
+      `This looks like a file path (\`${candidate.trim()}\`), not HTML. Pass the raw HTML inline as ` +
+        "`html`, or pass the file/folder via `path` — do not pass a path as `html`.",
+    );
+  }
+  // Rescue a base64-of-HTML blob passed as `html` (real user repro): decode it
+  // rather than publishing a wall of base64 text.
+  const { html: resolved } = decodeIfBase64Html(candidate);
+  let content = resolved;
+  if (!looksLikeFullHtml(content)) {
+    const stripped = content.replace(/\s+/g, "");
+    const looksBase64 =
+      stripped.length >= 64 && stripped.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(stripped);
+    const isShortFragment = Buffer.byteLength(content, "utf8") <= 8192;
+    const hasTag = /<[a-z][\s\S]*>/i.test(content);
+    if (isShortFragment && (hasTag || (!looksBase64 && !looksLikePath(content)))) {
+      // Legit "share this snippet" — wrap a small text/markup fragment into a
+      // full document (preserve the old drop's friendly behavior).
+      content =
+        `<!doctype html>\n<html lang="en">\n<head><meta charset="utf-8">` +
+        `<title>Shared on CloudGrid</title></head>\n<body>\n${content}\n</body>\n</html>\n`;
+    } else {
+      // Large, or base64 that failed to decode to HTML, or a bare file path:
+      // refuse instead of silently publishing garbage.
+      const kind = looksBase64 ? "base64" : looksLikePath(content) ? "a file path" : "raw data";
+      throw new Error(
+        `This doesn't look like an HTML document (it looks like ${kind}). Pass the raw HTML as \`html\`, ` +
+          "or in the local edition pass `path` to the .html file — do NOT base64-encode it.",
+      );
+    }
+  }
+  return { path: filename || "index.html", buffer: Buffer.from(content, "utf8"), type: "text/html" };
 }
 
 // Anonymous drops are owned by the platform Guest Org, whose slug is the apex
@@ -908,430 +923,6 @@ export function resolvePlugUrl(data) {
   return composePlugUrl(data);
 }
 
-export async function runDrop(
-  ctx,
-  { html, path: filePath, filename, anonymous, org, grid, fresh, entity_id, owner_token },
-  deps = {},
-) {
-  // `grid` is an accepted alias for `org` (Gilad's org→grid rename); `org` still works.
-  const targetGrid = org ?? grid;
-  // The `deps` seam (readFile/exists) exists ONLY so the content-handling
-  // regression tests can drive the `path` / `@`-path routes offline. Production
-  // always calls this with no deps.
-  const { readFile: readFileImpl = readFile, fsExists = existsSync } = deps;
-
-  // Defensive: the web edition schema excludes `path`, but if a model still
-  // passes one (e.g. from a cached tool description), reject early with a
-  // clear explanation.
-  if (ctx.edition === "web" && filePath) {
-    throw new Error(
-      "The hosted server cannot read local files — pass the full document as `html` instead of a `path`.",
-    );
-  }
-
-  // An agent may pass an `@`-prefixed path (invented `@/home/claude/...`
-  // shorthand) or a bare filesystem path as `html`. Normalise: strip a leading
-  // `@`, and in the local edition promote a path-looking `html` to the `path`
-  // route (read from disk) when the file exists. On the hosted server there is
-  // no disk, so a path-looking `html` is a clear error.
-  let effectivePath = filePath;
-  let htmlInput = typeof html === "string" ? html : undefined;
-  if (!effectivePath && typeof htmlInput === "string") {
-    let candidate = htmlInput;
-    if (candidate.startsWith("@")) candidate = candidate.slice(1);
-    if (!looksLikeFullHtml(candidate) && looksLikePath(candidate)) {
-      if (ctx.edition === "web") {
-        throw new Error(
-          `This looks like a file path (\`${candidate.trim()}\`), but the hosted server cannot read local ` +
-            `files — pass the raw HTML inline as \`html\`.`,
-        );
-      }
-      const resolvedPath = candidate.trim();
-      if (fsExists(resolvedPath)) {
-        effectivePath = resolvedPath;
-        htmlInput = undefined;
-      } else {
-        throw new Error(
-          `The path \`${resolvedPath}\` does not exist. Pass a valid \`path\` to the .html file, or pass ` +
-            `the raw HTML inline as \`html\` (do not base64-encode it, and there is no artifact_files parameter).`,
-        );
-      }
-    } else if (candidate !== htmlInput) {
-      // Leading `@` on genuine inline content — strip it and keep the content.
-      htmlInput = candidate;
-    }
-  }
-
-  let bytes;
-  let name;
-  let type;
-  // Anonymous drops are inline-capped hard; signed-in drops get a larger cap.
-  // The cap is enforced AFTER auth is resolved (see below), so only inline
-  // routes flag themselves here — `path` (local, read from disk) is uncapped.
-  let enforceInlineCap = false;
-
-  if (effectivePath) {
-    const raw = await readFileImpl(effectivePath);
-    const asText = Buffer.isBuffer(raw) ? raw.toString("utf8") : String(raw);
-    const { html: decoded, wasBase64 } = decodeIfBase64Html(asText);
-    const lowerName = String(effectivePath).toLowerCase();
-    const nameIsHtml = lowerName.endsWith(".html") || lowerName.endsWith(".htm");
-    if (wasBase64) {
-      // A base64 `.txt` (or similar) that decoded to real HTML → publish the
-      // decoded HTML as text/html under an index.html name.
-      bytes = Buffer.from(decoded, "utf8");
-      type = "text/html";
-      name = filename || (nameIsHtml ? basename(effectivePath) : "index.html");
-    } else {
-      bytes = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
-      // Content-type sniff (fix #4): serve HTML as text/html so it renders as a
-      // page instead of downloading as a blob.
-      if (looksLikeFullHtml(asText) || nameIsHtml) {
-        type = "text/html";
-        name = filename || (nameIsHtml ? basename(effectivePath) : "index.html");
-      } else {
-        type = "application/octet-stream";
-        name = filename || basename(effectivePath);
-      }
-    }
-  } else if (typeof htmlInput === "string" && htmlInput.length > 0) {
-    // Rescue a base64-of-HTML blob passed as `html` (real user repro).
-    const { html: resolved } = decodeIfBase64Html(htmlInput);
-    let content = resolved;
-    if (!looksLikeFullHtml(content)) {
-      const stripped = content.replace(/\s+/g, "");
-      const looksBase64 =
-        stripped.length >= 64 && stripped.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(stripped);
-      const isShortFragment = Buffer.byteLength(content, "utf8") <= 8192;
-      const hasTag = /<[a-z][\s\S]*>/i.test(content);
-      if (isShortFragment && (hasTag || (!looksBase64 && !looksLikePath(content)))) {
-        // Legit "share this snippet" — wrap a small text/markup fragment into a
-        // full document (preserve existing friendly behavior).
-        content =
-          `<!doctype html>\n<html lang="en">\n<head><meta charset="utf-8">` +
-          `<title>Shared on CloudGrid</title></head>\n<body>\n${content}\n</body>\n</html>\n`;
-      } else {
-        // Large, or base64 that failed to decode to HTML, or a bare file path:
-        // refuse instead of silently publishing garbage.
-        const kind = looksBase64
-          ? "base64"
-          : looksLikePath(content)
-            ? "a file path"
-            : "raw data";
-        throw new Error(
-          `This doesn't look like an HTML document (it looks like ${kind}). Pass the raw HTML as \`html\`, ` +
-            `or in the local edition pass \`path\` to the .html file — do NOT base64-encode it. ` +
-            `There is no artifact_files parameter.`,
-        );
-      }
-    }
-    bytes = Buffer.from(content, "utf8");
-    name = filename || "index.html";
-    type = "text/html";
-    enforceInlineCap = true;
-  } else {
-    throw new Error("Provide either `html` (inline content) or `path` (a local file).");
-  }
-
-  // The caller's authed identity (unless they force an anonymous drop).
-  let authToken = null;
-  let orgSlug = null;
-  if (anonymous !== true) {
-    authToken = await ctx.getToken();
-    if (authToken) {
-      orgSlug = targetGrid || (await ctx.getActiveGrid());
-    }
-  }
-
-  // ── Re-plug targeting (unified plug contract / spec v2) ──────
-  // A `target_entity_id` on the wire UPDATES THAT SAME ENTITY in place — same
-  // entity_id, same slug, same URL, deploy history preserved. Absent → create.
-  // The session remembers the last drop, so a re-drop updates it by default;
-  // `fresh: true` forces a create; an explicit `entity_id` targets any earlier
-  // drop (the durable re-plug handle a stateless caller persisted).
-  if (fresh === true && entity_id) {
-    throw new Error("`fresh: true` forces a new drop — do not pass `entity_id` with it.");
-  }
-  const sessionDrop = ctx.state.lastDrop;
-  let targetId = null;
-  let ownerToken = typeof owner_token === "string" && owner_token.length > 0 ? owner_token : null;
-  if (fresh !== true) {
-    targetId = entity_id || sessionDrop?.entity_id || null;
-    // An anon-minted drop is edited with its OWNER TOKEN (a bearer capability,
-    // the anon owner-token contract). Recover it from session state when not passed.
-    if (targetId && !ownerToken) {
-      if (sessionDrop?.entity_id === targetId && sessionDrop.owner_token) {
-        ownerToken = sessionDrop.owner_token;
-      } else if (ctx.state.lastAnonClaim?.entity_id === targetId && ctx.state.lastAnonClaim.token) {
-        ownerToken = ctx.state.lastAnonClaim.token;
-      }
-    }
-  }
-
-  // Pick the edit wire. An anon-owned (Guest-Grid, unclaimed) drop is edited via
-  // the owner-token wire EVEN IF the caller is signed in — the entity still lives
-  // in the Guest Grid, so an authed edit of it would 404. An authed edit targets
-  // an entity the caller owns in their grid.
-  let mode = "create"; // "create" | "authed-edit" | "anon-edit"
-  if (targetId) {
-    if (ownerToken) {
-      mode = "anon-edit";
-    } else if (authToken) {
-      mode = "authed-edit";
-    } else if (entity_id) {
-      throw new Error(
-        "Re-plugging a drop anonymously needs its owner_token (returned when it was created). " +
-          "Pass owner_token, sign in if you own it, or pass fresh: true to publish a new drop.",
-      );
-    } else {
-      // Session target, but no way to authorize an edit — fall back to create.
-      targetId = null;
-    }
-  }
-  const isAnonymousWire = mode === "anon-edit" || !authToken;
-
-  // Auth-aware inline size cap (relocated here — auth is only known now). Anon
-  // inline drops stay capped at 2MB; signed-in inline drops get the larger
-  // AUTHED cap. `path` (read from disk) is uncapped and does not set the flag.
-  if (enforceInlineCap) {
-    if (isAnonymousWire) {
-      if (bytes.byteLength > ANON_HTML_MAX_BYTES) {
-        throw new Error(
-          `This HTML is ${(bytes.byteLength / 1e6).toFixed(2)} MB. Anonymous drops are capped at 2 MB. ` +
-            `Trim it, or sign in to publish larger.`,
-        );
-      }
-    } else if (bytes.byteLength > AUTHED_HTML_MAX_BYTES) {
-      throw new Error(
-        `This HTML is ${(bytes.byteLength / 1e6).toFixed(2)} MB. Inline drops are capped at ` +
-          `${(AUTHED_HTML_MAX_BYTES / 1e6).toFixed(0)} MB. In the local edition pass \`path\` to the ` +
-          `.html file (read from disk — no inline size limit) instead of pasting it inline.`,
-      );
-    }
-  }
-
-  const headers = {};
-  if (!isAnonymousWire) {
-    headers["Authorization"] = `Bearer ${authToken}`;
-    // Grid-native header + X-CloudGrid-Org alias (same slug) during the soak.
-    if (orgSlug) {
-      headers["X-CloudGrid-Grid"] = orgSlug;
-      headers["X-CloudGrid-Org"] = orgSlug;
-    }
-  }
-
-  // Hosted server: attach the trusted-server credential on EVERY anonymous call
-  // (creates AND owner-token edits — anon edits consume the same daily anon cap,
-  // re-keyed per end user). Falls back gracefully server-side if absent. Only
-  // the web edition sets ctx.trustedServer.
-  if (isAnonymousWire && ctx.trustedServer?.secret && ctx.trustedServer?.endUserId) {
-    headers["X-CloudGrid-Trusted-Server-Auth"] = ctx.trustedServer.secret;
-    headers["X-CloudGrid-Trusted-Server-End-User"] = ctx.trustedServer.endUserId;
-  }
-
-  // Ownership continuity: replay the platform's anon-session cookie across drops in
-  // this session, so cookie-class callers can redrop (and claim) what they dropped.
-  if (isAnonymousWire && ctx.state.anonCookie) {
-    headers["Cookie"] = ctx.state.anonCookie;
-  }
-
-  const form = new FormData();
-  // The artifact part name is unchanged from `/drop/auto` (`artifact`); the plug
-  // create path — and the inspiration edit paths — treat every
-  // non-`cloudgrid.yaml` part as raw artifact bytes.
-  form.append("artifact", new Blob([bytes], { type }), name);
-  if (mode !== "create") {
-    form.append("target_entity_id", targetId);
-  }
-  if (mode === "anon-edit") {
-    // Anon owner-token contract: ownership is proven by HOLDING the token (a form
-    // field, NOT an Authorization header). The response re-mints it.
-    form.append("owner_token", ownerToken);
-  }
-  if (mode === "authed-edit") {
-    // The authed update path requires a `cloudgrid.yaml` part on the wire
-    // (materializePlugTarball). An inspiration edit ignores its content, so an
-    // empty part satisfies the contract without changing the entity's config.
-    form.append("cloudgrid.yaml", new Blob([""], { type: "text/plain" }), "cloudgrid.yaml");
-  }
-  // `/plug` resolves the authed org from the `X-CloudGrid-Org` header (set
-  // above), not a form field — so `org_slug` is no longer sent.
-
-  let res;
-  try {
-    res = await fetch(`${API_BASE}/api/v2/plug`, { method: "POST", headers, body: form });
-  } catch (err) {
-    throw new Error(`Could not reach CloudGrid at ${API_BASE}: ${err.message}`);
-  }
-
-  const raw = await res.text();
-  let data = null;
-  try {
-    data = JSON.parse(raw);
-  } catch {
-    /* handled below */
-  }
-  if (!res.ok) {
-    const code = data?.error?.code;
-    const msg = data?.error?.message || data?.message || raw || `HTTP ${res.status}`;
-    const hint = data?.error?.details?.[0]?.hint;
-    const isEdit = mode !== "create";
-    // Self-heal rung: a signed-in CREATE that hits the known 400 SCOPE_INVALID
-    // platform bug is retried through the bundled CLI — LOCAL edition only,
-    // create only, never anonymous. (Mirrors runPlug.)
-    if (
-      res.status === 400 &&
-      code === "SCOPE_INVALID" &&
-      ctx.edition === "local" &&
-      mode === "create" &&
-      !isAnonymousWire &&
-      authToken
-    ) {
-      return plugViaCliFallback(ctx, [{ path: name, buffer: bytes }], deps);
-    }
-    // An explicit edit NEVER silently creates — surface the reason clearly.
-    if (isEdit && res.status === 409) {
-      throw new Error(
-        `Re-plug rejected (HTTP 409): ${msg} ` +
-          "The drop can no longer be edited in place (expired, archived, claimed, or a deploy is running). " +
-          "Pass fresh: true to publish a new drop instead.",
-      );
-    }
-    if (mode === "anon-edit" && res.status === 401) {
-      throw new Error(
-        `Re-plug rejected (HTTP 401): ${msg} ` +
-          "The owner_token did not authorize this entity (wrong entity, expired with the drop, or already claimed). " +
-          "Pass fresh: true to publish a new drop instead.",
-      );
-    }
-    // Known-code guidance (SCOPE_INVALID on web, 429 anon cap, etc.); unknown
-    // codes pass through as the bare error line, unchanged.
-    const guidance = errorGuidance({
-      status: res.status,
-      code,
-      edition: ctx.edition,
-      isEdit,
-      isAnon: isAnonymousWire,
-      signedIn: Boolean(authToken),
-    });
-    const baseLine = `Drop failed (HTTP ${res.status}): ${msg}${hint ? ` ${hint}` : ""}`;
-    throw new Error(guidance ? `${baseLine} — ${guidance}` : baseLine);
-  }
-
-  // Persist the platform's anon-session cookie for ownership continuity (so a
-  // cookie-class caller can claim — via pickup — what it dropped).
-  const setCookies = res.headers.getSetCookie
-    ? res.headers.getSetCookie()
-    : [res.headers.get("set-cookie")].filter(Boolean);
-  const anonCookie = (setCookies || [])
-    .map((c) => (c || "").split(";")[0])
-    .find((c) => c.startsWith("cg_anon_session="));
-  if (anonCookie) ctx.state.anonCookie = anonCookie;
-
-  // The server composes the canonical URL; compose client-side only as
-  // a fallback when it came back empty.
-  const url = resolvePlugUrl(data);
-  const isEdit = mode !== "create";
-
-  // The anon owner token: the create response mints it; every anon edit
-  // RE-MINTS it to the reset TTL (replace the stored one — the freshest token
-  // is the one that lives as long as the drop). Same JWT the claim uses.
-  let freshOwnerToken = typeof data.owner_token === "string" && data.owner_token.length > 0
-    ? data.owner_token
-    : null;
-  if (!freshOwnerToken && data.claim_url) {
-    try {
-      freshOwnerToken = new URL(data.claim_url).searchParams.get("token");
-    } catch {
-      freshOwnerToken = null;
-    }
-  }
-
-  // Remember the drop for session continuity — any caller class. The
-  // `{entity_id, owner_token}` pair is the stateless anon re-plug handle.
-  if (data.entity_id || url) {
-    ctx.state.lastDrop = {
-      entity_id: data.entity_id ?? ctx.state.lastDrop?.entity_id ?? null,
-      url: url ?? ctx.state.lastDrop?.url ?? null,
-      owner_token: isAnonymousWire
-        ? (freshOwnerToken ?? (mode === "anon-edit" ? ownerToken : null))
-        : null,
-    };
-  }
-
-  // Authenticated wire (create or in-place edit): the entity is owned by the caller.
-  if (!isAnonymousWire) {
-    ctx.state.lastAnonClaim = null;
-    const structured = {
-      url,
-      status: isEdit ? "updated" : "created",
-      owned_by: "authenticated",
-      ...(data.entity_id ? { entity_id: data.entity_id } : {}),
-    };
-    const lines = [];
-    if (isEdit) {
-      lines.push(`Updated in place: ${url}`);
-      lines.push("Same link, new content. The expiry timer was reset.");
-    } else if (ctx.edition === "web") {
-      lines.push(`Your app is live: ${url}`);
-    } else {
-      lines.push(`Published to your org: ${url}`, "Owned by you.");
-    }
-    if (ctx.edition === "web" && !isEdit) {
-      // Default authed web CREATES to "link" visibility so the URL is shareable
-      // and the console thumbnail renders without a sign-in wall. An edit keeps
-      // the entity's existing visibility untouched.
-      if (data.entity_id) {
-        await upgradeVisibilityToLink(ctx, data.entity_id, orgSlug);
-      }
-      lines.push(`See and manage all your apps in your grid: ${CONSOLE_URL}`);
-      const vis = "link";
-      lines.push(`Visible to: ${VISIBILITY_LABELS[vis]}. Want to restrict access? I can set it to only you or your org.`);
-      structured.console_url = CONSOLE_URL;
-      structured.current_visibility = vis;
-      structured.visibility_options = Object.entries(VISIBILITY_LABELS).map(([v, l]) => ({ value: v, label: l }));
-    }
-    return { text: lines.join("\n"), structured };
-  }
-
-  // Anonymous wire — Guest-Grid inspiration (create 201, or owner-token edit).
-  // The response carries the reward fields (`claim_url` + `claim_message`), the
-  // real `entity_id`, and the OWNER TOKEN — the bearer capability that
-  // authorizes BOTH a later anonymous re-plug and the claim (pickup-by-id).
-  if (data.claim_url || data.entity_id) {
-    ctx.state.lastAnonClaim = {
-      token: freshOwnerToken,
-      entity_id: data.entity_id ?? ctx.state.lastAnonClaim?.entity_id ?? null,
-      url,
-    };
-  }
-  const lines = [];
-  if (isEdit) {
-    lines.push(`Updated in place: ${url}`);
-    lines.push("Same link, new content. The expiry timer (and owner_token) were refreshed.");
-  } else {
-    lines.push(ctx.edition === "web" ? `Your app is live: ${url}` : `Live: ${url}`);
-  }
-  if (data.claim_message) {
-    lines.push(data.claim_message);
-  } else if (data.claim_url) {
-    lines.push("Sign in, then run grid_claim to keep it past the expiry window.");
-  }
-  if (data.entity_id && freshOwnerToken) {
-    lines.push(
-      `Re-plug handle (persist to update or claim this drop in a later session): entity_id=${data.entity_id}`,
-    );
-  }
-  return {
-    text: lines.join("\n"),
-    structured: {
-      url,
-      status: isEdit ? "updated" : "created",
-      ...(data.entity_id ? { entity_id: data.entity_id } : {}),
-      ...(freshOwnerToken ? { owner_token: freshOwnerToken } : {}),
-    },
-  };
-}
 
 // ── Consent-gated error reporting (Task 34 / 0.8.1) ──────────────────────────
 // Key names that look like they carry a secret. Mirrors the server's
@@ -1889,6 +1480,8 @@ export async function runPlug(ctx, input, deps = {}) {
   const {
     path: srcPath,
     artifact_files,
+    html,
+    filename,
     cloudgrid_yaml,
     target_entity_id,
     grid,
@@ -1897,19 +1490,35 @@ export async function runPlug(ctx, input, deps = {}) {
     owner_token,
   } = input || {};
 
-  // ── Source: path XOR artifact_files ────────────────────────────────────────
-  if (srcPath && Array.isArray(artifact_files) && artifact_files.length > 0) {
-    throw new Error("Pass either `path` or `artifact_files`, not both.");
-  }
-  if (ctx.edition === "web" && srcPath) {
+  // ── Source: exactly one of html | artifact_files | path ─────────────────────
+  const hasHtml = typeof html === "string" && html.length > 0;
+  const hasArtifacts = Array.isArray(artifact_files) && artifact_files.length > 0;
+  const hasPath = Boolean(srcPath);
+  if ((hasHtml ? 1 : 0) + (hasArtifacts ? 1 : 0) + (hasPath ? 1 : 0) > 1) {
     throw new Error(
-      "The hosted server cannot read local files — pass the source inline via `artifact_files`.",
+      "Pass exactly one source: `html` (a single inline HTML document), `artifact_files` " +
+        "(multiple inline files), or `path` (a local file/folder).",
+    );
+  }
+  if (ctx.edition === "web" && hasPath) {
+    throw new Error(
+      "The hosted server cannot read local files — pass the source inline via `html` or `artifact_files`.",
     );
   }
   let artifacts;
-  if (srcPath) {
+  // Set on the single-file `html` path so the auth-aware inline size cap can be
+  // enforced once the anon-vs-authed wire is known (see below).
+  let inlineHtmlBytes = null;
+  if (hasHtml) {
+    // The ergonomic single-file publish path (the old drop verb): one self-
+    // contained HTML document → one index.html artifact, with the shared
+    // hardening (base64 rescue, @-path/file-path rejection, fragment wrap).
+    const art = htmlToArtifact(html, filename);
+    inlineHtmlBytes = art.buffer.byteLength;
+    artifacts = [art];
+  } else if (hasPath) {
     artifacts = collectPathArtifacts(srcPath);
-  } else if (Array.isArray(artifact_files) && artifact_files.length > 0) {
+  } else if (hasArtifacts) {
     let total = 0;
     artifacts = artifact_files.map((f) => {
       if (!f || typeof f.path !== "string" || typeof f.content !== "string") {
@@ -1925,8 +1534,9 @@ export async function runPlug(ctx, input, deps = {}) {
   } else {
     throw new Error(
       ctx.edition === "web"
-        ? "Provide the source via `artifact_files`."
-        : "Provide the source via `path` (a local file or folder) or `artifact_files`.",
+        ? "Provide the source via `html` (a single inline HTML document) or `artifact_files`."
+        : "Provide the source via `html` (a single inline HTML document), `path` (a local file " +
+          "or folder), or `artifact_files`.",
     );
   }
 
@@ -1968,6 +1578,27 @@ export async function runPlug(ctx, input, deps = {}) {
       "Re-plugging needs authorization: sign in (grid_login) for an entity in your grid, or pass the " +
         "owner_token that came back when the drop was created anonymously.",
     );
+  }
+
+  // Auth-aware inline size cap for the single-file `html` path (the old drop
+  // cap). Anonymous inline pages stay capped at 2 MB; signed-in inline pages get
+  // the larger AUTHED cap. `path` (read from disk) and `artifact_files` are
+  // bounded by PLUG_MAX_TOTAL_BYTES instead, so they never set inlineHtmlBytes.
+  if (inlineHtmlBytes != null) {
+    if (useAnonWire) {
+      if (inlineHtmlBytes > ANON_HTML_MAX_BYTES) {
+        throw new Error(
+          `This HTML is ${(inlineHtmlBytes / 1e6).toFixed(2)} MB. Anonymous drops are capped at 2 MB. ` +
+            "Trim it, or sign in to publish larger.",
+        );
+      }
+    } else if (inlineHtmlBytes > AUTHED_HTML_MAX_BYTES) {
+      throw new Error(
+        `This HTML is ${(inlineHtmlBytes / 1e6).toFixed(2)} MB. Inline drops are capped at ` +
+          `${(AUTHED_HTML_MAX_BYTES / 1e6).toFixed(0)} MB. In the local edition pass \`path\` to the ` +
+          ".html file (read from disk — no inline size limit) instead of pasting it inline.",
+      );
+    }
   }
 
   const headers = {};
@@ -2012,7 +1643,10 @@ export async function runPlug(ctx, input, deps = {}) {
   // ── Wire assembly ───────────────────────────────────────────────────────────
   const form = new FormData();
   for (const a of artifacts) {
-    form.append("artifact", new Blob([a.buffer], { type: "application/octet-stream" }), a.path);
+    // Folder-walk / artifact_files parts ride as octet-stream (server sniffs by
+    // name); the single-file `html` path carries text/html so a bare inline page
+    // renders instead of downloading (the old drop behavior).
+    form.append("artifact", new Blob([a.buffer], { type: a.type || "application/octet-stream" }), a.path);
   }
   if (isEdit) {
     form.append("target_entity_id", target_entity_id);
@@ -2086,7 +1720,7 @@ export async function runPlug(ctx, input, deps = {}) {
     throw new Error(plugErrorMessage(res.status, code, msg, flags));
   }
 
-  // Anon-session cookie continuity (mirrors runDrop).
+  // Anon-session cookie continuity.
   const setCookies = res.headers.getSetCookie
     ? res.headers.getSetCookie()
     : [res.headers.get("set-cookie")].filter(Boolean);
@@ -2107,7 +1741,7 @@ export async function runPlug(ctx, input, deps = {}) {
     }
   }
 
-  // Session continuity — the same state runDrop keeps.
+  // Session continuity — remember the last plug for re-plug handles.
   if (data.entity_id || url) {
     ctx.state.lastDrop = {
       entity_id: data.entity_id ?? null,
@@ -2521,144 +2155,6 @@ export function registerTools(server, ctx) {
 
   // ── Direct-API tools (both editions) ──────────────────────────────────────
 
-  // Drop — both editions, but the input schema is edition-aware: the web
-  // edition removes `path` (the cloud server cannot read local files) and
-  // strengthens `html` so the model always pastes the full document inline.
-  const dropReplugParams = {
-    fresh: z.boolean().optional().describe("Force a brand-new drop (new URL) even if you already dropped in this session. Default: a re-drop updates the session's drop in place — same URL, new content."),
-    entity_id: z.string().optional().describe("Re-plug a SPECIFIC entity by id (the durable handle a previous drop returned) — updates it in place, same URL. Defaults to this session's last drop."),
-    owner_token: z.string().optional().describe("The owner token of an anonymously-created drop (returned when it was created; refreshed on every anonymous edit). Needed to re-plug or claim it from a new session."),
-  };
-  const dropInputSchema = ctx.edition === "web"
-    ? {
-        html: z.string().optional().describe(
-          "The COMPLETE HTML document to publish — paste the full file contents here (not a path). " +
-          "For a game, include all HTML/CSS/JS inline so it runs standalone. " +
-          "A fragment is wrapped into a full document automatically.",
-        ),
-        filename: z.string().optional().describe("Filename to present. Defaults to index.html for inline HTML."),
-        anonymous: z.boolean().optional().describe("Force an anonymous drop even if the user is signed in."),
-        grid: z.string().optional().describe("Leave unset; the tool will ask the user which grid to publish into. Only set this after the user picks from the list the tool returns."),
-        org: z.string().optional().describe("Deprecated alias for `grid` (kept for compatibility). Prefer `grid`."),
-        ...dropReplugParams,
-      }
-    : {
-        html: z.string().optional().describe("Inline HTML to publish (a small fragment is wrapped into a full document). Pass the RAW HTML — do NOT base64-encode it, and do NOT pass an `@`-prefixed path or a file path here. For a large or image-heavy document, use `path` instead."),
-        path: z.string().optional().describe("Path to a local .html file to upload instead of inline HTML — read from disk with no inline size limit. Preferred for large or image-heavy documents. There is no `artifact_files` parameter."),
-        filename: z.string().optional().describe("Filename to present. Defaults to index.html for inline HTML."),
-        anonymous: z.boolean().optional().describe("Force an anonymous drop even if the user is signed in."),
-        grid: z.string().optional().describe("Leave unset; the tool will ask the user which grid to publish into. Only set this after the user picks from the list the tool returns."),
-        org: z.string().optional().describe("Deprecated alias for `grid` (kept for compatibility). Prefer `grid`."),
-        ...dropReplugParams,
-      };
-
-  reg(
-    "grid_drop",
-    {
-      description: "Publish an HTML page or file to CloudGrid and get a public shareable URL. Use when the user wants to share, publish, send, or 'deploy' an artifact, or wants a link to send a friend. Re-drops in the same session UPDATE THE SAME entity in place — same link, new content, expiry reset (pass fresh: true to force a new drop, or entity_id to target a specific earlier drop). If signed in, it publishes into the user's grid as an owned inspiration; if not, it drops anonymously into the Guest Grid, claimable later — the result includes an entity_id + owner_token to persist as the re-plug/claim handle for later sessions. Drops expire per the platform default (7 days) unless claimed/owned; every in-place edit resets the timer. If you want to edit an existing drop but no longer have its HTML, call grid_source first to retrieve it, then re-plug with target_entity_id. For a large or image-heavy document in the local edition, pass `path` to the .html file (read from disk — no inline size limit); do NOT base64-encode the content and do NOT pass an `@`-prefixed path or a file path as `html`. There is no `artifact_files` parameter. Calls POST /api/v2/plug directly.",
-      inputSchema: dropInputSchema,
-      outputSchema: {
-        url: z.string().optional().describe("The public URL of the drop (stable across re-drops of the same entity)."),
-        status: z.enum(["created", "updated", "unchanged"]).optional().describe("What happened to the drop."),
-        entity_id: z.string().optional().describe("The entity's durable id — pass back as entity_id to update it in place later."),
-        owner_token: z.string().optional().describe("Anonymous drops only: the bearer owner token for later re-plug/claim. Refreshed on every anonymous edit — always persist the newest one."),
-        owned_by: z.string().optional().describe("Ownership class, e.g. 'authenticated'."),
-        expires_at: z.string().optional().describe("Expiry timestamp, if any."),
-        console_url: z.string().optional().describe("URL to manage all apps in the grid."),
-        current_visibility: z.string().optional().describe("Current visibility of the drop."),
-        visibility_options: z.array(z.object({
-          value: z.string().describe("Visibility value to pass to grid_visibility."),
-          label: z.string().describe("Human-readable label."),
-        })).optional().describe("Available visibility levels."),
-        needs_grid: z.boolean().optional().describe("True when the user must choose a grid before dropping."),
-        needs_org: z.boolean().optional().describe("Deprecated alias of needs_grid (kept so the org-picker widget keeps working)."),
-        grids: z.array(z.object({
-          slug: z.string().describe("Grid slug to pass as the grid parameter."),
-          name: z.string().describe("Human-readable grid name."),
-          role: z.string().describe("User's role in the grid."),
-          is_active: z.boolean().optional().describe("True if this is the user's currently active grid."),
-        })).optional().describe("The user's grids, when a grid choice is needed."),
-        orgs: z.array(z.object({
-          slug: z.string().describe("Grid slug to pass as the grid parameter."),
-          name: z.string().describe("Human-readable grid name."),
-          role: z.string().describe("User's role in the grid."),
-          is_active: z.boolean().optional().describe("True if this is the user's currently active grid."),
-        })).optional().describe("Deprecated alias of grids (kept so the org-picker widget keeps working)."),
-        needs_sign_in: z.boolean().optional().describe("True when sign-in is needed before dropping."),
-        login_url: z.string().optional().describe("Sign-in URL when authentication is needed."),
-      },
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
-      ...(ctx.edition === "web" && APPS_WIDGETS_ENABLED ? {
-        _meta: {
-          ui: { resourceUri: LIVE_RESULT_URI, csp: WIDGET_CSP },
-          "openai/outputTemplate": LIVE_RESULT_URI,
-        },
-      } : {}),
-    },
-    async (input) => {
-      try {
-        // Web edition: reject `path` early — the hosted server cannot read
-        // local files. The schema already omits it, but a model with a
-        // cached tool description might still send one.
-        if (ctx.edition === "web" && input?.path) {
-          return fail(
-            "The hosted server cannot read local files — pass the full document as `html` instead of a `path`.",
-          );
-        }
-
-        // Web edition: sign-in guidance when unauthenticated.
-        if (ctx.edition === "web" && input?.anonymous !== true) {
-          const token = await ctx.getToken();
-          if (!token) {
-            const url = buildLoginUrl(newLoginCode());
-            return okResult({
-              text: `Sign in to publish to your org.\n${url}`,
-              structured: { needs_sign_in: true, login_url: url },
-            });
-          }
-        }
-
-        // Stateless grid disambiguation — both editions, when authenticated.
-        // No dependency on prior-call state so it works even when the client
-        // reconnects on every tool call (ChatGPT Apps SDK behaviour). `grid` is
-        // accepted as an alias for `org` (Gilad's rename); `org` still works.
-        if (input?.anonymous !== true) {
-          const token = await ctx.getToken();
-          if (token) {
-            const suppliedGrid = input?.grid || input?.org;
-            const decision = await resolveGridOrAsk(ctx, {
-              token,
-              suppliedGrid,
-              edition: ctx.edition,
-            });
-            if (decision.picker) {
-              return okResult(decision.picker);
-            }
-            if (decision.single) {
-              if (!decision.single.render_ready) {
-                // Single grid but not set up — tell the agent so it can warn
-                // the user and offer anonymous drop as fallback. (drop-specific:
-                // drop blocks here; plug proceeds with a warning.)
-                const annotated = [{ ...decision.single, render_ready: false }];
-                return okResult({
-                  text: `Your only grid "${decision.single.slug}" isn't fully set up yet — pages published there may not load. You can drop anonymously (set anonymous: true) or wait until provisioning completes, then re-run.`,
-                  structured: { needs_grid: true, needs_org: true, grid_not_ready: true, org_not_ready: true, grids: annotated, orgs: annotated },
-                });
-              }
-              input = { ...(input || {}), org: decision.single.slug };
-            } else if (decision.grid) {
-              // Supplied grid matched — normalize onto `org` for runDrop.
-              input = { ...(input || {}), org: decision.grid };
-            }
-          }
-        }
-        return okResult(await runDrop(ctx, input || {}));
-      } catch (err) {
-        return fail(err.message);
-      }
-    },
-  );
-
   // Claim — both editions.
   reg(
     "grid_claim",
@@ -2689,13 +2185,21 @@ export function registerTools(server, ctx) {
   // CLI-wrapping grid_plug: create and re-plug are one verb, keyed by
   // target_entity_id, and work identically on the hosted transport.
   const plugInputSchema = {
+    html: z.string().optional().describe(
+      "A single self-contained HTML document to publish as an inspiration — the fast single-file path. " +
+      "Pass the COMPLETE raw HTML inline (CSS+JS inline, images/fonts as data: URIs); a small fragment is " +
+      "wrapped into a full document. Do NOT base64-encode it, and do NOT pass an `@`-prefixed path or a " +
+      "file path here. Mutually exclusive with `path` and `artifact_files`. Materialized as one index.html " +
+      "and published instantly on any edition, anonymously (claimable) or into your grid when signed in.",
+    ),
+    filename: z.string().optional().describe("Filename for the single-file `html` path. Defaults to index.html."),
     ...(ctx.edition === "web"
       ? {}
       : {
           path: z.string().optional().describe(
             "Local edition: path to the entity folder (or a single file) to upload. A folder is read " +
             "recursively, honoring .gitignore/.cloudgridignore (plus .git/node_modules always skipped). " +
-            "Mutually exclusive with artifact_files.",
+            "Mutually exclusive with `html` and `artifact_files`.",
           ),
         }),
     artifact_files: z.array(z.object({
@@ -2703,8 +2207,10 @@ export function registerTools(server, ctx) {
       content: z.string().describe("File content. Base64 when encoding is base64, otherwise UTF-8 text."),
       encoding: z.enum(["utf8", "base64"]).optional().describe("Content encoding. Default utf8."),
     })).optional().describe(
-      "The source inline, one entry per file — for hosted/no-filesystem transports (an HTML deck, a one-file app)." +
-      (ctx.edition === "web" ? "" : " Prefer `path` on the local edition."),
+      "The source inline, one entry per file — for hosted/no-filesystem transports (a multi-file app). " +
+      "For a single HTML page prefer `html`." +
+      (ctx.edition === "web" ? "" : " Prefer `path` on the local edition.") +
+      " Mutually exclusive with `html` and `path`.",
     ),
     cloudgrid_yaml: z.string().optional().describe(
       "Inline cloudgrid.yaml (the entity manifest). Optional — server auto-detection applies when omitted. " +
@@ -2738,17 +2244,21 @@ export function registerTools(server, ctx) {
     "grid_plug",
     {
       description:
-        "Surface a creation onto the grid — the unified create/re-plug verb (POST /api/v2/plug). " +
+        "Deploy or share a creation on CloudGrid and get a public URL — the ONE create/re-plug verb " +
+        "(POST /api/v2/plug). Use it whenever the user wants to share, publish, send, ship, 'deploy', go " +
+        "live, or get a link to send a friend — for a single HTML page OR a full app. " +
+        "Sources (pass exactly one): `html` — a single self-contained HTML page (the fast path: instant, any " +
+        "edition, anonymous+claimable or into your grid when signed in); " +
+        (ctx.edition === "web"
+          ? "or `artifact_files` — a multi-file app inline. "
+          : "`path` — a local folder/file (a multi-file app); or `artifact_files` — inline files. ") +
         "No target_entity_id → CREATE a new entity (inspiration/app/agent, auto-detected or hinted); " +
         "with target_entity_id → RE-PLUG: update the SAME entity in place — same entity_id, same URL, same " +
         "deploy history, expiry reset. The returned entity_id + url are the durable re-plug handle; persist " +
-        "them (plus owner_token for anonymous drops) to update the entity in later sessions. " +
-        (ctx.edition === "web"
-          ? "Pass the source inline via artifact_files."
-          : "Pass the source as a local `path` (folder or file) or inline via artifact_files.") +
-        " Note: in-place re-plug currently supports inspirations (HTML/static drops); to rebuild a deployed " +
-        "app/agent, use the CloudGrid CLI (`cloudgrid plug`) in its linked folder." +
-        " If you want to edit an existing drop but no longer have its HTML, call grid_source first to " +
+        "them (plus owner_token for anonymous pages) to update the entity in later sessions. " +
+        "Note: in-place re-plug currently supports inspirations (HTML/static pages); to rebuild a deployed " +
+        "app/agent, use the CloudGrid CLI (`cloudgrid plug`) in its linked folder. " +
+        "If you want to edit an existing page but no longer have its HTML, call grid_source first to " +
         "retrieve it, then re-plug with target_entity_id.",
       inputSchema: plugInputSchema,
       outputSchema: {
@@ -2763,10 +2273,16 @@ export function registerTools(server, ctx) {
         owner_token: z.string().optional().describe("Anonymous drops: the bearer owner token (re-plug + claim). Re-minted on every anonymous edit — persist the newest."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+      ...(ctx.edition === "web" && APPS_WIDGETS_ENABLED ? {
+        _meta: {
+          ui: { resourceUri: LIVE_RESULT_URI, csp: WIDGET_CSP },
+          "openai/outputTemplate": LIVE_RESULT_URI,
+        },
+      } : {}),
     },
     async (input) => {
       try {
-        // Grid-picker parity with grid_drop: a signed-in user with >1 grid is
+        // Grid-picker: a signed-in user with >1 grid is
         // ASKED which grid to publish to on every CREATE. Only for authed creates
         // (no target_entity_id, not anon). Edits NEVER ask — the grid is fixed by
         // the entity. Anon proceeds as a Guest-Grid drop. Explicit valid grid
@@ -3174,7 +2690,7 @@ export function registerTools(server, ctx) {
           .describe("Short summary of what failed (required). Do not paste the whole conversation here."),
         context: z
           .object({
-            tool: z.string().optional().describe("The CloudGrid tool that failed, e.g. grid_drop."),
+            tool: z.string().optional().describe("The CloudGrid tool that failed, e.g. grid_plug."),
             inputs: z.any().optional().describe("The failing inputs (e.g. the HTML/args). Keep it minimal; secrets are scrubbed."),
             grid: z.string().optional().describe("The grid/org slug involved, if any."),
             original_request: z.string().optional().describe("What the user asked for, in one line."),

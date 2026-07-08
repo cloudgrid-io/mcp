@@ -4,7 +4,7 @@ when: changelog, release notes, what's new, product updates page, version histor
 needs: none
 deploy: inspiration
 editions: all
-capabilities_note: static — no infrastructure. Publishes as an inspiration (instant, works on hosted) via grid_drop.
+capabilities_note: static — no infrastructure. Publishes as an inspiration (instant, works on hosted) via grid_plug.
 summary: Fetch the changelog template, fill it with the user's release entries, deploy it, and return the live share URL.
 ---
 

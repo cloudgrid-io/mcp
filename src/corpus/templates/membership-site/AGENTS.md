@@ -157,4 +157,4 @@ A membership site is a built + deployed runtime container, so it requires the
 **local edition** (Claude Desktop / Claude Code) or the CLI. The **hosted**
 edition (Claude Web / hosted MCP) is inline-only and can only publish static
 pages — it CANNOT build this app. On hosted, say so plainly and offer a static
-paywall-landing page (via `grid_drop`) instead, then stop the runtime path.
+paywall-landing page (via `grid_plug`) instead, then stop the runtime path.

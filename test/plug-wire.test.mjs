@@ -1,17 +1,19 @@
 // Offline unit test for the unified plug wire contract (0.7.0 / spec v2).
-// Mocks global fetch and asserts EXACTLY what runDrop/runPlug put on the wire:
+// Mocks global fetch and asserts EXACTLY what runPlug puts on the wire — both via
+// the inline `html` single-file path (the folded-in old drop behavior) and via
+// `artifact_files`:
 //   - create: no target_entity_id; anon create persists the owner_token.
-//   - session re-drop: target_entity_id (+ owner_token on the anon wire, and NO
+//   - re-plug: target_entity_id (+ owner_token on the anon wire, and NO
 //     Authorization header) → the same entity is updated in place.
-//   - authed re-drop: Authorization + target_entity_id + a cloudgrid.yaml part
+//   - authed re-plug: Authorization + target_entity_id + a cloudgrid.yaml part
 //     (the authed update path requires one on the wire).
-//   - fresh: true / explicit entity_id semantics; 409 EDIT_REJECTED surfaces an
-//     error (never a silent create).
+//   - explicit target_entity_id semantics; 409 EDIT_REJECTED surfaces an error
+//     (never a silent create).
 //   - url consumption: server `url` verbatim; client composition fallback only
 //     when the server left it empty.
 // Run: node test/plug-wire.test.mjs
 
-import { runDrop, runPlug, resolvePlugUrl, parseManifestName } from "../src/tools.js";
+import { runPlug, resolvePlugUrl, parseManifestName } from "../src/tools.js";
 
 let failures = 0;
 function check(label, cond) {
@@ -64,7 +66,9 @@ try {
     resolvePlugUrl({ url: "", slug: "s1", grid: null }) === "https://guest.cloudgrid.io/s1",
   );
 
-  // ── anon create → session re-drop (owner-token wire) ───────────────────────
+  // ── html single-file publish: anon create → re-plug (owner-token wire) ──────
+  // The inline `html` path is the old drop behavior folded into runPlug: one
+  // index.html artifact, anon claim handle, in-place re-plug by target_entity_id.
   const anonCtx = makeCtx();
   replies = [
     {
@@ -81,15 +85,20 @@ try {
       },
     },
   ];
-  const c1 = await runDrop(anonCtx, { html: "<h1>v1</h1>", anonymous: true });
-  check("anon create sends NO target_entity_id", formField("target_entity_id") === null);
-  check("anon create sends NO owner_token", formField("owner_token") === null);
-  check("anon create sends NO Authorization", !("Authorization" in lastCall().headers));
-  check("anon create returns status created", c1.structured.status === "created");
-  check("anon create surfaces entity_id", c1.structured.entity_id === "ent-1");
-  check("anon create surfaces owner_token", c1.structured.owner_token === "tok-A");
-  check("anon create persists the owner_token in state", anonCtx.state.lastDrop.owner_token === "tok-A");
-  check("anon create arms the claim with the owner token", anonCtx.state.lastAnonClaim.token === "tok-A");
+  const c1 = await runPlug(anonCtx, { html: "<h1>v1</h1>", anon: true });
+  check("html anon create materializes ONE index.html artifact", (() => {
+    const parts = lastCall().form.getAll("artifact");
+    return parts.length === 1 && parts[0].name === "index.html";
+  })());
+  check("html anon create sends the artifact as text/html", lastCall().form.get("artifact")?.type === "text/html");
+  check("html anon create sends NO target_entity_id", formField("target_entity_id") === null);
+  check("html anon create sends NO owner_token", formField("owner_token") === null);
+  check("html anon create sends NO Authorization", !("Authorization" in lastCall().headers));
+  check("html anon create surfaces entity_id", c1.structured.entity_id === "ent-1");
+  check("html anon create surfaces owner_token", c1.structured.owner_token === "tok-A");
+  check("html anon create persists the owner_token in state", anonCtx.state.lastDrop.owner_token === "tok-A");
+  check("html anon create arms the claim with the owner token", anonCtx.state.lastAnonClaim.token === "tok-A");
+  check("html anon create says Live", /^Live:/m.test(c1.text));
 
   replies = [
     {
@@ -104,74 +113,74 @@ try {
       },
     },
   ];
-  const c2 = await runDrop(anonCtx, { html: "<h1>v2</h1>", anonymous: true });
-  check("anon re-drop targets the SAME entity", formField("target_entity_id") === "ent-1");
-  check("anon re-drop sends the owner_token form field", formField("owner_token") === "tok-A");
-  check("anon re-drop sends NO Authorization header", !("Authorization" in lastCall().headers));
-  check("anon re-drop reports status updated", c2.structured.status === "updated");
-  check("anon re-drop keeps the URL", c2.structured.url === "https://guest.cloudgrid.io/s1");
+  const c2 = await runPlug(anonCtx, { html: "<h1>v2</h1>", anon: true, target_entity_id: "ent-1" });
+  check("html anon re-plug targets the SAME entity", formField("target_entity_id") === "ent-1");
+  check("html anon re-plug recovers the owner_token from session", formField("owner_token") === "tok-A");
+  check("html anon re-plug sends NO Authorization header", !("Authorization" in lastCall().headers));
+  check("html anon re-plug keeps the URL", c2.structured.url === "https://guest.cloudgrid.io/s1");
+  check("html anon re-plug says Updated in place", /Updated in place/.test(c2.text));
   check("refreshed owner_token REPLACES the stored one", anonCtx.state.lastDrop.owner_token === "tok-B");
   check("refreshed owner_token also feeds the claim", anonCtx.state.lastAnonClaim.token === "tok-B");
 
-  // fresh: true → back to create (no target).
+  // No target → a fresh create (a new entity, new URL).
   replies = [
     { status: 201, body: { entity_id: "ent-2", slug: "s2", grid: null, url: "https://guest.cloudgrid.io/s2", owner_token: "tok-C", status: "live" } },
   ];
-  const c3 = await runDrop(anonCtx, { html: "<h1>v3</h1>", anonymous: true, fresh: true });
-  check("fresh: true omits target_entity_id (real create)", formField("target_entity_id") === null);
-  check("fresh: true returns a NEW entity", c3.structured.entity_id === "ent-2");
+  const c3 = await runPlug(anonCtx, { html: "<h1>v3</h1>", anon: true });
+  check("no target_entity_id → a real create (no target sent)", formField("target_entity_id") === null);
+  check("create returns a NEW entity", c3.structured.entity_id === "ent-2");
 
-  // 409 EDIT_REJECTED on a re-drop → clear error, never a silent create.
+  // 409 EDIT_REJECTED on a re-plug → clear error, never a silent create.
   replies = [
     { status: 409, body: { error: { code: "EDIT_REJECTED", message: "This inspiration can no longer be edited in place." } } },
   ];
   let editErr = null;
   try {
-    await runDrop(anonCtx, { html: "<h1>v4</h1>", anonymous: true });
+    await runPlug(anonCtx, { html: "<h1>v4</h1>", anon: true, target_entity_id: "ent-1", owner_token: "tok-B" });
   } catch (e) {
     editErr = e;
   }
   check("409 EDIT_REJECTED surfaces an error (no silent create)", editErr !== null);
-  check("409 error suggests fresh: true", (editErr?.message ?? "").includes("fresh: true"));
+  check("409 error explains the entity cannot be updated", (editErr?.message ?? "").includes("cannot be updated right now"));
 
-  // Explicit entity_id with no way to authorize → client-side error, no call.
+  // Explicit target with no way to authorize → client-side error, no call.
   const bareCtx = makeCtx();
   const callsBefore = calls.length;
   let bareErr = null;
   try {
-    await runDrop(bareCtx, { html: "<h1>x</h1>", anonymous: true, entity_id: "ent-9" });
+    await runPlug(bareCtx, { html: "<h1>x</h1>", anon: true, target_entity_id: "ent-9" });
   } catch (e) {
     bareErr = e;
   }
-  check("anon explicit entity_id without owner_token errors", bareErr !== null && (bareErr.message ?? "").includes("owner_token"));
+  check("anon explicit target without owner_token errors", bareErr !== null && (bareErr.message ?? "").includes("owner_token"));
   check("…and makes no network call", calls.length === callsBefore);
 
-  // ── authed create → authed re-drop ─────────────────────────────────────────
+  // ── html authed create → authed re-plug ─────────────────────────────────────
   const authedCtx = makeCtx({ token: "jwt-1", edition: "local" });
   replies = [
     { status: 202, body: { entity_id: "ent-3", slug: "s3", grid: "atomic", url: "https://atomic.cloudgrid.io/s3", status: "live" } },
   ];
-  const a1 = await runDrop(authedCtx, { html: "<h1>v1</h1>" });
-  check("authed create sends Authorization", lastCall().headers.Authorization === "Bearer jwt-1");
-  check("authed create sends NO target", formField("target_entity_id") === null);
-  check("authed create sends NO cloudgrid.yaml part", lastCall().form?.get("cloudgrid.yaml") === null);
-  check("authed create surfaces entity_id", a1.structured.entity_id === "ent-3");
-  check("authed create carries no owner_token", !("owner_token" in a1.structured));
+  const a1 = await runPlug(authedCtx, { html: "<h1>v1</h1>" });
+  check("html authed create sends Authorization", lastCall().headers.Authorization === "Bearer jwt-1");
+  check("html authed create sends NO target", formField("target_entity_id") === null);
+  check("html authed create sends NO cloudgrid.yaml part", lastCall().form?.get("cloudgrid.yaml") === null);
+  check("html authed create surfaces entity_id", a1.structured.entity_id === "ent-3");
+  check("html authed create carries no owner_token", !("owner_token" in a1.structured));
 
   replies = [
     { status: 202, body: { entity_id: "ent-3", slug: "s3", grid: "atomic", url: "https://atomic.cloudgrid.io/s3", status: "live" } },
   ];
-  const a2 = await runDrop(authedCtx, { html: "<h1>v2</h1>" });
-  check("authed re-drop targets the same entity", formField("target_entity_id") === "ent-3");
-  check("authed re-drop keeps Authorization", lastCall().headers.Authorization === "Bearer jwt-1");
-  check("authed re-drop attaches the required cloudgrid.yaml part", lastCall().form?.get("cloudgrid.yaml") !== null);
-  check("authed re-drop reports updated + same URL", a2.structured.status === "updated" && a2.structured.url === "https://atomic.cloudgrid.io/s3");
+  const a2 = await runPlug(authedCtx, { html: "<h1>v2</h1>", target_entity_id: "ent-3" });
+  check("html authed re-plug targets the same entity", formField("target_entity_id") === "ent-3");
+  check("html authed re-plug keeps Authorization", lastCall().headers.Authorization === "Bearer jwt-1");
+  check("html authed re-plug attaches the required cloudgrid.yaml part", lastCall().form?.get("cloudgrid.yaml") !== null);
+  check("html authed re-plug says Updated in place + same URL", /Updated in place/.test(a2.text) && a2.structured.url === "https://atomic.cloudgrid.io/s3");
 
   // Server url empty → client composition fallback.
   replies = [
     { status: 202, body: { entity_id: "ent-3", slug: "s3", grid: "atomic", url: "", status: "live", detection: { kind: "inspiration" } } },
   ];
-  const a3 = await runDrop(authedCtx, { html: "<h1>v3</h1>", fresh: true });
+  const a3 = await runPlug(authedCtx, { html: "<h1>v3</h1>" });
   check("empty server url falls back to client composition", a3.structured.url === "https://atomic.cloudgrid.io/s3");
 
   // ── runPlug: artifact_files wire (hosted) ──────────────────────────────────

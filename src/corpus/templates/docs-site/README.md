@@ -3,7 +3,7 @@
 A single self-contained HTML documentation site: a sidebar nav, a scrolling content column with headings and code blocks, and a client-side search box that filters the nav. No backend.
 
 Static inspiration — a single self-contained `index.html` (inline CSS and JS,
-no external CDNs). It deploys instantly via `grid_drop` and works on every
+no external CDNs). It deploys instantly via `grid_plug` and works on every
 CloudGrid edition, including hosted.
 
 ## Fill it in

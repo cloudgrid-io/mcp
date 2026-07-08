@@ -4,7 +4,7 @@ when: status page, service status, uptime page, incident history, is-it-down pag
 needs: none
 deploy: inspiration
 editions: all
-capabilities_note: static — no infrastructure, status baked into the page. Publishes as an inspiration (instant, works on hosted) via grid_drop.
+capabilities_note: static — no infrastructure, status baked into the page. Publishes as an inspiration (instant, works on hosted) via grid_plug.
 summary: Fetch the status-page template, fill it with the user's components and incidents, deploy it, and return the live share URL.
 ---
 

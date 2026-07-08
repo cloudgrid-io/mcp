@@ -43,7 +43,6 @@ const copies = [
   [`${SKILLS}/capability-map.md`, "capability-map.md"],
   [`${SKILLS}/cloudgrid-yaml.md`, "cloudgrid-yaml.md"],
   // Individual skill docs
-  [`${SKILLS}/skills/drop/SKILL.md`, "skill-drop.md"],
   [`${SKILLS}/skills/login/SKILL.md`, "skill-login.md"],
   [`${SKILLS}/skills/claim/SKILL.md`, "skill-claim.md"],
   [`${SKILLS}/skills/init/SKILL.md`, "skill-init.md"],

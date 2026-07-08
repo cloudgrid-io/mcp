@@ -46,7 +46,7 @@ try {
   const names = toolList.map((t) => t.name).sort();
   console.log("web tools:", names.join(", "));
   // New grid_* names (direct-API + Agent Core) on the authed web edition.
-  for (const t of ["grid_drop", "grid_claim", "grid_plug", "grid_fork", "grid_download", "grid_login", "grid_login_status", "grid_visibility", "grid_orgs", "grid_start", "grid_fetch", "grid_report"]) {
+  for (const t of ["grid_claim", "grid_plug", "grid_fork", "grid_download", "grid_login", "grid_login_status", "grid_visibility", "grid_orgs", "grid_start", "grid_fetch", "grid_report"]) {
     check(`exposes ${t}`, names.includes(t));
   }
   // 0.10.0: the deprecated cloudgrid_* aliases are GONE. No advertised tool name
@@ -58,31 +58,25 @@ try {
   );
   check("does NOT expose CLI-only grid_init", !names.includes("grid_init"));
 
-  // grid_plug is on the web edition now (spec v2 — the unified direct-API
-  // create/re-plug verb): artifact_files only, no local `path`.
+  // grid_plug is the one deploy/share verb on the web edition (spec v2 — the
+  // unified direct-API create/re-plug verb): the inline `html` single-file path
+  // + `artifact_files`, no local `path`. grid_drop is gone (folded into plug).
+  check("web does NOT expose grid_drop (folded into grid_plug)", !names.includes("grid_drop"));
   const plugTool = toolList.find((t) => t.name === "grid_plug");
   const plugProps = plugTool?.inputSchema?.properties ?? {};
   check("web plug does NOT have `path` param", !("path" in plugProps));
+  check("web plug has `html` single-file param", "html" in plugProps);
+  check("web plug `html` desc mentions self-contained/inline", /self-contained|inline/i.test(plugProps.html?.description ?? ""));
   check("web plug has `artifact_files` param", "artifact_files" in plugProps);
   check("web plug has `target_entity_id` param", "target_entity_id" in plugProps);
   check("web plug has `owner_token` param", "owner_token" in plugProps);
 
-  // FIX A: web edition drop must NOT have `path` in schema, must have `html`.
-  // The schema exclusion is the primary defense; the SDK strips unknown
-  // properties via zod, so the runtime guard in the handler is belt-and-
-  // suspenders for raw HTTP callers.
-  const dropTool = toolList.find((t) => t.name === "grid_drop");
-  const dropProps = dropTool?.inputSchema?.properties ?? {};
-  check("web drop does NOT have `path` param", !("path" in dropProps));
-  check("web drop has `html` param", "html" in dropProps);
-  check("web drop `html` desc mentions inline/standalone", (dropProps.html?.description ?? "").includes("standalone"));
-
   const drop = await client.callTool({
-    name: "grid_drop",
-    arguments: { html: "<h1>web edition smoke</h1>", anonymous: true },
+    name: "grid_plug",
+    arguments: { html: "<h1>web edition smoke</h1>", anon: true },
   });
   const text = drop.content?.[0]?.text ?? "";
-  console.log("--- web anonymous drop ---\n" + text);
+  console.log("--- web anonymous plug (html) ---\n" + text);
   // A 429 means the shared anonymous-drop quota is exhausted — a platform rate
   // limit, not a broken drop. Skip (don't false-fail) so CI isn't gated on quota;
   // any OTHER outcome (401, wrong URL, error) still fails the guest-URL check —

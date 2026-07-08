@@ -2,10 +2,10 @@
 // against the live API. Creates real ephemeral drops (7-day expiry).
 // Run from mcp-server: node test/smoke-redrop.mjs
 //
-// Unified plug contract (0.7.0 / spec v2): a re-drop in the same session sends
-// `target_entity_id` (+ the anon `owner_token`) and UPDATES THE SAME entity —
-// same slug, same URL, new content ("Updated in place"). `fresh: true` omits
-// the target and mints a NEW entity (different URL).
+// Unified plug contract (0.7.0 / spec v2): a re-plug passes `target_entity_id`
+// (+ the anon `owner_token`) and UPDATES THE SAME entity — same slug, same URL,
+// new content ("Updated in place"). Omitting the target mints a NEW entity
+// (different URL).
 //
 // Anon-cap aware: a 429 means the shared daily anonymous cap is exhausted — a
 // platform rate limit, not a functional failure. Each step skips on 429.
@@ -45,8 +45,8 @@ try {
   await client.connect(new StreamableHTTPClientTransport(new URL(`http://localhost:${PORT}/mcp`)));
 
   const d1 = await client.callTool({
-    name: "grid_drop",
-    arguments: { html: "<h1>redrop smoke v1</h1>", anonymous: true, filename: "redropsmoke.html" },
+    name: "grid_plug",
+    arguments: { html: "<h1>redrop smoke v1</h1>", anon: true, filename: "redropsmoke.html" },
   });
   if (isRateLimited(d1)) {
     console.log("skip redrop smoke — anon daily cap exhausted (429); nothing to assert");
@@ -58,8 +58,14 @@ try {
     check("1. anon drop returned an owner_token", typeof s1.owner_token === "string" && s1.owner_token.length > 0);
 
     const d2 = await client.callTool({
-      name: "grid_drop",
-      arguments: { html: "<h1>redrop smoke v2 CHANGED</h1>", anonymous: true, filename: "redropsmoke.html" },
+      name: "grid_plug",
+      arguments: {
+        html: "<h1>redrop smoke v2 CHANGED</h1>",
+        anon: true,
+        filename: "redropsmoke.html",
+        target_entity_id: s1.entity_id,
+        owner_token: s1.owner_token,
+      },
     });
     if (isRateLimited(d2)) {
       console.log("skip in-place assertions — anon daily cap hit on the edit (429)");
@@ -76,14 +82,14 @@ try {
       );
 
       const d3 = await client.callTool({
-        name: "grid_drop",
-        arguments: { html: "<h1>redrop smoke fresh</h1>", anonymous: true, fresh: true, filename: "redropsmoke.html" },
+        name: "grid_plug",
+        arguments: { html: "<h1>redrop smoke fresh</h1>", anon: true, filename: "redropsmoke.html" },
       });
       if (isRateLimited(d3)) {
         console.log("skip fresh assertion — anon daily cap hit (429)");
       } else {
         const url3 = urlOf(d3);
-        check("3. fresh: true minted a NEW entity (different URL)", !!url3 && url3 !== url1);
+        check("3. a fresh plug (no target) minted a NEW entity (different URL)", !!url3 && url3 !== url1);
       }
     }
   }

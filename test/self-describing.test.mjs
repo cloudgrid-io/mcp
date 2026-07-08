@@ -99,7 +99,7 @@ for (const dir of STATIC_DIRS) {
   check(`${dir} has a cloudgrid.yaml`, existsSync(CORPUS + base + "cloudgrid.yaml"));
   const yaml = read(base + "cloudgrid.yaml");
   check(`${dir} cloudgrid.yaml is type: static`, /type:\s*static/.test(yaml));
-  check(`${dir} cloudgrid.yaml has the inspiration header comment`, /inspiration/i.test(yaml) && /grid_drop/.test(yaml));
+  check(`${dir} cloudgrid.yaml has the inspiration header comment`, /inspiration/i.test(yaml) && /grid_plug/.test(yaml));
   check(`${dir} cloudgrid.yaml has NO active needs:`, !/^\s*needs:/m.test(yaml));
   check(`${dir} cloudgrid.yaml has NO active requires:`, !/^\s*requires:/m.test(yaml));
   check(`${dir} has an index.md mentioning cloudgrid.yaml`,

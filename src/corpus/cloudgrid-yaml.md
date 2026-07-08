@@ -25,10 +25,11 @@ new yaml with it.
 
 These are the shapes verified against live deploys. Copy one and adapt it.
 
-### Static site → deploys as an inspiration (instant)
+### Single HTML page → deploys as an inspiration (instant)
 
-A single-file / static bundle. No `needs:`. Publishes instantly via
-`grid_drop`, works on any edition (hosted or local).
+One self-contained HTML page (CSS+JS inline, images/fonts as data: URIs). No
+`needs:`. Publishes instantly via `grid_plug` with the inline `html` param,
+works on any edition (hosted or local).
 
 ```yaml
 name: landing-page
@@ -540,8 +541,9 @@ Bake these into any yaml you author:
   it**; use `needs:` instead.
 - **`needs:` and `requires:` together are HARD-REJECTED** by the validator ("use
   one or the other"). So author **`needs:`-only** — never set both.
-- **Static single-file pages deploy as inspirations** via `grid_drop` — instant,
-  synchronous, works on the hosted edition and any client.
+- **A single self-contained HTML page deploys as an inspiration** via `grid_plug`
+  with the inline `html` param — instant, synchronous, works on the hosted edition
+  and any client.
 - **A `cloudgrid.yaml` with `services:` makes it a runtime** — async build,
   **local edition only** (Claude Desktop/Code or the CLI, not hosted). `plug`
   returns `status: building`; poll status until live, then use the returned live

@@ -11,7 +11,7 @@
 # ignored by the parser, so the file deploys to exactly the active fields.
 #
 # company-website is a STATIC template (type: static, path: /) with no needs.
-# The fast path deploys the page as an INSPIRATION via grid_drop (instant,
+# The fast path deploys the page as an INSPIRATION via grid_plug (instant,
 # works on hosted). This cloudgrid.yaml is the reference for plugging it as an
 # OWNED static runtime; the active fields are exactly: name + services.web.
 #
