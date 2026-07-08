@@ -198,7 +198,11 @@ try {
     const asks = await resolveGridOrAsk(ctx, { token: "jwt", suppliedGrid: undefined, edition: "web" }, { fetchUserOrgs: twoGrids });
     check("resolveGridOrAsk >1 grid no supply → picker", Boolean(asks.picker) && asks.picker.structured.needs_grid === true);
     check("resolveGridOrAsk picker sorts active grid first", asks.picker.structured.grids[0].slug === "acme");
-    check("resolveGridOrAsk picker sets web outputTemplate meta", asks.picker.meta?.["openai/outputTemplate"] === "ui://cloudgrid/org-picker.html");
+    // Apps-SDK widget gate (0.16.1): with MCP_APPS_WIDGETS unset (default), the
+    // picker must NOT set an openai/outputTemplate — the widgets render as a black
+    // frame in ChatGPT, so the picker is text-first (structured text carries the
+    // choice). The outputTemplate returns only when MCP_APPS_WIDGETS=1.
+    check("resolveGridOrAsk picker omits outputTemplate meta by default (widget gate)", asks.picker.meta?.["openai/outputTemplate"] === undefined);
 
     const single = await resolveGridOrAsk(ctx, { token: "jwt", suppliedGrid: undefined, edition: "web" }, { fetchUserOrgs: oneGrid });
     check("resolveGridOrAsk single grid → single decision", single.single?.slug === "acme");
