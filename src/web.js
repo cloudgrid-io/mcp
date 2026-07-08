@@ -135,7 +135,7 @@ app.post("/mcp", async (req, res) => {
   const webCtx = makeWebContext(newSessionId);
   registerTools(server, webCtx);
   // Capture the calling agent's clientInfo (name+version) for this session once
-  // the MCP handshake completes, so gridctl_report can attribute the origin
+  // the MCP handshake completes, so grid_report can attribute the origin
   // (which agent: Claude/ChatGPT/Cursor/…). Never fatal — missing → "unknown".
   server.server.oninitialized = () => {
     try {

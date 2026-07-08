@@ -45,8 +45,8 @@ try {
   const toolList = (await client.listTools()).tools;
   const names = toolList.map((t) => t.name).sort();
   console.log("web tools:", names.join(", "));
-  // New gridctl_* names (direct-API + Agent Core) on the authed web edition.
-  for (const t of ["gridctl_drop", "gridctl_claim", "gridctl_plug", "gridctl_fork", "gridctl_download", "gridctl_login", "gridctl_login_status", "gridctl_visibility", "gridctl_orgs", "gridctl_start", "gridctl_fetch", "gridctl_report"]) {
+  // New grid_* names (direct-API + Agent Core) on the authed web edition.
+  for (const t of ["grid_drop", "grid_claim", "grid_plug", "grid_fork", "grid_download", "grid_login", "grid_login_status", "grid_visibility", "grid_orgs", "grid_start", "grid_fetch", "grid_report"]) {
     check(`exposes ${t}`, names.includes(t));
   }
   // 0.10.0: the deprecated cloudgrid_* aliases are GONE. No advertised tool name
@@ -56,11 +56,11 @@ try {
     `no advertised tool name starts with cloudgrid_ (found: ${cloudgridNames.join(", ") || "none"})`,
     cloudgridNames.length === 0,
   );
-  check("does NOT expose CLI-only gridctl_init", !names.includes("gridctl_init"));
+  check("does NOT expose CLI-only grid_init", !names.includes("grid_init"));
 
-  // gridctl_plug is on the web edition now (spec v2 — the unified direct-API
+  // grid_plug is on the web edition now (spec v2 — the unified direct-API
   // create/re-plug verb): artifact_files only, no local `path`.
-  const plugTool = toolList.find((t) => t.name === "gridctl_plug");
+  const plugTool = toolList.find((t) => t.name === "grid_plug");
   const plugProps = plugTool?.inputSchema?.properties ?? {};
   check("web plug does NOT have `path` param", !("path" in plugProps));
   check("web plug has `artifact_files` param", "artifact_files" in plugProps);
@@ -71,14 +71,14 @@ try {
   // The schema exclusion is the primary defense; the SDK strips unknown
   // properties via zod, so the runtime guard in the handler is belt-and-
   // suspenders for raw HTTP callers.
-  const dropTool = toolList.find((t) => t.name === "gridctl_drop");
+  const dropTool = toolList.find((t) => t.name === "grid_drop");
   const dropProps = dropTool?.inputSchema?.properties ?? {};
   check("web drop does NOT have `path` param", !("path" in dropProps));
   check("web drop has `html` param", "html" in dropProps);
   check("web drop `html` desc mentions inline/standalone", (dropProps.html?.description ?? "").includes("standalone"));
 
   const drop = await client.callTool({
-    name: "gridctl_drop",
+    name: "grid_drop",
     arguments: { html: "<h1>web edition smoke</h1>", anonymous: true },
   });
   const text = drop.content?.[0]?.text ?? "";

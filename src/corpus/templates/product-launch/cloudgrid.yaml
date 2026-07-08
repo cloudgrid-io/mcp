@@ -17,7 +17,7 @@
 # active fields are exactly name + services.web{type: static, path: /}; there
 # are no needs. This cloudgrid.yaml is the reference for plugging the page as an
 # OWNED static runtime; the fast path is to deploy it as an INSPIRATION via
-# gridctl_drop (instant, and works on the hosted edition too).
+# grid_drop (instant, and works on the hosted edition too).
 # ============================================================================
 
 

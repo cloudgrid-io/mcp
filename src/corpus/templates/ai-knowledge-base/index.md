@@ -11,7 +11,7 @@ the app following it.
 `AGENTS.md`. Fetch the bundle, read `AGENTS.md`, then generate the files under
 `services/web/` and deploy.
 
-- **Structure guide:** `gridctl_fetch("template", "ai-knowledge-base")` → read
+- **Structure guide:** `grid_fetch("template", "ai-knowledge-base")` → read
   **`AGENTS.md`** (file tree, Mongo collections, CloudGrid injection table, the
   RAG loop, the pgvector #1545 note, optional auth/payments, deploy steps).
 

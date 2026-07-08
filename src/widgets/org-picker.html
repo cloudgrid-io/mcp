@@ -75,7 +75,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
           if (input.fresh !== undefined) args.fresh = input.fresh;
           args.grid = slug;
           args.org = slug; // alias kept for compatibility
-          window.openai.callTool("gridctl_drop", args).then(function () {
+          window.openai.callTool("grid_drop", args).then(function () {
             // The host will render the new result with the live-result card.
           }).catch(function () {
             for (var m = 0; m < all.length; m++) all[m].classList.remove("loading");

@@ -4,7 +4,7 @@ when: waitlist, coming soon, early access, join the list, launch page, sign-up t
 needs: none
 deploy: inspiration
 editions: all
-capabilities_note: static — no infrastructure. The email form posts to a configurable mailto/external endpoint; it does NOT store signups. Publishes as an inspiration (instant, works on hosted) via gridctl_drop.
+capabilities_note: static — no infrastructure. The email form posts to a configurable mailto/external endpoint; it does NOT store signups. Publishes as an inspiration (instant, works on hosted) via grid_drop.
 summary: Fetch the waitlist template, fill it with the user's launch copy, wire the form to a mailto or external endpoint, deploy it, and return the live share URL.
 ---
 
@@ -22,7 +22,7 @@ NOT store signups anywhere on CloudGrid. To actually **store** waitlist signups
 (`needs: { database: true }`) — that is a CRUD app, coming in the crud-app
 archetype (Wave 1b). Do not claim this static page persists data.
 
-1. **Fetch the template.** Call `gridctl_fetch("template", "waitlist")` to load
+1. **Fetch the template.** Call `grid_fetch("template", "waitlist")` to load
    the self-contained HTML waitlist page (hero, email form, social-proof counter).
 2. **Fill the template.** Replace the placeholders with the user's content:
    - The product name, coming-soon headline, and subheadline.
@@ -33,7 +33,7 @@ archetype (Wave 1b). Do not claim this static page persists data.
      stylesheets, fonts, or large embedded media.
 3. **Deploy.** Deploy the filled HTML:
    - Hosted MCP edition: call the drop tool with the HTML.
-   - Local MCP / CLI edition: write the HTML to a file and run `gridctl plug`.
+   - Local MCP / CLI edition: write the HTML to a file and run `grid plug`.
    It is an inspiration and deploys synchronously, so you get a URL right away.
 4. **Return the live share URL.** For revisions, re-deploy with the entity id
    from the first deploy — it updates the same share URL. If the user needs

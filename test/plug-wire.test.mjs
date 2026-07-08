@@ -329,7 +329,7 @@ try {
     check("issue#48: building response reports status building", rt.structured.status === "building");
     check("issue#48: building response surfaces the poll_url", rt.structured.poll_url === "https://api.cloudgrid.io/api/v2/runtimes/ent-rt/status");
     check("issue#48: building result does NOT claim Live", !/^Live:/m.test(rt.text) && !/Live:/.test(rt.text));
-    check("issue#48: building result says Building + points at poll", /Building \(async\)/.test(rt.text) && rt.text.includes("gridctl_status"));
+    check("issue#48: building result says Building + points at poll", /Building \(async\)/.test(rt.text) && rt.text.includes("grid_status"));
     check("issue#48: building result uses the server (flat-arch) url", rt.text.includes("https://af-probe2--cg.cloudgrid.io"));
 
     const { rmSync } = await import("node:fs");

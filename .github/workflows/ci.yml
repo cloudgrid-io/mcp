@@ -37,13 +37,13 @@ jobs:
       # Offline self-healing test (0.7.2): known-code error guidance is mapped
       # (unknown codes pass through unchanged), the local-edition CLI self-heal
       # rung fires only for a signed-in SCOPE_INVALID create (not web/anon/edit),
-      # and gridctl_fetch resolves kind:"rule".
+      # and grid_fetch resolves kind:"rule".
       - run: npm run test:self-healing
-      # Offline grid-picker parity test (0.7.3): gridctl_plug asks "which grid?"
-      # on authed multi-grid creates (like gridctl_drop), never on edits/anon,
+      # Offline grid-picker parity test (0.7.3): grid_plug asks "which grid?"
+      # on authed multi-grid creates (like grid_drop), never on edits/anon,
       # and proceeds on an explicit/single grid. Drives the real tool handlers.
       - run: npm run test:grid-picker
-      # Offline consent-gated error-reporting test (0.8.1): gridctl_report posts
+      # Offline consent-gated error-reporting test (0.8.1): grid_report posts
       # {app:"mcp", message, context, node_version, platform} to
       # /api/v2/errors/feedback (Bearer authed / trusted-server anon), scrubs
       # secret-looking context keys, defaults include_conversation false, degrades
@@ -51,17 +51,17 @@ jobs:
       # appended for 5xx/INTERNAL_ERROR/build-deploy failures but NOT for
       # 429/needs_grid/401/409 EDIT_REJECTED.
       - run: npm run test:error-reporting
-      # Offline inline source-fetch test (Task 35 / 0.8.3): gridctl_source resolves
+      # Offline inline source-fetch test (Task 35 / 0.8.3): grid_source resolves
       # the fetch URL (explicit url > session lastDrop > grid+slug > fail), enforces
       # the *.cloudgrid.io SSRF guard (no fetch off-list, redirects included),
       # returns HTML inline + structuredContent.html/bytes/truncated, fails
-      # gracefully on non-200, and the gridctl_source tool + playbook/drop/plug
+      # gracefully on non-200, and the grid_source tool + playbook/drop/plug
       # guidance are wired. Mocks global fetch.
       - run: npm run test:source
       # Offline app-with-data test (0.9.0): the first runtime (DB-backed) build
       # path. Asserts the app-with-data workflow/template/example + persistent-apps
-      # troubleshooting resolve via fetchCorpus and the real gridctl_fetch handler,
-      # the intent shows in the gridctl_start menu, the PLAYBOOK carries the
+      # troubleshooting resolve via fetchCorpus and the real grid_fetch handler,
+      # the intent shows in the grid_start menu, the PLAYBOOK carries the
       # persistence rule, the workflow gates the hosted edition, and the template is
       # internally consistent (active needs: {database: true}, reads
       # process.env.DATABASE_MONGODB_URL, no hardcoded connection string/secret).
@@ -74,7 +74,7 @@ jobs:
       # active needs: AND requires: together (validator-rejected combo).
       - run: npm run test:self-describing
       # Offline canonical cloudgrid.yaml reference test (0.11.1+): the corpus doc
-      # cloudgrid-yaml fetches via fetchCorpus + the real gridctl_fetch handler,
+      # cloudgrid-yaml fetches via fetchCorpus + the real grid_fetch handler,
       # carries the full needs: vocabulary + injected env var names + validation
       # rules + a full example, the needs-vs-requires note (#1527 fixed), and the DB
       # example uses active needs: {database: true} with NO active requires: —
@@ -84,7 +84,7 @@ jobs:
       # Offline archetypes test (0.12.0): the two new runtime archetypes,
       # api-service (node + database) and ai-app (ai + database chatbot). Asserts
       # their workflow/template/example resolve via fetchCorpus + the real
-      # gridctl_fetch handler, both show in the gridctl_start menu, and the
+      # grid_fetch handler, both show in the grid_start menu, and the
       # templates are internally consistent — active canonical needs: (no active
       # requires:, never both), DB connection read LAZILY (never at module top
       # level), no hardcoded connection string/secret. api-service: Node http on

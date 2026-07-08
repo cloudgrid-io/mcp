@@ -11,7 +11,7 @@ following it.
 `AGENTS.md`. Fetch the bundle, read `AGENTS.md`, then generate the files under
 `services/web/` and deploy.
 
-- **Structure guide:** `gridctl_fetch("template", "calendar-scheduler")` → read
+- **Structure guide:** `grid_fetch("template", "calendar-scheduler")` → read
   **`AGENTS.md`** (file tree, Mongo collections, CloudGrid injection table,
   optional auth/payments layers, the cron reminder shape blocked on #1543, deploy
   steps, edition note).

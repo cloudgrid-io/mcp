@@ -32,7 +32,7 @@ const server = new McpServer({ name: "cloudgrid-mcp", version });
 registerTools(server, ctx);
 
 // Capture the calling agent's clientInfo (name+version) once the MCP handshake
-// completes, so gridctl_report can attribute the report's origin (which agent).
+// completes, so grid_report can attribute the report's origin (which agent).
 // getClientVersion() is populated by the SDK from the initialize request's
 // clientInfo. Never fatal — a missing client just falls back to "unknown".
 server.server.oninitialized = () => {

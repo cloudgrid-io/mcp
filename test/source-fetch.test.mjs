@@ -1,5 +1,5 @@
 // Offline unit test for inline source-fetch (Task 35 / 0.8.3, reworked 0.16.2):
-// gridctl_source returns a drop's CURRENT deployed HTML inline so an agent that
+// grid_source returns a drop's CURRENT deployed HTML inline so an agent that
 // lost the content can edit it and re-plug in place.
 //
 // 0.16.2 flow change — API-first, public-fetch fallback:
@@ -23,7 +23,7 @@
 //   7. Non-200 on the public fallback → graceful fail (no crash); redirect off
 //      cloudgrid refused.
 //   8. Defaults: no inputs + a session lastDrop → reads lastDrop's source.
-//   9. Only gridctl_source is registered — the deprecated cloudgrid_source alias
+//   9. Only grid_source is registered — the deprecated cloudgrid_source alias
 //      is gone (0.10.0); playbook + drop/plug descriptions carry the source rule.
 // Run: node test/source-fetch.test.mjs
 
@@ -326,7 +326,7 @@ try {
   const server = makeServer();
   registerTools(server, makeCtx({ lastDrop: null }));
 
-  check("gridctl_source registered", typeof server.handlers.gridctl_source === "function");
+  check("grid_source registered", typeof server.handlers.grid_source === "function");
   // 0.10.0: the deprecated cloudgrid_source alias is gone.
   check("cloudgrid_source alias NOT registered", server.handlers.cloudgrid_source === undefined);
   const cloudgridHandlers = Object.keys(server.handlers).filter((n) => n.startsWith("cloudgrid_"));
@@ -338,34 +338,34 @@ try {
   // the primary tool still returns inline HTML (via the API path here).
   reset();
   apiHtml = "<html>primary</html>";
-  const viaPrimary = await server.handlers.gridctl_source({ url: "https://acme.cloudgrid.io/a" });
+  const viaPrimary = await server.handlers.grid_source({ url: "https://acme.cloudgrid.io/a" });
   check(
-    "gridctl_source returns inline HTML",
+    "grid_source returns inline HTML",
     viaPrimary.structuredContent.html === "<html>primary</html>",
   );
 
   // handler wraps a thrown error as a graceful { isError:true } result (no throw).
   reset();
-  const errRes = await server.handlers.gridctl_source({ url: "https://evil.example.com/x" });
+  const errRes = await server.handlers.grid_source({ url: "https://evil.example.com/x" });
   check("handler returns isError result on SSRF (does not throw)", errRes?.isError === true);
 
-  // playbook rule (served by gridctl_start).
-  const start = await server.handlers.gridctl_start({});
+  // playbook rule (served by grid_start).
+  const start = await server.handlers.grid_start({});
   const startText = start?.content?.[0]?.text ?? "";
   check(
-    "gridctl_start playbook contains the source-first rule",
-    startText.includes("call gridctl_source to fetch the current HTML") ||
-      /gridctl_source[\s\S]*target_entity_id[\s\S]*Do not ask the user to paste/.test(startText),
+    "grid_start playbook contains the source-first rule",
+    startText.includes("call grid_source to fetch the current HTML") ||
+      /grid_source[\s\S]*target_entity_id[\s\S]*Do not ask the user to paste/.test(startText),
   );
 
   // drop/plug descriptions carry the new clause.
   check(
-    "gridctl_drop description mentions gridctl_source",
-    /call gridctl_source first to retrieve it, then re-plug with target_entity_id/.test(server.descriptions.gridctl_drop),
+    "grid_drop description mentions grid_source",
+    /call grid_source first to retrieve it, then re-plug with target_entity_id/.test(server.descriptions.grid_drop),
   );
   check(
-    "gridctl_plug description mentions gridctl_source",
-    /call gridctl_source first to retrieve it, then re-plug with target_entity_id/.test(server.descriptions.gridctl_plug),
+    "grid_plug description mentions grid_source",
+    /call grid_source first to retrieve it, then re-plug with target_entity_id/.test(server.descriptions.grid_plug),
   );
 } finally {
   globalThis.fetch = realFetch;

@@ -70,7 +70,7 @@ for (const [src, dest] of copies) {
 }
 
 // ── Directory-walk the structured corpus (F1/F2) ─────────────────────────────
-// gridctl_fetch serves workflows / templates / examples / rules /
+// grid_fetch serves workflows / templates / examples / rules /
 // troubleshooting deterministically from the bundled corpus. These live in
 // their own subdirectories of src/corpus/ so they don't get chunked into the
 // BM25 docs index (loadCorpus reads only the top-level *.md files). Each

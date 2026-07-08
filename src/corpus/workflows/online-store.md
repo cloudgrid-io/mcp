@@ -34,13 +34,13 @@ edition** (Claude Desktop / Claude Code) or the CLI.
 
 ## 2. Auth + grid
 
-1. Ensure signed in: `gridctl_login_status`; if not, `gridctl_login`.
+1. Ensure signed in: `grid_login_status`; if not, `grid_login`.
 2. A grid is required. Respect the grid picker: if the user has more than one
    grid, ask which to use; do not assume a target.
 
 ## 3. Scaffold
 
-`gridctl_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
+`grid_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
 and writes a `cloudgrid.yaml` with an EMPTY `services: {}`. `plug` needs a linked
 directory, so run `init` FIRST.
 
@@ -48,7 +48,7 @@ directory, so run `init` FIRST.
 
 This is a blueprint — the structure guide is the deliverable, not copy-paste code.
 
-1. `gridctl_fetch("template", "online-store")`.
+1. `grid_fetch("template", "online-store")`.
 2. **Read `AGENTS.md`** in the fetched template. It has: the file tree (app under
    `services/web/`), the Mongo collections (`products`, `orders`) and their
    fields, how the grid injects Mongo (`DATABASE_MONGODB_URL`) and the Stripe key
@@ -88,24 +88,24 @@ This is a blueprint — the structure guide is the deliverable, not copy-paste c
 
 ## 6. Config
 
-- Stripe secrets → the vault: `gridctl_secrets` to set `stripe-live-key` (and a
+- Stripe secrets → the vault: `grid_secrets` to set `stripe-live-key` (and a
   `stripe-webhook-secret` if you map one). The `vault:` block turns them into env
-  vars. Non-secret config → `gridctl_env`.
+  vars. Non-secret config → `grid_env`.
 - Do **NOT** set the DB connection vars yourself (`DATABASE_MONGODB_URL` /
   `MONGODB_URL`) — the grid injects them.
 
 ## 7. Deploy (async)
 
-Deploy the folder with `gridctl_plug`. A **runtime deploy is ASYNC**: the first
+Deploy the folder with `grid_plug`. A **runtime deploy is ASYNC**: the first
 response is `status: "building"`, NOT a live URL yet.
-- Poll `gridctl_status` (or the returned poll_url) until the entity is live.
+- Poll `grid_status` (or the returned poll_url) until the entity is live.
 - Surface a liveness signal while it builds — never a bare silent wait.
 - Only once it is live, return the deployed app URL (NOT the build/log link).
 
 ## 8. Wire the Stripe webhook + return the live URL
 
 1. Register `<live-url>/api/webhook` as a webhook endpoint in the Stripe
-   dashboard, copy its `whsec_…` secret into the vault, and re-`gridctl_plug` the
+   dashboard, copy its `whsec_…` secret into the vault, and re-`grid_plug` the
    SAME entity if you changed the `vault:` mapping (same URL).
 2. Give the user the live store URL — that is the deliverable. To iterate, re-plug
    the SAME entity so it updates the same URL.

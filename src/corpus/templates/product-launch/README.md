@@ -34,13 +34,13 @@ A one-page launch announcement with:
 ## How it deploys
 
 Deploys as an **inspiration** — instant, and works on the **hosted** edition
-(Claude Web) as well as local. Use **`gridctl_drop`** (or `gridctl_plug` with the
+(Claude Web) as well as local. Use **`grid_drop`** (or `grid_plug` with the
 inline HTML): you get a live share URL right away. Re-dropping the same entity
 updates the same URL, so the user iterates on one link.
 
 The reference `cloudgrid.yaml` in this directory (`type: static`) is ONLY for
 plugging the page as an OWNED static runtime (async, local edition only); the
-fast path is `gridctl_drop`.
+fast path is `grid_drop`.
 
 The fillable HTML is the real template — fetch it with
-`gridctl_fetch("template", "product-launch")` and fill in the user's content.
+`grid_fetch("template", "product-launch")` and fill in the user's content.

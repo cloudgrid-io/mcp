@@ -49,7 +49,7 @@ copy("src/auth.js");
 copy("src/tools.js");
 copy("src/cli-shim.mjs"); // runCloudgrid spawns the bundled CLI through this shim
 copy("src/widgets");
-copy("src/corpus"); // gridctl_fetch reads the bundled corpus (workflows/templates/examples/docs)
+copy("src/corpus"); // grid_fetch reads the bundled corpus (workflows/templates/examples/docs)
 copy("assets/cloudgrid-icon-512.png");
 
 // Install production deps (clean, no dev deps, no scripts to avoid side-effects)

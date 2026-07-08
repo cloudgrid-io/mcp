@@ -1,12 +1,12 @@
-// Offline unit test for grid-picker parity (Task 32 / 0.7.3): gridctl_plug asks
-// "which grid?" on authed multi-grid CREATES, exactly like gridctl_drop already
+// Offline unit test for grid-picker parity (Task 32 / 0.7.3): grid_plug asks
+// "which grid?" on authed multi-grid CREATES, exactly like grid_drop already
 // does. Drives the REAL registered tool handlers (via registerTools with a fake
 // server) with a mocked API, and asserts:
-//   1. authed + >1 grid + create + no grid  → gridctl_plug returns the picker, does NOT publish.
-//   2. authed + >1 grid + explicit valid grid → gridctl_plug proceeds to that grid (publishes).
+//   1. authed + >1 grid + create + no grid  → grid_plug returns the picker, does NOT publish.
+//   2. authed + >1 grid + explicit valid grid → grid_plug proceeds to that grid (publishes).
 //   3. authed + >1 grid + EDIT (target_entity_id) → does NOT ask (publishes/edits).
 //   4. single grid → proceeds; anon → proceeds (guest, no ask).
-//   5. gridctl_drop still asks on >1 grid (parity); `org` alias still works; picker text says "grid".
+//   5. grid_drop still asks on >1 grid (parity); `org` alias still works; picker text says "grid".
 //   6. resolveGridOrAsk unit decisions (matched / >1 / single / none).
 // Run: node test/grid-picker.test.mjs
 
@@ -93,7 +93,7 @@ try {
     orgsReply = TWO_GRIDS;
     resetCalls();
     const h = handlersFor({ token: "jwt", edition: "web" });
-    const res = await h.gridctl_plug({ artifact_files: artifact });
+    const res = await h.grid_plug({ artifact_files: artifact });
     const sc = res.structuredContent || {};
     check("plug multi-grid create → needs_grid picker", sc.needs_grid === true);
     check("plug picker keeps needs_org alias (widget compat)", sc.needs_org === true);
@@ -107,7 +107,7 @@ try {
     orgsReply = TWO_GRIDS;
     resetCalls();
     const h = handlersFor({ token: "jwt", edition: "web" });
-    const res = await h.gridctl_plug({ artifact_files: artifact, grid: "beta" });
+    const res = await h.grid_plug({ artifact_files: artifact, grid: "beta" });
     check("plug explicit valid grid → published", plugCalled());
     check("plug explicit valid grid → no picker", !res.structuredContent?.needs_grid);
   }
@@ -117,7 +117,7 @@ try {
     orgsReply = TWO_GRIDS;
     resetCalls();
     const h = handlersFor({ token: "jwt", edition: "web" });
-    const res = await h.gridctl_plug({ artifact_files: artifact, target_entity_id: "ent_1" });
+    const res = await h.grid_plug({ artifact_files: artifact, target_entity_id: "ent_1" });
     check("plug EDIT (target_entity_id) did NOT ask", !res.structuredContent?.needs_grid);
     check("plug EDIT (target_entity_id) proceeded to publish", plugCalled());
     // The orgs endpoint must not even be consulted for an edit.
@@ -129,7 +129,7 @@ try {
     orgsReply = ONE_GRID;
     resetCalls();
     const h = handlersFor({ token: "jwt", edition: "web" });
-    const res = await h.gridctl_plug({ artifact_files: artifact });
+    const res = await h.grid_plug({ artifact_files: artifact });
     check("plug single grid → published (no ask)", plugCalled() && !res.structuredContent?.needs_grid);
   }
 
@@ -138,7 +138,7 @@ try {
     orgsReply = TWO_GRIDS; // even with many grids, anon never asks
     resetCalls();
     const h = handlersFor({ token: "jwt", edition: "web" });
-    const res = await h.gridctl_plug({ artifact_files: artifact, anon: true });
+    const res = await h.grid_plug({ artifact_files: artifact, anon: true });
     check("plug anon → published, no ask", plugCalled() && !res.structuredContent?.needs_grid);
     check("plug anon did not fetch the grid list", !calls.some((c) => c.url.includes("/api/v2/orgs")));
   }
@@ -148,7 +148,7 @@ try {
     orgsReply = { orgs: [{ slug: "acme", name: "Acme", role: "owner", render_ready: false }] };
     resetCalls();
     const h = handlersFor({ token: "jwt", edition: "web" });
-    const res = await h.gridctl_plug({ artifact_files: artifact });
+    const res = await h.grid_plug({ artifact_files: artifact });
     check("plug single not-ready grid → still published", plugCalled());
     check("plug single not-ready grid → warns in text", /isn't fully set up|not fully set up|isn.t fully/i.test(res.content?.[0]?.text || ""));
   }
@@ -158,7 +158,7 @@ try {
     orgsReply = TWO_GRIDS;
     resetCalls();
     const h = handlersFor({ token: "jwt", edition: "web" });
-    const res = await h.gridctl_drop({ html: "<h1>hi</h1>" });
+    const res = await h.grid_drop({ html: "<h1>hi</h1>" });
     const sc = res.structuredContent || {};
     check("drop multi-grid create → still asks (needs_grid)", sc.needs_grid === true);
     check("drop picker text says 'grid'", /which grid/i.test(res.content?.[0]?.text || ""));
@@ -170,7 +170,7 @@ try {
     orgsReply = TWO_GRIDS;
     resetCalls();
     const h = handlersFor({ token: "jwt", edition: "web" });
-    const res = await h.gridctl_drop({ html: "<h1>hi</h1>", org: "beta" });
+    const res = await h.grid_drop({ html: "<h1>hi</h1>", org: "beta" });
     check("drop explicit `org` alias → published", plugCalled());
     check("drop explicit `org` alias → no picker", !res.structuredContent?.needs_grid);
   }
@@ -180,7 +180,7 @@ try {
     orgsReply = TWO_GRIDS;
     resetCalls();
     const h = handlersFor({ token: "jwt", edition: "web" });
-    const res = await h.gridctl_drop({ html: "<h1>hi</h1>", grid: "beta" });
+    const res = await h.grid_drop({ html: "<h1>hi</h1>", grid: "beta" });
     check("drop explicit `grid` param → published", plugCalled());
     check("drop explicit `grid` param → no picker", !res.structuredContent?.needs_grid);
   }

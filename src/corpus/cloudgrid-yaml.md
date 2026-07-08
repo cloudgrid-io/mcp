@@ -5,9 +5,9 @@
 > of that reference — practically complete, not a verbatim dump. **Keep in sync**
 > with the upstream: when the platform reference changes, update this doc.
 >
-> Fetch this doc any time with `gridctl_fetch("doc", "cloudgrid-yaml")`.
+> Fetch this doc any time with `grid_fetch("doc", "cloudgrid-yaml")`.
 > For matching an intent to a template, see the companion
-> `gridctl_fetch("doc", "capability-map")`.
+> `grid_fetch("doc", "capability-map")`.
 
 `cloudgrid.yaml` is the manifest at the **root of your project** that defines your
 entity (an app or an agent). It declares the services your entity runs, the
@@ -28,7 +28,7 @@ These are the shapes verified against live deploys. Copy one and adapt it.
 ### Static site → deploys as an inspiration (instant)
 
 A single-file / static bundle. No `needs:`. Publishes instantly via
-`gridctl_drop`, works on any edition (hosted or local).
+`grid_drop`, works on any edition (hosted or local).
 
 ```yaml
 name: landing-page
@@ -540,7 +540,7 @@ Bake these into any yaml you author:
   it**; use `needs:` instead.
 - **`needs:` and `requires:` together are HARD-REJECTED** by the validator ("use
   one or the other"). So author **`needs:`-only** — never set both.
-- **Static single-file pages deploy as inspirations** via `gridctl_drop` — instant,
+- **Static single-file pages deploy as inspirations** via `grid_drop` — instant,
   synchronous, works on the hosted edition and any client.
 - **A `cloudgrid.yaml` with `services:` makes it a runtime** — async build,
   **local edition only** (Claude Desktop/Code or the CLI, not hosted). `plug`
@@ -565,5 +565,5 @@ needs:
 ---
 
 *This doc is the agent-facing distribution of the platform's canonical
-`cloudgrid-yaml-reference.md`. See also `gridctl_fetch("doc", "capability-map")`
+`cloudgrid-yaml-reference.md`. See also `grid_fetch("doc", "capability-map")`
 for matching a user intent to a template + the `needs:` injection status.*

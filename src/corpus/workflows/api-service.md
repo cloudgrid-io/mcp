@@ -36,13 +36,13 @@ the CLI and folder-plug your project.
 ## 2. Auth + grid
 
 Persistent services are owned entities.
-1. Ensure signed in: `gridctl_login_status`; if not, `gridctl_login`.
+1. Ensure signed in: `grid_login_status`; if not, `grid_login`.
 2. A grid is required. Respect the grid picker: if the user has more than one
    grid, ask which to use; do not assume a target.
 
 ## 3. Scaffold
 
-`gridctl_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
+`grid_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
 and writes a `cloudgrid.yaml` with an EMPTY `services: {}`. `plug` needs a linked
 directory, so run `init` FIRST.
 
@@ -72,7 +72,7 @@ fill in `cloudgrid.yaml` to the shape below (`services.api` type `node` + `needs
    runtime. `requires:` is the deprecated v1 alias; don't author new yaml with
    it, and never set `needs:` and `requires:` together (the validator rejects it).
 2. Fetch the template for the server + Mongo shape:
-   `gridctl_fetch("template", "api-service")`. It is a minimal Node `http`
+   `grid_fetch("template", "api-service")`. It is a minimal Node `http`
    server under `services/api/`: it listens on `process.env.PORT || 8080` and
    serves a small REST resource (`/items` GET list / POST create / DELETE by id)
    backed by Mongo.
@@ -85,7 +85,7 @@ fill in `cloudgrid.yaml` to the shape below (`services.api` type `node` + `needs
      never at module top level, or node startup crashes** before the grid has
      injected the var.
    - Return clear JSON errors (`{ "error": "…" }`) with the right status codes.
-   - (Optional) fetch `gridctl_fetch("example", "api-service")` for a slightly
+   - (Optional) fetch `grid_fetch("example", "api-service")` for a slightly
      richer filled reference to imitate.
 
 ## 5. (Optional) Run locally
@@ -95,16 +95,16 @@ and hit the endpoints before deploying. Don't require it.
 
 ## 6. Config
 
-- API keys / secrets → `gridctl_secrets`.
-- Non-secret config → `gridctl_env`.
+- API keys / secrets → `grid_secrets`.
+- Non-secret config → `grid_env`.
 - Do **NOT** set the DB connection vars yourself (`DATABASE_MONGODB_URL`, or the
   legacy `MONGODB_URL` alias) — the grid injects them.
 
 ## 7. Deploy (async)
 
-Deploy the folder with `gridctl_plug`. A **runtime deploy is ASYNC**: the first
+Deploy the folder with `grid_plug`. A **runtime deploy is ASYNC**: the first
 response is `status: "building"` with a `poll_url` / entity, NOT a live URL yet.
-- Poll `gridctl_status` (or the returned poll_url) until the entity is live.
+- Poll `grid_status` (or the returned poll_url) until the entity is live.
 - Surface a liveness signal while it builds — never a bare silent wait.
 - Only once it is live, return the deployed URL (the API base URL, NOT the
   build/log link).

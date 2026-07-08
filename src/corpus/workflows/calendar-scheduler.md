@@ -35,13 +35,13 @@ requires the **local edition** (Claude Desktop / Claude Code) or the CLI.
 
 ## 2. Auth + grid
 
-1. Ensure signed in: `gridctl_login_status`; if not, `gridctl_login`.
+1. Ensure signed in: `grid_login_status`; if not, `grid_login`.
 2. A grid is required. Respect the grid picker: if the user has more than one
    grid, ask which to use; do not assume a target.
 
 ## 3. Fetch the blueprint and READ AGENTS.md
 
-`gridctl_fetch("template", "calendar-scheduler")`. The deliverable is the
+`grid_fetch("template", "calendar-scheduler")`. The deliverable is the
 **`AGENTS.md` structure guide** — read it before writing anything. It defines:
 - the `services/web/` file tree (calendar page, event + booking routes, `lib/`),
 - the Mongo collections (`events`, `availability`, optional `bookings`) + fields,
@@ -56,7 +56,7 @@ There is no app code to copy — you generate it from the guide.
 
 ## 4. Scaffold + fill cloudgrid.yaml
 
-`gridctl_init` an app `<name>` FIRST (creates the entity + `.cloudgrid/link.json`
+`grid_init` an app `<name>` FIRST (creates the entity + `.cloudgrid/link.json`
 and a starter `cloudgrid.yaml` with empty `services:{}`; `plug` needs a linked
 directory). Then put the app under **`services/web/`** and set `cloudgrid.yaml` to
 the blueprint's active fields:
@@ -108,7 +108,7 @@ scheduler hitting an authenticated `POST /api/cron/reminders` route on `web`).
 
 - Map any secrets in the `vault:` block, then **store the values**:
   `grid secrets set auth-provider-key …`, `grid secrets set stripe-live-key sk_live_…`,
-  `grid secrets set sendgrid-key SG.…`. Non-secret public config → `gridctl_env`.
+  `grid secrets set sendgrid-key SG.…`. Non-secret public config → `grid_env`.
 - Do **NOT** set the DB connection vars yourself (`DATABASE_MONGODB_URL` / legacy
   `MONGODB_URL`) — the grid injects them.
 
@@ -119,9 +119,9 @@ secrets) before deploying. Don't require it.
 
 ## 9. Deploy (async)
 
-Deploy the folder with `gridctl_plug`. A **runtime deploy is ASYNC**: the first
+Deploy the folder with `grid_plug`. A **runtime deploy is ASYNC**: the first
 response is `status: "building"`, NOT a live URL yet.
-- Poll `gridctl_status` (or the returned poll_url) until the entity is live.
+- Poll `grid_status` (or the returned poll_url) until the entity is live.
 - Surface a liveness signal while it builds — never a bare silent wait.
 - Only once it is live, return the deployed app URL (NOT the build/log link).
 

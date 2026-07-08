@@ -37,13 +37,13 @@ edition** (Claude Desktop / Claude Code) or the CLI.
 
 ## 2. Auth + grid
 
-1. Ensure signed in: `gridctl_login_status`; if not, `gridctl_login`.
+1. Ensure signed in: `grid_login_status`; if not, `grid_login`.
 2. A grid is required. Respect the grid picker: if the user has more than one
    grid, ask which to use; do not assume a target.
 
 ## 3. Fetch the blueprint and READ AGENTS.md
 
-`gridctl_fetch("template", "restaurant-reservations")`. This is a **blueprint**,
+`grid_fetch("template", "restaurant-reservations")`. This is a **blueprint**,
 so the deliverable is `cloudgrid.yaml` + `AGENTS.md`, not app code.
 
 **Read `AGENTS.md` before building.** It defines:
@@ -56,7 +56,7 @@ so the deliverable is `cloudgrid.yaml` + `AGENTS.md`, not app code.
 
 ## 4. Scaffold + fill
 
-1. `gridctl_init` an app `<name>` — creates the entity + `.cloudgrid/link.json`
+1. `grid_init` an app `<name>` — creates the entity + `.cloudgrid/link.json`
    and a `cloudgrid.yaml` with an EMPTY `services: {}`. Run `init` FIRST (plug
    needs a linked directory).
 2. Write the app under **`services/web/`** (`path:` is the URL mount, NOT the
@@ -85,9 +85,9 @@ so the deliverable is `cloudgrid.yaml` + `AGENTS.md`, not app code.
 
 ## 5. Config / secrets
 
-- Secret values (Stripe, SendGrid, auth) → `gridctl_secrets` (the `vault:` block
+- Secret values (Stripe, SendGrid, auth) → `grid_secrets` (the `vault:` block
   maps them to env vars). Non-secret config (publishable keys, flags) →
-  `gridctl_env`.
+  `grid_env`.
 - Do **NOT** set the DB vars yourself (`DATABASE_MONGODB_URL` / `MONGODB_URL`) —
   the grid injects them.
 
@@ -98,9 +98,9 @@ against dev Mongo. Seed the `menu` collection, test a booking. Don't require it.
 
 ## 7. Deploy (async)
 
-Deploy `services/web/` with `gridctl_plug`. A **runtime deploy is ASYNC**: the
+Deploy `services/web/` with `grid_plug`. A **runtime deploy is ASYNC**: the
 first response is `status: building`, NOT a live URL.
-- Poll `gridctl_status` (or the returned poll URL) until live.
+- Poll `grid_status` (or the returned poll URL) until live.
 - Surface a liveness signal while it builds — never a bare silent wait.
 - Only once live, return the deployed app URL (NOT the build/log link).
 - If Stripe deposits are on, register the live `/api/webhooks/stripe` URL in the

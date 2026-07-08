@@ -14,7 +14,7 @@ loops forever.
 
 This is a known platform issue, not a mistake in your request. Do not retry with
 different flag or path permutations — they will all fail the same way. If a
-terminal is available, deploy from the CLI instead (`gridctl plug <path>` or
+terminal is available, deploy from the CLI instead (`grid plug <path>` or
 `cloudgrid plug <path>`). If no terminal is available, stop and tell the user
 this is a known issue and needs the CLI.
 

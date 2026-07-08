@@ -34,7 +34,7 @@ edition** (Claude Desktop / Claude Code) or the CLI.
 
 ## 2. Auth + grid
 
-1. Ensure signed in: `gridctl_login_status`; if not, `gridctl_login`.
+1. Ensure signed in: `grid_login_status`; if not, `grid_login`.
 2. A grid is required. Respect the grid picker: if the user has more than one
    grid, ask which to use; do not assume a target.
 
@@ -43,17 +43,17 @@ edition** (Claude Desktop / Claude Code) or the CLI.
 Fetch the template and read its structure guide — this is the core of the
 workflow:
 
-- `gridctl_fetch("template", "membership-site")` — the `cloudgrid.yaml` +
+- `grid_fetch("template", "membership-site")` — the `cloudgrid.yaml` +
   **`AGENTS.md`**. AGENTS.md has the file tree, the Mongo collections
   (`users`, `memberships`), the CloudGrid injection table, and the auth + Stripe
   wiring. **Read it fully before building.**
-- `gridctl_fetch("template", "app-with-data")` — the proven Next.js + Mongo
+- `grid_fetch("template", "app-with-data")` — the proven Next.js + Mongo
   shape this blueprint extends (lazy db client in `lib/db.js`, App-Router
   GET/POST route). Imitate its wiring.
 
 ## 4. Scaffold
 
-`gridctl_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
+`grid_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
 and writes a `cloudgrid.yaml` with an EMPTY `services: {}`. `plug` needs a linked
 directory, so run `init` FIRST. Then write the app under **`services/web/`** and
 set `cloudgrid.yaml` to the active shape below.
@@ -98,11 +98,11 @@ never set `needs:` and `requires:` together (the validator rejects it).
 
 ## 6. Config / secrets
 
-- Stripe + auth secrets → `gridctl_secrets` (set the vault items `stripe-live-key`,
+- Stripe + auth secrets → `grid_secrets` (set the vault items `stripe-live-key`,
   `stripe-webhook-secret`, `auth-provider-key` that the `vault:` block maps from).
   The deployer injects each as its env var at runtime and under `grid dev`.
 - Non-secret config (auth publishable key `NEXT_PUBLIC_...`, Stripe price id) →
-  `gridctl_env` / `services.web.env`.
+  `grid_env` / `services.web.env`.
 - Do **NOT** set the DB connection vars yourself (`DATABASE_MONGODB_URL` / legacy
   `MONGODB_URL`) — the grid injects them.
 
@@ -113,9 +113,9 @@ and vault secrets before deploying. Don't require it.
 
 ## 8. Deploy (async)
 
-Deploy the folder with `gridctl_plug`. A **runtime deploy is ASYNC**: the first
+Deploy the folder with `grid_plug`. A **runtime deploy is ASYNC**: the first
 response is `status: "building"`, NOT a live URL yet.
-- Poll `gridctl_status` (or the returned poll_url) until the entity is live.
+- Poll `grid_status` (or the returned poll_url) until the entity is live.
 - Surface a liveness signal while it builds — never a bare silent wait.
 - Once live, register the `/api/webhook` URL as the Stripe webhook endpoint,
   copy the signing secret into the `stripe-webhook-secret` vault item, and

@@ -4,7 +4,7 @@ when: portfolio, personal site, freelancer site, my work, showcase, resume site,
 needs: none
 deploy: inspiration
 editions: all
-capabilities_note: static — no infrastructure. Publishes as an inspiration (instant, works on hosted) via gridctl_drop.
+capabilities_note: static — no infrastructure. Publishes as an inspiration (instant, works on hosted) via grid_drop.
 summary: Fetch the portfolio template, fill it with the user's projects and bio, deploy it, and return the live share URL.
 ---
 
@@ -15,7 +15,7 @@ follow this recipe. Reach for this over `landing-page` when the request is about
 showcasing projects with an about, skills, and contact. Do not ask setup
 questions first; use sensible defaults and build.
 
-1. **Fetch the template.** Call `gridctl_fetch("template", "portfolio")` to load
+1. **Fetch the template.** Call `grid_fetch("template", "portfolio")` to load
    the self-contained HTML portfolio (hero, about, skills, projects grid,
    contact).
 2. **Fill the template.** Replace the placeholders with the user's content:
@@ -27,7 +27,7 @@ questions first; use sensible defaults and build.
      stylesheets, fonts, or large embedded media.
 3. **Deploy.** Deploy the filled HTML:
    - Hosted MCP edition: call the drop tool with the HTML.
-   - Local MCP / CLI edition: write the HTML to a file and run `gridctl plug`.
+   - Local MCP / CLI edition: write the HTML to a file and run `grid plug`.
    It is an inspiration and deploys synchronously, so you get a URL right away.
 4. **Return the live share URL.** For revisions, re-deploy with the entity id
    from the first deploy — it updates the same share URL.

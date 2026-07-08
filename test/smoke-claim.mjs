@@ -22,7 +22,7 @@ await client.connect(transport);
 
 // 1. Identity drop — should land in the user's org, owned.
 const idDrop = await client.callTool({
-  name: "gridctl_drop",
+  name: "grid_drop",
   arguments: { html: "<h1>identity drop smoke</h1>", org, filename: "id-smoke.html" },
 });
 const idText = idDrop.content?.[0]?.text ?? "";
@@ -33,7 +33,7 @@ check(`identity drop landed in ${org}`, idText.includes(`${org}.cloudgrid.io`));
 
 // 2. Anonymous drop — should return a Live guest URL and arm the claim.
 const anon = await client.callTool({
-  name: "gridctl_drop",
+  name: "grid_drop",
   arguments: { html: "<h1>anon drop smoke</h1>", anonymous: true, filename: "anon-smoke.html" },
 });
 const anonText = anon.content?.[0]?.text ?? "";
@@ -42,7 +42,7 @@ check("anonymous drop succeeded", anon.isError !== true);
 check("anonymous drop is on guest", anonText.includes("guest.cloudgrid.io"));
 
 // 3. Claim — uses the remembered claim token from step 2.
-const claim = await client.callTool({ name: "gridctl_claim", arguments: {} });
+const claim = await client.callTool({ name: "grid_claim", arguments: {} });
 const claimText = claim.content?.[0]?.text ?? "";
 console.log("--- claim ---\n" + claimText);
 check("claim succeeded", claim.isError !== true);
