@@ -2,8 +2,8 @@
 //
 // The MCP/agents/builders fetch one practically-complete cloudgrid.yaml schema so
 // they author the manifest correctly. Asserts:
-//   1. gridctl_fetch("doc","cloudgrid-yaml") resolves (via fetchCorpus AND the real
-//      gridctl_fetch handler) and returns substantial content.
+//   1. grid_fetch("doc","cloudgrid-yaml") resolves (via fetchCorpus AND the real
+//      grid_fetch handler) and returns substantial content.
 //   2. The doc carries the full needs: vocabulary (all 9) + the injected env var
 //      names, at least one full example, and the needs-vs-requires note.
 //   3. The DB example uses an ACTIVE needs: {database: true} and NO active
@@ -11,7 +11,7 @@
 //      the combo). This is the guard, flipped from the Task-41/42 requires: shim.
 //   4. The header cites the upstream canonical + a keep-in-sync note, and the doc
 //      cross-links the capability-map.
-//   5. Wiring: the gridctl_start PLAYBOOK points at the reference; capability-map
+//   5. Wiring: the grid_start PLAYBOOK points at the reference; capability-map
 //      cross-links back to cloudgrid-yaml.
 // Run: node test/canonical-yaml.test.mjs
 
@@ -30,7 +30,7 @@ function check(label, cond) {
 
 // ── 1. The doc fetches as a top-level `doc` (same mechanism as capability-map) ─
 const doc = fetchCorpus("doc", "cloudgrid-yaml");
-check("gridctl_fetch(doc, cloudgrid-yaml) resolves", typeof doc === "string" && doc.length > 2000);
+check("grid_fetch(doc, cloudgrid-yaml) resolves", typeof doc === "string" && doc.length > 2000);
 
 // ── 2. Needs vocabulary + injected env vars + a full example ─────────────────
 check("doc documents the full needs: vocabulary (all 9)",
@@ -62,8 +62,8 @@ check("doc §7 keeps only a one-line historical #1527 note (now fixed)",
   /#1527/.test(doc) && /(fixed|obsolete|historical)/i.test(doc));
 check("doc §7: needs: and requires: together are rejected",
   /(reject|one or the other)/i.test(doc));
-check("doc §7: static → inspiration (gridctl_drop) / services: → runtime",
-  /inspiration/i.test(doc) && /gridctl_drop/.test(doc) && /runtime/i.test(doc) && /local edition/i.test(doc));
+check("doc §7: static → inspiration (grid_drop) / services: → runtime",
+  /inspiration/i.test(doc) && /grid_drop/.test(doc) && /runtime/i.test(doc) && /local edition/i.test(doc));
 
 // ── 3. GUARD: the DB example uses active needs: {database: true}, NO requires: ─
 // Extract fenced code blocks and, for the ones that are cloudgrid.yaml manifests,
@@ -119,15 +119,15 @@ const ctx = {
 {
   const server = makeServer();
   registerTools(server, ctx);
-  const start = await server.handlers.gridctl_start({});
+  const start = await server.handlers.grid_start({});
   const startText = start?.content?.[0]?.text ?? "";
-  check("gridctl_start playbook points at the cloudgrid-yaml reference",
+  check("grid_start playbook points at the cloudgrid-yaml reference",
     /cloudgrid-yaml/.test(startText));
 
-  // The real gridctl_fetch handler resolves the doc too (not just fetchCorpus).
-  const fetched = await server.handlers.gridctl_fetch({ kind: "doc", name: "cloudgrid-yaml" });
+  // The real grid_fetch handler resolves the doc too (not just fetchCorpus).
+  const fetched = await server.handlers.grid_fetch({ kind: "doc", name: "cloudgrid-yaml" });
   const fetchedText = fetched?.content?.[0]?.text ?? "";
-  check("gridctl_fetch handler returns the cloudgrid-yaml doc",
+  check("grid_fetch handler returns the cloudgrid-yaml doc",
     fetchedText.length > 2000 && /#1527/.test(fetchedText));
 }
 check("capability-map cross-links cloudgrid-yaml",

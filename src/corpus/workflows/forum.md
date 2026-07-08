@@ -52,17 +52,17 @@ edition** (Claude Desktop / Claude Code) or the CLI.
 
 ## 2. Auth + grid
 
-1. Ensure signed in: `gridctl_login_status`; if not, `gridctl_login`.
+1. Ensure signed in: `grid_login_status`; if not, `grid_login`.
 2. A grid is required. Respect the grid picker: if the user has more than one
    grid, ask which to use; do not assume a target.
 
 ## 3. Read the blueprint, then scaffold
 
-1. **Fetch the blueprint: `gridctl_fetch("template", "forum")`** and read
+1. **Fetch the blueprint: `grid_fetch("template", "forum")`** and read
    `AGENTS.md` — it defines the file tree, the `threads` / `posts` / `users`
    collections + fields, the nesting model, and the CloudGrid wiring. This is the
    spec you build to.
-2. `gridctl_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
+2. `grid_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
    and writes a `cloudgrid.yaml` with an EMPTY `services: {}`. `plug` needs a
    linked directory, so run `init` FIRST. Then write the app under
    **`services/web/`** and fill `cloudgrid.yaml` to the shape below.
@@ -108,16 +108,16 @@ Mention that the user can `grid dev` to run locally against the injected Mongo
 
 ## 6. Config
 
-- Auth-provider keys / secrets → the `vault:` block + `gridctl_secrets`. Non-secret
-  config → `gridctl_env`.
+- Auth-provider keys / secrets → the `vault:` block + `grid_secrets`. Non-secret
+  config → `grid_env`.
 - Do **NOT** set the DB connection vars yourself (`DATABASE_MONGODB_URL` or the
   legacy `MONGODB_URL`) — the grid injects them.
 
 ## 7. Deploy (async)
 
-Deploy the folder with `gridctl_plug`. A **runtime deploy is ASYNC**: the first
+Deploy the folder with `grid_plug`. A **runtime deploy is ASYNC**: the first
 response is `status: "building"`, NOT a live URL yet.
-- Poll `gridctl_status` (or the returned poll_url) until the entity is live.
+- Poll `grid_status` (or the returned poll_url) until the entity is live.
 - Surface a liveness signal while it builds — never a bare silent wait.
 - Only once it is live, return the deployed app URL (NOT the build/log link).
 

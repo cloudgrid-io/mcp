@@ -1,7 +1,7 @@
 // Offline unit test for the app-with-data capability (0.9.0): the first runtime
 // (DB-backed) build workflow in the corpus. Asserts the new workflow/template/
 // example resolve via the REAL fetchCorpus seam and the REAL registered tool
-// handlers, that the intent shows up in the gridctl_start menu, that the
+// handlers, that the intent shows up in the grid_start menu, that the
 // template is internally consistent (valid YAML shape, needs: {database: true},
 // reads process.env.DATABASE_MONGODB_URL, no hardcoded connection string/secret), and
 // that the PLAYBOOK carries the persistence rule and the workflow gates hosted.
@@ -141,33 +141,33 @@ check("example declares active needs: {database: true}", /needs:\s*\n\s*database
 check("example uses the services/web/ layout", /services\/web\//.test(example));
 check("example does NOT use active requires:", !/^\s*requires:/m.test(example));
 
-// ── 5. Intent appears in gridctl_start menu + playbook rule ─────────────────
+// ── 5. Intent appears in grid_start menu + playbook rule ─────────────────
 const server = makeServer();
 registerTools(server, makeCtx());
-const start = await server.handlers.gridctl_start({});
+const start = await server.handlers.grid_start({});
 const startStruct = start?.structuredContent ?? {};
 const startText = start?.content?.[0]?.text ?? "";
 
 check(
-  "gridctl_start lists the app-with-data workflow",
+  "grid_start lists the app-with-data workflow",
   (Array.isArray(startStruct.workflows) &&
     startStruct.workflows.some((w) => w.name === "app-with-data")) ||
     /app-with-data/.test(startText),
 );
 check(
-  "gridctl_start playbook contains the persistence rule",
+  "grid_start playbook contains the persistence rule",
   /Persistence check/.test(startText) &&
     /app-with-data/.test(startText) &&
     /LOCAL edition/.test(startText),
 );
 
-// ── 6. gridctl_fetch handler returns the workflow/template/example content ──
-const wfRes = await server.handlers.gridctl_fetch({ kind: "workflow", name: "app-with-data" });
-const tplRes = await server.handlers.gridctl_fetch({ kind: "template", name: "app-with-data" });
-const exRes = await server.handlers.gridctl_fetch({ kind: "example", name: "app-with-data" });
-check("gridctl_fetch workflow app-with-data is not an error", wfRes?.isError !== true && (wfRes?.content?.[0]?.text ?? "").length > 100);
-check("gridctl_fetch template app-with-data is not an error", tplRes?.isError !== true && (tplRes?.content?.[0]?.text ?? "").length > 100);
-check("gridctl_fetch example app-with-data is not an error", exRes?.isError !== true && (exRes?.content?.[0]?.text ?? "").length > 100);
+// ── 6. grid_fetch handler returns the workflow/template/example content ──
+const wfRes = await server.handlers.grid_fetch({ kind: "workflow", name: "app-with-data" });
+const tplRes = await server.handlers.grid_fetch({ kind: "template", name: "app-with-data" });
+const exRes = await server.handlers.grid_fetch({ kind: "example", name: "app-with-data" });
+check("grid_fetch workflow app-with-data is not an error", wfRes?.isError !== true && (wfRes?.content?.[0]?.text ?? "").length > 100);
+check("grid_fetch template app-with-data is not an error", tplRes?.isError !== true && (tplRes?.content?.[0]?.text ?? "").length > 100);
+check("grid_fetch example app-with-data is not an error", exRes?.isError !== true && (exRes?.content?.[0]?.text ?? "").length > 100);
 
 if (failures > 0) {
   console.log(`\n${failures} app-with-data check(s) FAILED.`);

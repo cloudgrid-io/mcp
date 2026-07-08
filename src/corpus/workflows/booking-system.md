@@ -41,18 +41,18 @@ edition** (Claude Desktop / Claude Code) or the CLI.
 
 ## 2. Auth + grid
 
-1. Ensure signed in: `gridctl_login_status`; if not, `gridctl_login`.
+1. Ensure signed in: `grid_login_status`; if not, `grid_login`.
 2. A grid is required. Respect the grid picker: if the user has more than one
    grid, ask which to use; do not assume a target.
 
 ## 3. Read the blueprint, then scaffold
 
-1. Fetch the blueprint: `gridctl_fetch("template", "booking-system")`. **Read its
+1. Fetch the blueprint: `grid_fetch("template", "booking-system")`. **Read its
    `AGENTS.md`** — it is the structure guide (file tree under `services/web/`, the
    `services` / `availabilityRules` / `bookings` collections + the double-booking
    guard, how CloudGrid injects the DB and vault secrets, how to wire Stripe +
    auth, and the reminder-cron design).
-2. `gridctl_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
+2. `grid_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
    and writes a `cloudgrid.yaml` with an EMPTY `services: {}`. `plug` needs a
    linked directory, so run `init` FIRST.
 
@@ -89,9 +89,9 @@ edition** (Claude Desktop / Claude Code) or the CLI.
 
 ## 5. Config (secrets)
 
-- Payment/auth secrets → add the vault items with `gridctl_secrets` (e.g.
+- Payment/auth secrets → add the vault items with `grid_secrets` (e.g.
   `stripe-live-key`, `stripe-webhook-secret`, `auth-provider-key`) BEFORE plug so
-  the `vault:` mappings resolve. Non-secret config → `gridctl_env`.
+  the `vault:` mappings resolve. Non-secret config → `grid_env`.
 - Do **NOT** set the DB connection vars yourself (`DATABASE_MONGODB_URL` / legacy
   `MONGODB_URL`) — the grid injects them.
 
@@ -103,9 +103,9 @@ require it.
 
 ## 7. Deploy (async)
 
-Deploy the folder with `gridctl_plug`. A **runtime deploy is ASYNC**: the first
+Deploy the folder with `grid_plug`. A **runtime deploy is ASYNC**: the first
 response is `status: "building"`, NOT a live URL yet.
-- Poll `gridctl_status` (or the returned poll_url) until the entity is live.
+- Poll `grid_status` (or the returned poll_url) until the entity is live.
 - Surface a liveness signal while it builds — never a bare silent wait.
 - Only once it is live, return the deployed app URL (NOT the build/log link).
 

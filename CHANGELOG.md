@@ -1,3 +1,7 @@
+## 0.17.0
+
+- Hard rename (no aliases): every `gridctl_<verb>` MCP tool identifier → `grid_<verb>` (all 35 tools), and the bare `gridctl` CLI term → `grid` in descriptions, the PLAYBOOK, README, and REMOTE. Corpus re-snapshotted from cloudgrid-io/skills 0.13.0 (also renamed). Runtime CLI exec is unchanged — the server still shells out to the installed `cloudgrid` binary with the same subcommand argv (`grid` is an alias of the same binary); `CLI_TOOL_VERBS` values (CLI subcommands) are untouched, only the map keys were renamed. Prior changelog entries below are historical and keep their original `gridctl_*` wording.
+
 ## 0.14.0
 
 - Template library: 35 new templates (17 Tier A/B full apps + 18 Tier C/D blueprints), synced from cloudgrid-io/skills 0.10.0. Library now 58 templates. blog-cms + kanban + invoice-family live-verified.

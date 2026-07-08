@@ -9,8 +9,8 @@ adapt plans/content/fields, then deploy (async — poll to a live URL). Local
 edition only.
 
 **Fetch the bundle:**
-- `gridctl_fetch("template", "membership-site")` — this blueprint (`cloudgrid.yaml` + `AGENTS.md`).
-- `gridctl_fetch("template", "app-with-data")` — the proven Next.js + Mongo shape to extend (lazy db client, App-Router API).
+- `grid_fetch("template", "membership-site")` — this blueprint (`cloudgrid.yaml` + `AGENTS.md`).
+- `grid_fetch("template", "app-with-data")` — the proven Next.js + Mongo shape to extend (lazy db client, App-Router API).
 
 **Key rules:**
 
@@ -24,7 +24,7 @@ edition only.
    the getter, never at module top level (top-level read fails `next build`).
 4. **Secrets via the `vault:` block** → env vars. `STRIPE_KEY`,
    `STRIPE_WEBHOOK_SECRET`, `AUTH_PROVIDER_KEY` map to vault items; set them with
-   `gridctl_secrets`, and the deployer injects them at runtime. Read lazily; do
+   `grid_secrets`, and the deployer injects them at runtime. Read lazily; do
    not commit keys or put secrets in `services.web.env`.
 5. **Gate server-side.** Auth answers "who are you"; the `memberships`
    collection answers "have you paid". `app/members/layout.js` checks membership
@@ -60,7 +60,7 @@ vault:
 
 ## Deploy (async, local edition)
 
-`gridctl_init` first (creates the entity + link.json), write the app under
-`services/web/`, set the vault secrets with `gridctl_secrets`, `gridctl_plug`
-(async — poll `gridctl_status` to a live URL), then register the `/api/webhook`
+`grid_init` first (creates the entity + link.json), write the app under
+`services/web/`, set the vault secrets with `grid_secrets`, `grid_plug`
+(async — poll `grid_status` to a live URL), then register the `/api/webhook`
 URL in Stripe and re-plug. Re-plug the same entity to update the same URL.

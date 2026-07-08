@@ -7,7 +7,7 @@ Next.js + Mongo app with auth and payments.
 **This is a blueprint, not app code.** It ships the correct `cloudgrid.yaml` and
 an `AGENTS.md` structure guide. Read `AGENTS.md`, then build the app under
 `services/web/` following it. Fetch the guide with
-`gridctl_fetch("template", "course-platform")`.
+`grid_fetch("template", "course-platform")`.
 
 **Key rules:**
 

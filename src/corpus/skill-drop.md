@@ -78,7 +78,7 @@ A signed-in drop returns HTTP 202 with `entity_id`, `url`, `slug` + `grid` and n
 not compose it. The org is taken from the `X-CloudGrid-Org` header — there is no
 `org_slug` form field. If the user is a member of several orgs and the header is
 missing, the API replies with the list of orgs to choose from. The MCP
-`gridctl_drop` tool does this automatically when credentials are present.
+`grid_drop` tool does this automatically when credentials are present.
 
 ## Re-plug: update the same URL in place
 
@@ -120,7 +120,7 @@ Rules that matter:
 - An anonymous edit without a valid `owner_token` returns **401**.
 - Anonymous edits count against the same daily anonymous cap as creates.
 - Only re-plug when the user is iterating on an existing artifact. If they want a
-  separate new link, omit `target_entity_id` (the MCP `gridctl_drop` tool's
+  separate new link, omit `target_entity_id` (the MCP `grid_drop` tool's
   `fresh` flag does the same: it forces a new entity instead of updating).
 
 ## After the drop

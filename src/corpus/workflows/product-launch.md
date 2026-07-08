@@ -4,7 +4,7 @@ when: product launch page, launch announcement, new product page, we just launch
 needs: none
 deploy: inspiration
 editions: all
-capabilities_note: static — no infrastructure. Publishes as an inspiration (instant, works on hosted) via gridctl_drop.
+capabilities_note: static — no infrastructure. Publishes as an inspiration (instant, works on hosted) via grid_drop.
 summary: Fetch the product-launch template, fill it with the user's product/launch content, deploy it, and return the live share URL.
 ---
 
@@ -14,10 +14,10 @@ Detect the intent ("build a launch page / announcement for our new product X")
 and follow this recipe. Do not ask setup questions first; use sensible defaults
 and build.
 
-1. **Fetch the template.** Call `gridctl_fetch("template", "product-launch")` to
+1. **Fetch the template.** Call `grid_fetch("template", "product-launch")` to
    load the self-contained HTML launch-page template (hero + product image,
    countdown, features, launch offer, social proof).
-2. **(Optional) Fetch the example.** Call `gridctl_fetch("example", "product-launch")`
+2. **(Optional) Fetch the example.** Call `grid_fetch("example", "product-launch")`
    to see a filled launch page as a reference for tone and structure.
 3. **Fill the template.** Replace the placeholders with the user's content:
    - Product name, hero headline, subhead, launch badge, and CTA label/target.
@@ -33,7 +33,7 @@ and build.
      or large embedded media.
 4. **Deploy.** Deploy the filled HTML:
    - Hosted MCP edition: call the drop tool with the HTML.
-   - Local MCP / CLI edition: write the HTML to a file and run `gridctl plug`.
+   - Local MCP / CLI edition: write the HTML to a file and run `grid plug`.
    A launch page is an inspiration and deploys synchronously, so you get a URL
    right away.
 5. **Return the live share URL.** Give the user the URL that serves the page.

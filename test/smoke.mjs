@@ -1,5 +1,5 @@
 // Smoke test: spawn the server over stdio with a real MCP client, list the tools,
-// and (locally) call one read-only tool (gridctl_whoami) end to end through the CLI.
+// and (locally) call one read-only tool (grid_whoami) end to end through the CLI.
 // Run: node test/smoke.mjs
 //
 // The tool-list check always runs. The end-to-end CLI call is skipped when CI=true
@@ -8,44 +8,44 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
-// The canonical gridctl_* tool set (local edition). As of 0.10.0 these are the
+// The canonical grid_* tool set (local edition). As of 0.10.0 these are the
 // ONLY advertised names — the deprecated cloudgrid_* aliases were removed.
 const GRIDCTL = [
-  "gridctl_start",
-  "gridctl_fetch",
-  "gridctl_report",
-  "gridctl_drop",
-  "gridctl_claim",
-  "gridctl_fork",
-  "gridctl_download",
-  "gridctl_source",
-  "gridctl_login",
-  "gridctl_login_status",
-  "gridctl_visibility",
-  "gridctl_orgs",
-  "gridctl_init",
-  "gridctl_plug",
-  "gridctl_logs",
-  "gridctl_share",
-  "gridctl_feedback",
-  "gridctl_whoami",
-  "gridctl_use",
-  "gridctl_logout",
-  "gridctl_status",
-  "gridctl_info",
-  "gridctl_get",
-  "gridctl_describe_grid",
-  "gridctl_pickup",
-  "gridctl_rename",
-  "gridctl_unplug",
-  "gridctl_delete",
-  "gridctl_rollback",
-  "gridctl_versions",
-  "gridctl_env",
-  "gridctl_secrets",
-  "gridctl_scaffold",
-  "gridctl_doctor",
-  "gridctl_open",
+  "grid_start",
+  "grid_fetch",
+  "grid_report",
+  "grid_drop",
+  "grid_claim",
+  "grid_fork",
+  "grid_download",
+  "grid_source",
+  "grid_login",
+  "grid_login_status",
+  "grid_visibility",
+  "grid_orgs",
+  "grid_init",
+  "grid_plug",
+  "grid_logs",
+  "grid_share",
+  "grid_feedback",
+  "grid_whoami",
+  "grid_use",
+  "grid_logout",
+  "grid_status",
+  "grid_info",
+  "grid_get",
+  "grid_describe_grid",
+  "grid_pickup",
+  "grid_rename",
+  "grid_unplug",
+  "grid_delete",
+  "grid_rollback",
+  "grid_versions",
+  "grid_env",
+  "grid_secrets",
+  "grid_scaffold",
+  "grid_doctor",
+  "grid_open",
 ];
 
 const transport = new StdioClientTransport({ command: "node", args: ["src/index.js"] });
@@ -74,9 +74,9 @@ check(
   cloudgridNames.length === 0,
 );
 
-// Local edition: gridctl_drop must include the `path` parameter, plus the
+// Local edition: grid_drop must include the `path` parameter, plus the
 // unified-plug re-plug handles (entity_id / owner_token / fresh).
-const dropTool = tools.find((t) => t.name === "gridctl_drop");
+const dropTool = tools.find((t) => t.name === "grid_drop");
 const dropProps = dropTool?.inputSchema?.properties ?? {};
 check("local drop has `path` param", "path" in dropProps);
 check("local drop has `html` param", "html" in dropProps);
@@ -84,10 +84,10 @@ check("drop has `entity_id` re-plug param", "entity_id" in dropProps);
 check("drop has `owner_token` param", "owner_token" in dropProps);
 check("drop description says re-drops update in place", (dropTool?.description ?? "").includes("in place"));
 
-// gridctl_plug is the unified direct-API create/re-plug verb (spec v2 §3) —
+// grid_plug is the unified direct-API create/re-plug verb (spec v2 §3) —
 // no longer a CLI wrapper. Local edition: `path` + `artifact_files` +
 // `target_entity_id`; the old CLI-wrap `target` param is gone.
-const plugTool = tools.find((t) => t.name === "gridctl_plug");
+const plugTool = tools.find((t) => t.name === "grid_plug");
 const plugProps = plugTool?.inputSchema?.properties ?? {};
 check("local plug has `path` param", "path" in plugProps);
 check("plug has `artifact_files` param", "artifact_files" in plugProps);
@@ -96,31 +96,31 @@ check("plug has `owner_token` param", "owner_token" in plugProps);
 check("plug has `anon` param", "anon" in plugProps);
 check("plug dropped the CLI-wrap `target` param", !("target" in plugProps));
 
-// Agent Core: gridctl_start returns the playbook + presentation workflow.
-const start = await client.callTool({ name: "gridctl_start", arguments: {} });
+// Agent Core: grid_start returns the playbook + presentation workflow.
+const start = await client.callTool({ name: "grid_start", arguments: {} });
 const startStruct = start.structuredContent ?? {};
-check("gridctl_start returns a playbook", (startStruct.playbook ?? "").length > 100);
+check("grid_start returns a playbook", (startStruct.playbook ?? "").length > 100);
 check(
-  "gridctl_start lists the presentation workflow",
+  "grid_start lists the presentation workflow",
   Array.isArray(startStruct.workflows) && startStruct.workflows.some((w) => w.name === "presentation"),
 );
 
-// gridctl_fetch returns the deck template deterministically.
-const fetched = await client.callTool({ name: "gridctl_fetch", arguments: { kind: "template", name: "deck" } });
+// grid_fetch returns the deck template deterministically.
+const fetched = await client.callTool({ name: "grid_fetch", arguments: { kind: "template", name: "deck" } });
 const fetchedText = fetched.content?.[0]?.text ?? "";
-check("gridctl_fetch returns deck template HTML", fetched.isError !== true && /<!doctype html/i.test(fetchedText));
+check("grid_fetch returns deck template HTML", fetched.isError !== true && /<!doctype html/i.test(fetchedText));
 
-// gridctl_orgs resolves under its canonical name.
-const orgsStatus = await client.callTool({ name: "gridctl_orgs", arguments: {} });
-check("gridctl_orgs resolves (no method-not-found)", orgsStatus !== undefined);
+// grid_orgs resolves under its canonical name.
+const orgsStatus = await client.callTool({ name: "grid_orgs", arguments: {} });
+check("grid_orgs resolves (no method-not-found)", orgsStatus !== undefined);
 
 // The end-to-end CLI call requires a logged-in cloudgrid CLI on $PATH.
 // In CI the CLI is not installed, so skip this part.
 if (!process.env.CI) {
-  const res = await client.callTool({ name: "gridctl_whoami", arguments: {} });
+  const res = await client.callTool({ name: "grid_whoami", arguments: {} });
   const text = res.content?.[0]?.text ?? "";
-  check("gridctl_whoami returned without error", res.isError !== true);
-  check("gridctl_whoami returned text", text.length > 0);
+  check("grid_whoami returned without error", res.isError !== true);
+  check("grid_whoami returned text", text.length > 0);
   console.log("--- whoami ---");
   console.log(text.slice(0, 200));
 } else {

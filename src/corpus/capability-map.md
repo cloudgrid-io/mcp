@@ -4,14 +4,14 @@ This is the index an LLM uses to turn a user request into the right CloudGrid
 template, the way Superpowers matches a skill's `when:`. Match the request to a
 template by its `when:` triggers, adopt that template's `needs:`, then deploy:
 
-- **static → inspiration** (instant, any client / any edition) via `gridctl_drop`.
+- **static → inspiration** (instant, any client / any edition) via `grid_drop`.
 - **anything needing `needs:` → runtime** (async build, **local edition** only)
-  via `gridctl_plug` on a linked folder.
+  via `grid_plug` on a linked folder.
 
-Fetch this doc any time with `gridctl_fetch("doc", "capability-map")`. For the full
+Fetch this doc any time with `grid_fetch("doc", "capability-map")`. For the full
 cloudgrid.yaml schema (every field, the `needs:` injection table, the
 requires-vs-needs caveat, validation rules), fetch the companion reference:
-`gridctl_fetch("doc", "cloudgrid-yaml")`.
+`grid_fetch("doc", "cloudgrid-yaml")`.
 
 ## The 59 templates
 
@@ -137,7 +137,7 @@ chunks in Mongo and cosine-rank in-app until it lands.
 `needs:` is a MAP declaring infrastructure capabilities. Values are `true` or an
 engine hint. Cron is NOT a need — it is a **service type** (`type: cron` with
 `schedule` + `timezone`). See the full cloudgrid.yaml reference §5–§6 via
-`gridctl_fetch("doc", "cloudgrid-yaml")`.
+`grid_fetch("doc", "cloudgrid-yaml")`.
 
 | `needs:` key | Provides | Injected env var(s) | Status |
 |---|---|---|---|
@@ -173,9 +173,9 @@ engine hint. Cron is NOT a need — it is a **service type** (`type: cron` with
    `api-service`); talks to an LLM → `ai: true` + `database` (`ai-app`); scheduled
    work → a `type: cron` service (Python/Node, supported on 0.14.0). (Held for now:
    RAG's ideal `vector: pgvector`, #1545 — store embeddings in Mongo until it lands.)
-3. Static (`needs: none`) → publish as an inspiration with `gridctl_drop`
+3. Static (`needs: none`) → publish as an inspiration with `grid_drop`
    (instant, any edition). Anything with a `needs:` → runtime, local edition,
-   `gridctl_plug` a linked folder, then poll to a live URL.
+   `grid_plug` a linked folder, then poll to a live URL.
 
 ## FAQ
 

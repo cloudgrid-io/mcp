@@ -10,14 +10,14 @@ wire it to your own email service or form endpoint if you want real submissions.
 
 ## How it deploys
 
-To publish this page, use **`gridctl_drop`** (or `gridctl_plug` with the inline
+To publish this page, use **`grid_drop`** (or `grid_plug` with the inline
 HTML): it deploys as an **inspiration** — instant, and works on the **hosted**
 edition (Claude Web) as well as local. The reference `cloudgrid.yaml` in this
 directory (`type: static`) is ONLY for plugging the page as an OWNED static
-runtime (async, local edition only); the fast path is `gridctl_drop`.
+runtime (async, local edition only); the fast path is `grid_drop`.
 
 The fillable HTML is the real template — fetch it with
-`gridctl_fetch("template", "company-website")` and fill in the user's content.
+`grid_fetch("template", "company-website")` and fill in the user's content.
 
 ## How to adapt
 

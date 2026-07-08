@@ -14,14 +14,14 @@ machine, and CloudGrid wiring, then build the app under `services/web/`.
 
 ## Fetch bundle
 
-- `gridctl_fetch("template", "approval-workflow")` → this blueprint:
+- `grid_fetch("template", "approval-workflow")` → this blueprint:
   - `AGENTS.md` — file tree, Mongo collections (`users`, `requests`, `steps`,
     `audit`), the state machine, auth/payments wiring, deploy steps, edition note.
   - `cloudgrid.yaml` — the full-annotated reference with only `name`,
     `services.web { type: nextjs, path: / }`, and `needs: { database: true }`
     active, plus a commented `vault:` block for `AUTH_PROVIDER_KEY`.
   - `README.md` — one-paragraph what/why.
-- `gridctl_fetch("template", "app-with-data")` → the concrete Next.js + Mongo
+- `grid_fetch("template", "app-with-data")` → the concrete Next.js + Mongo
   CRUD wiring (lazy `lib/db.js`, App Router route, server page) to adapt from.
 
 ## Key rules

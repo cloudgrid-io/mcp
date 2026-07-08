@@ -4,7 +4,7 @@ when: status page, service status, uptime page, incident history, is-it-down pag
 needs: none
 deploy: inspiration
 editions: all
-capabilities_note: static — no infrastructure, status baked into the page. Publishes as an inspiration (instant, works on hosted) via gridctl_drop.
+capabilities_note: static — no infrastructure, status baked into the page. Publishes as an inspiration (instant, works on hosted) via grid_drop.
 summary: Fetch the status-page template, fill it with the user's components and incidents, deploy it, and return the live share URL.
 ---
 
@@ -15,7 +15,7 @@ recipe. This is a display-only static page — the status is baked into the mark
 there is no live polling. Do not ask setup questions first; use sensible defaults
 and build.
 
-1. **Fetch the template.** Call `gridctl_fetch("template", "status-page")` to load
+1. **Fetch the template.** Call `grid_fetch("template", "status-page")` to load
    the self-contained HTML status page (overall banner, component list with
    up/degraded/down pills, per-component uptime bars, incident history).
 2. **Fill the template.** Replace the placeholders with the user's content:
@@ -27,7 +27,7 @@ and build.
      stylesheets, fonts, or large embedded media.
 3. **Deploy.** Deploy the filled HTML:
    - Hosted MCP edition: call the drop tool with the HTML.
-   - Local MCP / CLI edition: write the HTML to a file and run `gridctl plug`.
+   - Local MCP / CLI edition: write the HTML to a file and run `grid plug`.
    It is an inspiration and deploys synchronously, so you get a URL right away.
 4. **Return the live share URL.** For revisions, re-deploy with the entity id
    from the first deploy — it updates the same share URL.

@@ -51,9 +51,9 @@ try {
   const names = toolList.map((t) => t.name).sort();
   console.log("docs tools:", names.join(", "));
 
-  // New gridctl_* doc tool names.
-  check("exposes gridctl_search_docs", names.includes("gridctl_search_docs"));
-  check("exposes gridctl_quickstart", names.includes("gridctl_quickstart"));
+  // New grid_* doc tool names.
+  check("exposes grid_search_docs", names.includes("grid_search_docs"));
+  check("exposes grid_quickstart", names.includes("grid_quickstart"));
   // Deprecated aliases still resolve during migration.
   check("exposes deprecated alias search_cloudgrid_documentation", names.includes("search_cloudgrid_documentation"));
   check("exposes deprecated alias cloudgrid_quickstart_guide", names.includes("cloudgrid_quickstart_guide"));
@@ -68,11 +68,11 @@ try {
     "cloudgrid_claim",
     "cloudgrid_secrets",
     "cloudgrid_delete",
-    "gridctl_drop",
-    "gridctl_login",
-    "gridctl_plug",
-    "gridctl_start",
-    "gridctl_fetch",
+    "grid_drop",
+    "grid_login",
+    "grid_plug",
+    "grid_start",
+    "grid_fetch",
   ]) {
     check(`does NOT expose ${forbidden}`, !names.includes(forbidden));
   }

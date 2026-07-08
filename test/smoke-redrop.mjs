@@ -45,7 +45,7 @@ try {
   await client.connect(new StreamableHTTPClientTransport(new URL(`http://localhost:${PORT}/mcp`)));
 
   const d1 = await client.callTool({
-    name: "gridctl_drop",
+    name: "grid_drop",
     arguments: { html: "<h1>redrop smoke v1</h1>", anonymous: true, filename: "redropsmoke.html" },
   });
   if (isRateLimited(d1)) {
@@ -58,7 +58,7 @@ try {
     check("1. anon drop returned an owner_token", typeof s1.owner_token === "string" && s1.owner_token.length > 0);
 
     const d2 = await client.callTool({
-      name: "gridctl_drop",
+      name: "grid_drop",
       arguments: { html: "<h1>redrop smoke v2 CHANGED</h1>", anonymous: true, filename: "redropsmoke.html" },
     });
     if (isRateLimited(d2)) {
@@ -76,7 +76,7 @@ try {
       );
 
       const d3 = await client.callTool({
-        name: "gridctl_drop",
+        name: "grid_drop",
         arguments: { html: "<h1>redrop smoke fresh</h1>", anonymous: true, fresh: true, filename: "redropsmoke.html" },
       });
       if (isRateLimited(d3)) {

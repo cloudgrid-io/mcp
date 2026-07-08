@@ -64,13 +64,13 @@ try {
   // ═══ 1. scrubReportContext ════════════════════════════════════════════════
   {
     const scrubbed = scrubReportContext({
-      tool: "gridctl_drop",
+      tool: "grid_drop",
       api_key: "sk-live-123",
       nested: { authToken: "abc", ok: "keep" },
       password: "hunter2",
       list: [{ secret: "x", label: "y" }],
     });
-    check("scrub keeps non-secret keys", scrubbed.tool === "gridctl_drop" && scrubbed.nested.ok === "keep");
+    check("scrub keeps non-secret keys", scrubbed.tool === "grid_drop" && scrubbed.nested.ok === "keep");
     check("scrub redacts api_key", scrubbed.api_key === "[REDACTED]");
     check("scrub redacts nested authToken", scrubbed.nested.authToken === "[REDACTED]");
     check("scrub redacts password", scrubbed.password === "[REDACTED]");
@@ -88,7 +88,7 @@ try {
     });
     const res = await runReport(ctx, {
       message: "deploy failed",
-      context: { tool: "gridctl_drop", error_code: "INTERNAL_ERROR", api_key: "sk-secret" },
+      context: { tool: "grid_drop", error_code: "INTERNAL_ERROR", api_key: "sk-secret" },
       trace_id: "trace-9",
       failed_step: "build",
       http_status: 500,
@@ -109,7 +109,7 @@ try {
     check("body forwards trace_id", c.body.trace_id === "trace-9");
     check("body forwards failed_step", c.body.failed_step === "build");
     check("body forwards http_status", c.body.http_status === 500);
-    check("body forwards context.tool", c.body.context.tool === "gridctl_drop");
+    check("body forwards context.tool", c.body.context.tool === "grid_drop");
     check("scrubs secret keys in context before sending", c.body.context.api_key === "[REDACTED]");
     check("does NOT set include_conversation by default", c.body.include_conversation === undefined);
     // Source attribution — top-level.
@@ -276,14 +276,14 @@ try {
   check("BUILD_FAILED → report offer appended", errorGuidance({ status: 422, code: "BUILD_FAILED" }) === REPORT_OFFER);
   check("DEPLOY_FAILED → report offer appended", errorGuidance({ status: 422, code: "DEPLOY_FAILED" }) === REPORT_OFFER);
   check("report offer asks for permission first", /ASK the user for permission/.test(REPORT_OFFER));
-  check("report offer names gridctl_report", /gridctl_report/.test(REPORT_OFFER));
+  check("report offer names grid_report", /grid_report/.test(REPORT_OFFER));
   check("report offer forbids sending the full conversation without a yes", /do NOT include the full conversation/.test(REPORT_OFFER));
 
   // ═══ 3b. errorGuidance report offer — EXPECTED conditions do NOT get it ════
-  check("429 → NO report offer", errorGuidance({ status: 429 }) !== REPORT_OFFER && !/gridctl_report/.test(errorGuidance({ status: 429 }) || ""));
-  check("409 EDIT_REJECTED → NO report offer", errorGuidance({ status: 409, isEdit: true }) !== REPORT_OFFER && !/gridctl_report/.test(errorGuidance({ status: 409, isEdit: true }) || ""));
-  check("401 → NO report offer", errorGuidance({ status: 401, isEdit: true }) !== REPORT_OFFER && !/gridctl_report/.test(errorGuidance({ status: 401 }) || ""));
-  check("403 → NO report offer", errorGuidance({ status: 403 }) !== REPORT_OFFER && !/gridctl_report/.test(errorGuidance({ status: 403 }) || ""));
+  check("429 → NO report offer", errorGuidance({ status: 429 }) !== REPORT_OFFER && !/grid_report/.test(errorGuidance({ status: 429 }) || ""));
+  check("409 EDIT_REJECTED → NO report offer", errorGuidance({ status: 409, isEdit: true }) !== REPORT_OFFER && !/grid_report/.test(errorGuidance({ status: 409, isEdit: true }) || ""));
+  check("401 → NO report offer", errorGuidance({ status: 401, isEdit: true }) !== REPORT_OFFER && !/grid_report/.test(errorGuidance({ status: 401 }) || ""));
+  check("403 → NO report offer", errorGuidance({ status: 403 }) !== REPORT_OFFER && !/grid_report/.test(errorGuidance({ status: 403 }) || ""));
   // needs_grid is a structured signal, not an error status — it never reaches
   // errorGuidance (drop returns it via okResult). A plain unmapped 4xx (the
   // shape a needs_grid-adjacent 400 would take) must NOT get the offer either.

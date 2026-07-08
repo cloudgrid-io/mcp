@@ -104,7 +104,7 @@ dev` and runtime.
   injects that vault item as `process.env.ENV_VAR`. This blueprint maps
   `AUTH_PROVIDER_SECRET_KEY` and `AUTH_PROVIDER_PUBLISHABLE_KEY`. Rename the env
   keys to whatever the provider SDK expects (see §4) and set the vault items with
-  `gridctl_secrets` / the org vault — do not commit keys.
+  `grid_secrets` / the org vault — do not commit keys.
 - **AI (optional)** — if you add `needs: { ai: true }` (e.g. auto-moderation or
   summarize-thread), the grid injects **`AI_GATEWAY_URL`**; call it via
   `@cloudgrid-io/ai`. Not required for the base forum.
@@ -167,19 +167,19 @@ inline a key in code or `env:`.
 A forum is a runtime (built + deployed container) app — **local edition**
 (Claude Desktop / Claude Code / CLI), async build.
 
-1. `gridctl_login_status` → `gridctl_login` if needed. Respect the grid picker
+1. `grid_login_status` → `grid_login` if needed. Respect the grid picker
    (ask which grid if the user has more than one).
-2. `gridctl_init` an app `<name>` — creates the entity + `.cloudgrid/link.json`
+2. `grid_init` an app `<name>` — creates the entity + `.cloudgrid/link.json`
    and a `cloudgrid.yaml` with empty `services: {}`. Run `init` FIRST (`plug`
    needs a linked dir).
 3. Write the app under `services/web/` per §1, then fill `cloudgrid.yaml` to the
    active shape: `name`, `services.web { type: nextjs, path: / }`, `needs:
    { database: true }`, and the `vault:` mappings for the auth keys.
-4. Set the auth secrets: `gridctl_secrets` (or the org vault) for the provider
+4. Set the auth secrets: `grid_secrets` (or the org vault) for the provider
    keys. Do NOT set `DATABASE_MONGODB_URL` — the grid injects it.
 5. (Optional) `grid dev` to run locally against injected Mongo before shipping.
-6. `gridctl_plug` to deploy. A runtime deploy is **ASYNC** — the first response
-   is `status: building`, not a live URL. Poll `gridctl_status` (or the returned
+6. `grid_plug` to deploy. A runtime deploy is **ASYNC** — the first response
+   is `status: building`, not a live URL. Poll `grid_status` (or the returned
    poll_url) until live; surface a liveness signal while it builds, never a bare
    spinner.
 7. Only once live, return the deployed app URL. Re-plug the SAME entity to update

@@ -1,11 +1,11 @@
 // Smoke test: cwd/path threading and non-interactive tools (0.7.0).
 //
-// gridctl_plug no longer wraps the CLI (it is the unified direct-API verb), so
+// grid_plug no longer wraps the CLI (it is the unified direct-API verb), so
 // the old "plug with cwd" flow is replaced by:
-//  1. gridctl_plug with `path` — the direct-API create reads the folder passed,
+//  1. grid_plug with `path` — the direct-API create reads the folder passed,
 //     not the server's own CWD. (Skips gracefully on the platform-side
 //     SCOPE_INVALID authed-create bug — see the note below — or a 429 cap.)
-//  2. gridctl_init with `cwd` — proves cwd threading for the CLI-wrapping
+//  2. grid_init with `cwd` — proves cwd threading for the CLI-wrapping
 //     tools: the CLI must write cloudgrid.yaml into the PASSED directory, not
 //     process.cwd().
 //  3. Omitting cwd defaults to process.cwd() (whoami).
@@ -51,10 +51,10 @@ let createdSlug = null;
 let initSlug = null;
 
 try {
-  // 1. gridctl_plug with `path` — direct-API create from the passed folder.
-  console.log(`\n--- gridctl_plug path=${TEST_DIR} ---`);
+  // 1. grid_plug with `path` — direct-API create from the passed folder.
+  console.log(`\n--- grid_plug path=${TEST_DIR} ---`);
   const plugRes = await client.callTool(
-    { name: "gridctl_plug", arguments: { path: TEST_DIR, grid: ORG } },
+    { name: "grid_plug", arguments: { path: TEST_DIR, grid: ORG } },
     undefined,
     { timeout: DEPLOY_TIMEOUT },
   );
@@ -79,11 +79,11 @@ try {
     }
   }
 
-  // 2. gridctl_init with cwd — the CLI must write into the PASSED directory.
-  console.log(`\n--- gridctl_init cwd=${TEST_DIR} (no deploy) ---`);
+  // 2. grid_init with cwd — the CLI must write into the PASSED directory.
+  console.log(`\n--- grid_init cwd=${TEST_DIR} (no deploy) ---`);
   initSlug = `mcp-cwd-${SUFFIX}`;
   const initRes = await client.callTool(
-    { name: "gridctl_init", arguments: { kind: "app", name: initSlug, type: "static", org: ORG, dir: ".", cwd: TEST_DIR } },
+    { name: "grid_init", arguments: { kind: "app", name: initSlug, type: "static", org: ORG, dir: ".", cwd: TEST_DIR } },
     undefined,
     { timeout: DEPLOY_TIMEOUT },
   );
@@ -98,13 +98,13 @@ try {
 
   // 3. Omitting cwd defaults to process.cwd().
   console.log(`\n--- whoami (no cwd, should default) ---`);
-  const whoRes = await client.callTool({ name: "gridctl_whoami", arguments: {} });
+  const whoRes = await client.callTool({ name: "grid_whoami", arguments: {} });
   check("whoami without cwd works", whoRes.isError !== true);
 } finally {
   // Cleanup: remove whatever was registered/created.
   for (const [tool, name] of [
-    ["gridctl_unplug", initSlug],
-    ["gridctl_delete", createdSlug],
+    ["grid_unplug", initSlug],
+    ["grid_delete", createdSlug],
   ]) {
     if (!name) continue;
     console.log(`\n--- cleanup: ${tool} ${name} ---`);

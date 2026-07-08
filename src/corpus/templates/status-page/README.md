@@ -3,12 +3,12 @@
 A single self-contained HTML service status page: an overall banner, a component list with up / degraded / down pills, per-component uptime bars, and an incident history log. Status is baked into the page.
 
 Static inspiration — a single self-contained `index.html` (inline CSS and JS,
-no external CDNs). It deploys instantly via `gridctl_drop` and works on every
+no external CDNs). It deploys instantly via `grid_drop` and works on every
 CloudGrid edition, including hosted.
 
 ## Fill it in
 
-Fetch the template with `gridctl_fetch("template", "status-page")`, then replace the
+Fetch the template with `grid_fetch("template", "status-page")`, then replace the
 placeholders:
 
    - The overall status banner text and state class (`ok` / `degraded` / `down`).
@@ -22,7 +22,7 @@ stylesheets, fonts, or large embedded media.
 ## Deploy
 
 - Hosted MCP edition: call the drop tool with the HTML.
-- Local MCP / CLI edition: write the HTML to a file and run `gridctl plug`.
+- Local MCP / CLI edition: write the HTML to a file and run `grid plug`.
 
 It deploys as an inspiration and returns a live share URL right away. Re-deploy
 with the same entity id to update the same URL.

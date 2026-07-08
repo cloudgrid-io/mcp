@@ -2,8 +2,8 @@
 // ai-app. Both are DB-backed runtime builds (like app-with-data) authored in
 // cloudgrid-io/skills and snapshotted into src/corpus/. Asserts, for each:
 //   1. The workflow/template/example resolve via the REAL fetchCorpus seam AND
-//      the REAL registered gridctl_fetch handler.
-//   2. The intent shows up in the gridctl_start workflows menu.
+//      the REAL registered grid_fetch handler.
+//   2. The intent shows up in the grid_start workflows menu.
 //   3. The template is internally consistent: active canonical needs: (no active
 //      requires:, never needs:+requires: together), correct service type, reads
 //      the DB connection string LAZILY (never at module top level), no hardcoded
@@ -71,7 +71,7 @@ function makeCtx() {
 
 const server = makeServer();
 registerTools(server, makeCtx());
-const start = await server.handlers.gridctl_start({});
+const start = await server.handlers.grid_start({});
 const startStruct = start?.structuredContent ?? {};
 const startText = start?.content?.[0]?.text ?? "";
 
@@ -84,7 +84,7 @@ function inStartMenu(name) {
 
 async function fetchResolves(kind, name) {
   const direct = fetchCorpus(kind, name);
-  const viaHandler = await server.handlers.gridctl_fetch({ kind, name });
+  const viaHandler = await server.handlers.grid_fetch({ kind, name });
   const text = viaHandler?.content?.[0]?.text ?? "";
   return (
     typeof direct === "string" &&
@@ -101,7 +101,7 @@ async function fetchResolves(kind, name) {
   check(`${name} workflow resolves (fetchCorpus + handler)`, await fetchResolves("workflow", name));
   check(`${name} template resolves (fetchCorpus + handler)`, await fetchResolves("template", name));
   check(`${name} example resolves (fetchCorpus + handler)`, await fetchResolves("example", name));
-  check(`${name} appears in gridctl_start menu`, inStartMenu(name));
+  check(`${name} appears in grid_start menu`, inStartMenu(name));
 
   const workflow = fetchCorpus("workflow", name);
   check(`${name} workflow fires on REST/API intent`, /REST API/.test(workflow) && /webhook receiver/.test(workflow));
@@ -152,7 +152,7 @@ async function fetchResolves(kind, name) {
   check(`${name} workflow resolves (fetchCorpus + handler)`, await fetchResolves("workflow", name));
   check(`${name} template resolves (fetchCorpus + handler)`, await fetchResolves("template", name));
   check(`${name} example resolves (fetchCorpus + handler)`, await fetchResolves("example", name));
-  check(`${name} appears in gridctl_start menu`, inStartMenu(name));
+  check(`${name} appears in grid_start menu`, inStartMenu(name));
 
   const workflow = fetchCorpus("workflow", name);
   check(`${name} workflow fires on chatbot / LLM intent`, /chatbot/.test(workflow) && /talks to an LLM/.test(workflow));

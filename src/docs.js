@@ -39,18 +39,18 @@ function ok(text) {
 function createDocsServer() {
   const server = new McpServer({ name: "cloudgrid-docs", version });
 
-  // Naming cleanup (spec §6): the docs tools move to the gridctl_* family. Both
+  // Naming cleanup (spec §6): the docs tools move to the grid_* family. Both
   // legacy names stay registered as deprecated aliases (same handler) so nothing
   // breaks mid-migration; aliases are removed in a later major.
-  //   search_cloudgrid_documentation → gridctl_search_docs
-  //   cloudgrid_quickstart_guide     → gridctl_quickstart
+  //   search_cloudgrid_documentation → grid_search_docs
+  //   cloudgrid_quickstart_guide     → grid_quickstart
   const dual = (name, alias, description, schema, handler) => {
     server.tool(name, description, schema, handler);
     server.tool(alias, `(deprecated: use ${name}) ${description}`, schema, handler);
   };
 
   dual(
-    "gridctl_search_docs",
+    "grid_search_docs",
     "search_cloudgrid_documentation",
     "Search CloudGrid documentation — guides, tutorials, CLI reference, MCP setup, and skill descriptions. Returns the most relevant doc chunks with title, snippet, and source path.",
     {
@@ -75,7 +75,7 @@ function createDocsServer() {
   );
 
   dual(
-    "gridctl_quickstart",
+    "grid_quickstart",
     "cloudgrid_quickstart_guide",
     "Get the CloudGrid quickstart guide — the canonical build-and-ship loop from scaffold to deploy to feedback.",
     {},

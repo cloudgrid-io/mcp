@@ -4,7 +4,7 @@ when: report, one-pager, summary, brief, whitepaper, case study, formatted docum
 needs: none
 deploy: inspiration
 editions: all
-capabilities_note: static — no infrastructure. Publishes as an inspiration (instant, works on hosted) via gridctl_drop.
+capabilities_note: static — no infrastructure. Publishes as an inspiration (instant, works on hosted) via grid_drop.
 summary: Fetch the report template, fill it with the user's content, deploy it, and return the live share URL.
 ---
 
@@ -13,9 +13,9 @@ summary: Fetch the report template, fill it with the user's content, deploy it, 
 Detect the intent ("build me a report / one-pager / brief about X") and follow
 this recipe. Do not ask setup questions first; use sensible defaults and build.
 
-1. **Fetch the template.** Call `gridctl_fetch("template", "report")` to load
+1. **Fetch the template.** Call `grid_fetch("template", "report")` to load
    the self-contained, print-friendly HTML report template.
-2. **(Optional) Fetch the example.** Call `gridctl_fetch("example", "report")`
+2. **(Optional) Fetch the example.** Call `grid_fetch("example", "report")`
    to see a filled report as a reference for tone and structure.
 3. **Fill the template.** Replace the placeholders with the user's content:
    - The report title, subtitle, and date line.
@@ -27,7 +27,7 @@ this recipe. Do not ask setup questions first; use sensible defaults and build.
      stylesheets, fonts, or large embedded media.
 4. **Deploy.** Deploy the filled HTML:
    - Hosted MCP edition: call the drop tool with the HTML.
-   - Local MCP / CLI edition: write the HTML to a file and run `gridctl plug`.
+   - Local MCP / CLI edition: write the HTML to a file and run `grid plug`.
    A report is an inspiration and deploys synchronously, so you get a URL right
    away.
 5. **Return the live share URL.** Give the user the URL that serves the report.

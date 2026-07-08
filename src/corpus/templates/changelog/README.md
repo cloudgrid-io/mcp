@@ -3,12 +3,12 @@
 A single self-contained HTML changelog / release-notes page: reverse-chronological versioned entries, each with a date and tagged change items (added / fixed / changed / removed).
 
 Static inspiration — a single self-contained `index.html` (inline CSS and JS,
-no external CDNs). It deploys instantly via `gridctl_drop` and works on every
+no external CDNs). It deploys instantly via `grid_drop` and works on every
 CloudGrid edition, including hosted.
 
 ## Fill it in
 
-Fetch the template with `gridctl_fetch("template", "changelog")`, then replace the
+Fetch the template with `grid_fetch("template", "changelog")`, then replace the
 placeholders:
 
    - The product name and page intro.
@@ -21,7 +21,7 @@ stylesheets, fonts, or large embedded media.
 ## Deploy
 
 - Hosted MCP edition: call the drop tool with the HTML.
-- Local MCP / CLI edition: write the HTML to a file and run `gridctl plug`.
+- Local MCP / CLI edition: write the HTML to a file and run `grid plug`.
 
 It deploys as an inspiration and returns a live share URL right away. Re-deploy
 with the same entity id to update the same URL.

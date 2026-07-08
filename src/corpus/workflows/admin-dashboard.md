@@ -33,13 +33,13 @@ edition** (Claude Desktop / Claude Code) or the CLI.
 
 ## 2. Auth + grid
 
-1. Ensure signed in: `gridctl_login_status`; if not, `gridctl_login`.
+1. Ensure signed in: `grid_login_status`; if not, `grid_login`.
 2. A grid is required. Respect the grid picker: if the user has more than one
    grid, ask which to use; do not assume a target.
 
 ## 3. Scaffold
 
-`gridctl_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
+`grid_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
 and writes a `cloudgrid.yaml` with an EMPTY `services: {}`. `plug` needs a linked
 directory, so run `init` FIRST. Then (a) write the app under **`services/web/`**,
 and (b) fill `cloudgrid.yaml` to the shape below (`services.web` + `needs:
@@ -64,7 +64,7 @@ and (b) fill `cloudgrid.yaml` to the shape below (`services.web` + `needs:
    author new yaml with it, and never set `needs:` and `requires:` together (the
    validator rejects it).
 2. Fetch the template for the Mongo wiring + CRUD shape:
-   `gridctl_fetch("template", "admin-dashboard")`. It is a minimal, real Next.js
+   `grid_fetch("template", "admin-dashboard")`. It is a minimal, real Next.js
    + `mongodb`-driver admin panel under `services/web/`: a lazy client in
    `services/web/lib/db.js`, two App-Router GET/POST/DELETE routes (`users` and
    `orders`), a server-component page that computes a metrics header, and a
@@ -83,15 +83,15 @@ before deploying. Don't require it.
 
 ## 6. Config
 
-- API keys / secrets → `gridctl_secrets`. Non-secret config → `gridctl_env`.
+- API keys / secrets → `grid_secrets`. Non-secret config → `grid_env`.
 - Do **NOT** set the DB connection vars yourself (`DATABASE_MONGODB_URL` or the
   legacy `MONGODB_URL`) — the grid injects them.
 
 ## 7. Deploy (async)
 
-Deploy the folder with `gridctl_plug`. A **runtime deploy is ASYNC**: the first
+Deploy the folder with `grid_plug`. A **runtime deploy is ASYNC**: the first
 response is `status: "building"`, NOT a live URL yet.
-- Poll `gridctl_status` (or the returned poll_url) until the entity is live.
+- Poll `grid_status` (or the returned poll_url) until the entity is live.
 - Surface a liveness signal while it builds — never a bare silent wait.
 - Only once it is live, return the deployed app URL (NOT the build/log link).
 

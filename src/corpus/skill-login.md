@@ -81,6 +81,6 @@ made an anonymous drop earlier, this is the moment to offer to claim it.
 
 - Enterprise single sign-on is not supported in this flow yet; those users sign in
   through the Console for now.
-- The MCP server exposes the same flow as `gridctl_login` and
-  `gridctl_login_status`, which handle the polling and the credentials write for
+- The MCP server exposes the same flow as `grid_login` and
+  `grid_login_status`, which handle the polling and the credentials write for
   you.

@@ -35,13 +35,13 @@ folder-plug your project.
 ## 2. Auth + grid
 
 Persistent apps are owned entities.
-1. Ensure signed in: `gridctl_login_status`; if not, `gridctl_login`.
+1. Ensure signed in: `grid_login_status`; if not, `grid_login`.
 2. A grid is required. Respect the grid picker: if the user has more than one
    grid, ask which to use; do not assume a target.
 
 ## 3. Scaffold
 
-`gridctl_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
+`grid_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
 and writes a `cloudgrid.yaml` with an EMPTY `services: {}`. `plug` needs a linked
 directory, so run `init` FIRST.
 
@@ -75,7 +75,7 @@ ai: true, database: true }`).
    yaml with it, and never set `needs:` and `requires:` together (the validator
    rejects it).
 2. Fetch the template for the chat wiring:
-   `gridctl_fetch("template", "ai-app")`. It is a minimal Next.js App Router chat
+   `grid_fetch("template", "ai-app")`. It is a minimal Next.js App Router chat
    app under `services/web/`: a chat page, an API route
    (`app/api/chat/route.js`, `export const dynamic = "force-dynamic"`) that reads
    the user message, calls the AI gateway, persists the exchange to Mongo, and
@@ -95,7 +95,7 @@ ai: true, database: true }`).
    imported for route analysis before the grid injects the var). Store the user
    message and the assistant reply so the conversation survives refresh. Never
    hardcode a connection string; never commit a secret.
-   - (Optional) fetch `gridctl_fetch("example", "ai-app")` for a richer filled
+   - (Optional) fetch `grid_fetch("example", "ai-app")` for a richer filled
      reference (a themed assistant) to imitate.
 
 ## 5. (Optional) Run locally
@@ -105,17 +105,17 @@ are wired in dev too — and send a test message before deploying. Don't require
 
 ## 6. Config
 
-- Extra API keys / secrets (only if the app needs its own) → `gridctl_secrets`.
-- Non-secret config → `gridctl_env`.
+- Extra API keys / secrets (only if the app needs its own) → `grid_secrets`.
+- Non-secret config → `grid_env`.
 - Do **NOT** set the DB connection var yourself (`DATABASE_MONGODB_URL` / legacy
   `MONGODB_URL`) and do **NOT** set an AI key — the grid injects the DB var and
   the AI SDK auto-detects the in-grid identity.
 
 ## 7. Deploy (async)
 
-Deploy the folder with `gridctl_plug`. A **runtime deploy is ASYNC**: the first
+Deploy the folder with `grid_plug`. A **runtime deploy is ASYNC**: the first
 response is `status: "building"` with a `poll_url` / entity, NOT a live URL yet.
-- Poll `gridctl_status` (or the returned poll_url) until the entity is live.
+- Poll `grid_status` (or the returned poll_url) until the entity is live.
 - Surface a liveness signal while it builds — never a bare silent wait.
 - Only once it is live, return the deployed URL (the app URL, NOT the build/log
   link).

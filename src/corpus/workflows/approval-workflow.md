@@ -37,25 +37,25 @@ A persistent approval app is a built + deployed container. It requires the
 
 ## 2. Auth + grid
 
-1. Ensure signed in: `gridctl_login_status`; if not, `gridctl_login`.
+1. Ensure signed in: `grid_login_status`; if not, `grid_login`.
 2. A grid is required. Respect the grid picker: if the user has more than one
    grid, ask which to use; do not assume a target.
 
 ## 3. Read the blueprint
 
 Fetch the blueprint and read it before building:
-`gridctl_fetch("template", "approval-workflow")`. Its **`AGENTS.md`** is the
+`grid_fetch("template", "approval-workflow")`. Its **`AGENTS.md`** is the
 structure guide — the file tree (under `services/web/`), the Mongo collections
 (`users`, `requests`, `steps`, `audit`), the **state machine** (how a request
 advances / is decided across its ordered steps), how CloudGrid injects the DB
 and secrets, how to wire auth roles (and optional payments), and the deploy
 steps. Also fetch the concrete CRUD shape to adapt from:
-`gridctl_fetch("template", "app-with-data")` (lazy `lib/db.js`, App Router
+`grid_fetch("template", "app-with-data")` (lazy `lib/db.js`, App Router
 route, server page).
 
 ## 4. Scaffold
 
-`gridctl_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
+`grid_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
 and writes a `cloudgrid.yaml` with an EMPTY `services: {}`. `plug` needs a linked
 directory, so run `init` FIRST. Then (a) write the app under **`services/web/`**
 following `AGENTS.md`, and (b) fill `cloudgrid.yaml` to the shape below.
@@ -110,9 +110,9 @@ before deploying. Don't require it.
 
 ## 8. Deploy (async)
 
-Deploy the folder with `gridctl_plug`. A **runtime deploy is ASYNC**: the first
+Deploy the folder with `grid_plug`. A **runtime deploy is ASYNC**: the first
 response is `status: "building"`, NOT a live URL yet.
-- Poll `gridctl_status` (or the returned poll_url) until the entity is live.
+- Poll `grid_status` (or the returned poll_url) until the entity is live.
 - Surface a liveness signal while it builds — never a bare silent wait.
 - Only once it is live, return the deployed app URL (NOT the build/log link).
 

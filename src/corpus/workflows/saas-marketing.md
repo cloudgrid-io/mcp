@@ -4,7 +4,7 @@ when: SaaS marketing site, product marketing page, features and pricing page, mu
 needs: none
 deploy: inspiration
 editions: all
-capabilities_note: static — no infrastructure. Publishes as an inspiration (instant, works on hosted) via gridctl_drop.
+capabilities_note: static — no infrastructure. Publishes as an inspiration (instant, works on hosted) via grid_drop.
 summary: Fetch the saas-marketing template, fill it with the user's product content, deploy it, and return the live share URL.
 ---
 
@@ -16,7 +16,7 @@ it when the request calls for pricing tiers, testimonials, and an FAQ, not just 
 hero. For a plain single-section landing page, use `landing-page`. Do not ask
 setup questions first; use sensible defaults and build.
 
-1. **Fetch the template.** Call `gridctl_fetch("template", "saas-marketing")` to
+1. **Fetch the template.** Call `grid_fetch("template", "saas-marketing")` to
    load the self-contained HTML marketing site.
 2. **Fill the template.** Replace the placeholders with the user's content:
    - The product name, tagline, and hero eyebrow/headline/subheadline.
@@ -29,7 +29,7 @@ setup questions first; use sensible defaults and build.
      stylesheets, fonts, or large embedded media.
 3. **Deploy.** Deploy the filled HTML:
    - Hosted MCP edition: call the drop tool with the HTML.
-   - Local MCP / CLI edition: write the HTML to a file and run `gridctl plug`.
+   - Local MCP / CLI edition: write the HTML to a file and run `grid plug`.
    It is an inspiration and deploys synchronously, so you get a URL right away.
 4. **Return the live share URL.** For revisions, re-deploy with the entity id
    from the first deploy — it updates the same share URL.
