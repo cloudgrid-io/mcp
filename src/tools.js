@@ -2330,11 +2330,66 @@ function isCloudgridHost(hostname) {
   return h === "cloudgrid.io" || h.endsWith(".cloudgrid.io");
 }
 
+// Shape an HTML string into the gridctl_source result (shared by the API-read
+// and the public-fetch paths). Caps the body at SOURCE_MAX_BYTES.
+function shapeSourceResult(sourceUrl, entityId, htmlStr) {
+  const buf = Buffer.from(htmlStr, "utf-8");
+  const totalBytes = buf.length;
+  const truncated = totalBytes > SOURCE_MAX_BYTES;
+  const html = truncated ? buf.subarray(0, SOURCE_MAX_BYTES).toString("utf-8") : htmlStr;
+  const lines = [
+    `Current source for ${sourceUrl} (${totalBytes} bytes) — edit this and re-plug with target_entity_id to update the same URL:`,
+  ];
+  if (truncated) {
+    lines.push(
+      "(too large to return in full; re-plug needs the complete document — consider that this drop may be multi-file)",
+    );
+  }
+  lines.push("", html);
+  return {
+    text: lines.join("\n"),
+    structured: { url: sourceUrl, entity_id: entityId ?? null, bytes: totalBytes, truncated, html },
+  };
+}
+
+// Read an inspiration's HTML via the API (server-side storage read) instead of
+// fetching the public *.cloudgrid.io URL. Critical on the hosted edition: the
+// MCP pod can reach the API (it POSTs /api/v2/plug) but CANNOT egress to the
+// public ingress ("fetch failed"). getInspirationSource resolves directly by
+// entity_id when the path segment is a UUID (no org context needed), else by
+// slug + the X-CloudGrid-Grid active-org header. Returns the html string, or
+// null if the API can't serve it (→ caller falls back to the direct fetch).
+async function readInspirationSourceViaApi(ctx, { entityId, slug, grid }) {
+  let token = null;
+  try { token = await ctx.getToken(); } catch { /* anonymous is fine for public */ }
+  const baseHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+  const attempts = [];
+  if (entityId) attempts.push({ seg: entityId, grid: null });   // UUID → resolves by id, no org ctx
+  if (slug) attempts.push({ seg: slug, grid: grid || null });   // slug → needs org (grid) context
+  for (const a of attempts) {
+    try {
+      const headers = { ...baseHeaders };
+      if (a.grid) headers["X-CloudGrid-Grid"] = a.grid;
+      const res = await fetch(
+        `${API_BASE}/api/v2/inspirations/${encodeURIComponent(a.seg)}/source`,
+        { method: "GET", headers, signal: AbortSignal.timeout(15_000) },
+      );
+      if (!res.ok) continue;
+      const data = await res.json().catch(() => null);
+      if (data && typeof data.html === "string") return data.html;
+    } catch {
+      // try the next attempt, then the public-fetch fallback
+    }
+  }
+  return null;
+}
+
 // Fetch a drop's/inspiration's current deployed HTML inline as text so an agent
 // that lost the content can edit it and re-plug in place. Resolves the fetch URL
-// (explicit url → session lastDrop → composed grid+slug), enforces the
-// `*.cloudgrid.io` SSRF guard, caps the body at SOURCE_MAX_BYTES, and fails
-// gracefully on a non-200. Uses the global `fetch` seam so tests can mock it.
+// (explicit url → session lastDrop → composed grid+slug), then reads the HTML
+// via the API (reachable) BEFORE falling back to a direct `*.cloudgrid.io` fetch
+// (SSRF-guarded, capped at SOURCE_MAX_BYTES). Uses the global `fetch` seam so
+// tests can mock it.
 export async function runSource(ctx, { entity_id, url, grid, slug } = {}) {
   const last = ctx.state.lastDrop;
   // Resolution order: explicit url → session lastDrop.url (if entity_id matches
@@ -2367,6 +2422,23 @@ export async function runSource(ctx, { entity_id, url, grid, slug } = {}) {
   }
 
   const resolvedUrl = parsed.toString();
+  const eid = entity_id ?? (last && (!entity_id || last.entity_id === entity_id) ? last.entity_id : null);
+
+  // ── API-first (reachable) ────────────────────────────────────────────────
+  // Read the HTML from the API server-side rather than fetching the public URL.
+  // The hosted MCP pod can reach the API but NOT the public *.cloudgrid.io
+  // ingress ("fetch failed") — this is the fix for hosted edit-in-place. Derive
+  // the grid/slug hint from the inspiration path URL (`grid.cloudgrid.io/slug`).
+  const host = parsed.hostname;
+  const gridHint = grid ?? (host.endsWith(".cloudgrid.io") && !host.includes("--") && host.split(".").length === 3
+    ? host.split(".")[0] : null);
+  const slugHint = slug ?? (parsed.pathname.replace(/^\/+/, "").split("/")[0] || null);
+  const apiHtml = await readInspirationSourceViaApi(ctx, { entityId: eid, slug: slugHint, grid: gridHint });
+  if (apiHtml != null) return shapeSourceResult(resolvedUrl, eid, apiHtml);
+
+  // ── Fallback: direct public fetch ────────────────────────────────────────
+  // Local edition has normal egress; last resort on hosted (e.g. a runtime app
+  // whose source the inspiration route can't serve).
   let res;
   try {
     res = await fetch(resolvedUrl, {
@@ -2398,30 +2470,7 @@ export async function runSource(ctx, { entity_id, url, grid, slug } = {}) {
   }
 
   const buf = Buffer.from(await res.arrayBuffer());
-  const totalBytes = buf.length;
-  const truncated = totalBytes > SOURCE_MAX_BYTES;
-  const html = (truncated ? buf.subarray(0, SOURCE_MAX_BYTES) : buf).toString("utf-8");
-
-  const lines = [
-    `Current source for ${resolvedUrl} (${totalBytes} bytes) — edit this and re-plug with target_entity_id to update the same URL:`,
-  ];
-  if (truncated) {
-    lines.push(
-      "(too large to return in full; re-plug needs the complete document — consider that this drop may be multi-file)",
-    );
-  }
-  lines.push("", html);
-
-  return {
-    text: lines.join("\n"),
-    structured: {
-      url: resolvedUrl,
-      entity_id: entity_id ?? last?.entity_id ?? null,
-      bytes: totalBytes,
-      truncated,
-      html,
-    },
-  };
+  return shapeSourceResult(resolvedUrl, eid, buf.toString("utf-8"));
 }
 
 // ── Registration ───────────────────────────────────────────────────────────────
