@@ -1,17 +1,33 @@
-// Offline unit test for inline source-fetch (Task 35 / 0.8.3): gridctl_source
-// fetches a drop's CURRENT deployed HTML inline so an agent that lost the
-// content can edit it and re-plug in place. Drives the REAL runSource seam and
-// the REAL registered tool handlers with a mocked global fetch, and asserts:
-//   1. URL resolution order: explicit url > session lastDrop.url > entityUrl(grid,slug) > fail.
-//   2. SSRF guard: non-*.cloudgrid.io url fails with NO fetch; *.cloudgrid.io url fetches.
-//   3. HTML returned inline in content AND structuredContent.html; bytes set; truncated past 1.5MB.
-//   4. Non-200 → graceful fail (no throw).
-//   5. Defaults: no inputs + a session lastDrop → fetches lastDrop.url.
-//   6. Only gridctl_source is registered — the deprecated cloudgrid_source alias is gone (0.10.0).
-//   7. Playbook (gridctl_start) contains the new rule; drop/plug descriptions contain the new clause.
+// Offline unit test for inline source-fetch (Task 35 / 0.8.3, reworked 0.16.2):
+// gridctl_source returns a drop's CURRENT deployed HTML inline so an agent that
+// lost the content can edit it and re-plug in place.
+//
+// 0.16.2 flow change — API-first, public-fetch fallback:
+//   runSource now reads the HTML from the API (GET
+//   ${API_BASE}/api/v2/inspirations/<seg>/source) BEFORE fetching the public
+//   *.cloudgrid.io URL. On the hosted edition the MCP pod can reach the API but
+//   NOT the public ingress ("fetch failed"), so the API read is the primary path
+//   and the public fetch is the fallback (used e.g. on the local edition, or when
+//   the API can't serve the source).
+//
+// Drives the REAL runSource seam and the REAL registered tool handlers with a
+// mocked global fetch that ROUTES BY URL (API read vs public fetch), and asserts:
+//   1. URL resolution order: explicit url > session lastDrop.url > grid+slug > fail.
+//   2. SSRF guard: non-*.cloudgrid.io / http / lookalike url fails with NO fetch at
+//      all (neither the API read nor the public fetch); a *.cloudgrid.io url proceeds.
+//   3. API-first: API returns {html} → returned inline WITHOUT any public fetch.
+//   4. Fallback: API non-ok → falls back to the public fetch and returns its HTML.
+//   5. entity_id present → the API is called with /inspirations/<entity_id>/source.
+//   6. HTML returned inline in content AND structuredContent.html; bytes set;
+//      truncated past 1.5MB (via whichever path).
+//   7. Non-200 on the public fallback → graceful fail (no crash); redirect off
+//      cloudgrid refused.
+//   8. Defaults: no inputs + a session lastDrop → reads lastDrop's source.
+//   9. Only gridctl_source is registered — the deprecated cloudgrid_source alias
+//      is gone (0.10.0); playbook + drop/plug descriptions carry the source rule.
 // Run: node test/source-fetch.test.mjs
 
-import { runSource, registerTools } from "../src/tools.js";
+import { runSource, registerTools, API_BASE } from "../src/tools.js";
 
 let failures = 0;
 function check(label, cond) {
@@ -51,56 +67,90 @@ function makeCtx({ token = null, edition = "web", lastDrop = null } = {}) {
   };
 }
 
-// ── fetch mock: record requested urls; reply from a queue ───────────────────
+// ── fetch mock ──────────────────────────────────────────────────────────────
+// Routes by URL: `${API_BASE}/api/v2/inspirations/<seg>/source` is the API read;
+// any other (*.cloudgrid.io) URL is the public fetch.
+//   - apiHtml: string  → API read responds 200 { html: apiHtml }.
+//   - apiHtml: null    → API read responds non-ok (403), forcing the public fallback.
+//   - publicReplies: FIFO queue of { status, body, headers?, finalUrl? } for the
+//     public fetch path (mirrors the old single-queue mock).
 let fetchCalls = [];
-let replies = [];
+let apiHtml = null; // default: force fallback so the public path is exercised
+let publicReplies = [];
 const realFetch = globalThis.fetch;
-globalThis.fetch = async (url, opts = {}) => {
-  fetchCalls.push({ url: String(url), method: opts.method || "GET" });
-  const next = replies.shift() ?? { status: 200, body: "<!doctype html><html></html>" };
-  const body = typeof next.body === "string" ? next.body : String(next.body);
-  const res = new Response(body, {
-    status: next.status,
-    headers: { "content-type": "text/html", ...(next.headers || {}) },
+
+const isApiSourceUrl = (u) => /\/api\/v2\/inspirations\/[^/]+\/source$/.test(u);
+const apiSourceCalls = () => fetchCalls.filter((c) => isApiSourceUrl(c.url));
+const publicCalls = () => fetchCalls.filter((c) => !isApiSourceUrl(c.url));
+
+function makeResponse({ status = 200, body = "", headers = {}, finalUrl, url }) {
+  const res = new Response(String(body), {
+    status,
+    headers: { "content-type": "text/html", ...headers },
   });
   // Response.url is read-only and defaults to ""; override it so redirect
-  // detection can be exercised.
-  Object.defineProperty(res, "url", { value: next.finalUrl ?? String(url), configurable: true });
+  // detection (on the public path) can be exercised.
+  Object.defineProperty(res, "url", { value: finalUrl ?? url ?? "", configurable: true });
   return res;
+}
+
+globalThis.fetch = async (url, opts = {}) => {
+  const u = String(url);
+  fetchCalls.push({ url: u, method: opts.method || "GET", headers: opts.headers || {} });
+  if (isApiSourceUrl(u)) {
+    // API read path: respond with { html } (200) or non-ok to force fallback.
+    if (typeof apiHtml === "string") {
+      return makeResponse({ status: 200, body: JSON.stringify({ html: apiHtml }), url: u });
+    }
+    return makeResponse({ status: 403, body: JSON.stringify({ error: "no source" }), url: u });
+  }
+  // Public fetch path.
+  const next = publicReplies.shift() ?? { status: 200, body: "<!doctype html><html></html>" };
+  return makeResponse({ ...next, url: u });
 };
 
-const reset = () => { fetchCalls = []; replies = []; };
+const reset = () => {
+  fetchCalls = [];
+  apiHtml = null; // fallback by default
+  publicReplies = [];
+};
 
 try {
-  // ── 1. Resolution order ───────────────────────────────────────────────────
-  // explicit url wins over session state.
+  // ── 1. Resolution order (exercised via the public fallback: apiHtml=null) ───
+  // explicit url wins over session state — the fallback fetch hits the explicit url.
   reset();
-  replies = [{ status: 200, body: "<html>explicit</html>" }];
+  publicReplies = [{ status: 200, body: "<html>explicit</html>" }];
   await runSource(
     makeCtx({ lastDrop: { entity_id: "e1", url: "https://acme.cloudgrid.io/session" } }),
     { url: "https://acme.cloudgrid.io/explicit" },
   );
-  check("explicit url wins over session lastDrop", fetchCalls[0]?.url === "https://acme.cloudgrid.io/explicit");
+  check(
+    "explicit url wins over session lastDrop (public fetch target)",
+    publicCalls()[0]?.url === "https://acme.cloudgrid.io/explicit",
+  );
 
   // session lastDrop.url used when no explicit url.
   reset();
-  replies = [{ status: 200, body: "<html>session</html>" }];
+  publicReplies = [{ status: 200, body: "<html>session</html>" }];
   await runSource(
     makeCtx({ lastDrop: { entity_id: "e1", url: "https://acme.cloudgrid.io/session" } }),
     {},
   );
-  check("session lastDrop.url used when no explicit url", fetchCalls[0]?.url === "https://acme.cloudgrid.io/session");
+  check(
+    "session lastDrop.url used when no explicit url",
+    publicCalls()[0]?.url === "https://acme.cloudgrid.io/session",
+  );
 
   // grid+slug composes the URL when neither url nor session state present.
   reset();
-  replies = [{ status: 200, body: "<html>composed</html>" }];
+  publicReplies = [{ status: 200, body: "<html>composed</html>" }];
   await runSource(makeCtx({ lastDrop: null }), { grid: "acme", slug: "page" });
   check(
     "grid+slug composes path-based apex URL",
-    fetchCalls[0]?.url === "https://acme.cloudgrid.io/page",
+    publicCalls()[0]?.url === "https://acme.cloudgrid.io/page",
   );
 
-  // no url, no session, no grid+slug → fail (throws).
+  // no url, no session, no grid+slug → fail (throws), no fetch of any kind.
   reset();
   let threw = false;
   try {
@@ -123,7 +173,7 @@ try {
   }
   check("entity_id mismatch does not reuse session url", mismatchThrew && fetchCalls.length === 0);
 
-  // ── 2. SSRF guard ──────────────────────────────────────────────────────────
+  // ── 2. SSRF guard (rejected BEFORE any fetch — API read or public) ──────────
   reset();
   let ssrfThrew = false;
   try {
@@ -131,7 +181,7 @@ try {
   } catch (err) {
     ssrfThrew = /limited to https:\/\/\*\.cloudgrid\.io/.test(err.message);
   }
-  check("SSRF: non-cloudgrid host fails, no fetch performed", ssrfThrew && fetchCalls.length === 0);
+  check("SSRF: non-cloudgrid host fails, NO fetch (API or public)", ssrfThrew && fetchCalls.length === 0);
 
   // lookalike host must NOT pass (cloudgrid.io.evil.com).
   reset();
@@ -153,14 +203,15 @@ try {
   }
   check("SSRF: http (non-https) rejected, no fetch", httpThrew && fetchCalls.length === 0);
 
+  // a valid *.cloudgrid.io url proceeds — API read attempted, then public fallback.
   reset();
-  replies = [{ status: 200, body: "<html>ok</html>" }];
+  publicReplies = [{ status: 200, body: "<html>ok</html>" }];
   await runSource(makeCtx({ lastDrop: null }), { url: "https://sub.cloudgrid.io/x" });
-  check("SSRF: *.cloudgrid.io url is fetched", fetchCalls.length === 1);
+  check("SSRF: *.cloudgrid.io url proceeds to a public fetch (fallback)", publicCalls().length === 1);
 
-  // redirect off cloudgrid is refused.
+  // redirect off cloudgrid is refused (public fallback path).
   reset();
-  replies = [{ status: 200, body: "<html></html>", finalUrl: "https://evil.example.com/x" }];
+  publicReplies = [{ status: 200, body: "<html></html>", finalUrl: "https://evil.example.com/x" }];
   let redirectThrew = false;
   try {
     await runSource(makeCtx({ lastDrop: null }), { url: "https://acme.cloudgrid.io/x" });
@@ -169,56 +220,109 @@ try {
   }
   check("SSRF: redirect off cloudgrid refused", redirectThrew);
 
-  // ── 3. Inline HTML + bytes + truncated ─────────────────────────────────────
+  // ── 3. API-first: API returns {html} → returned inline, NO public fetch ─────
   reset();
+  apiHtml = "<!doctype html><html><body>from-api</body></html>";
+  const viaApi = await runSource(
+    makeCtx({ lastDrop: { entity_id: "e1", url: "https://acme.cloudgrid.io/session" } }),
+    { url: "https://acme.cloudgrid.io/p" },
+  );
+  check("API-first: structured.html is the API html", viaApi.structured.html === apiHtml);
+  check("API-first: content text includes the API html", viaApi.text.includes(apiHtml));
+  check("API-first: the API source route was hit", apiSourceCalls().length >= 1);
+  check("API-first: NO public fetch when the API served the html", publicCalls().length === 0);
+  check(
+    "API-first: structured.url still echoes the resolved public url",
+    viaApi.structured.url === "https://acme.cloudgrid.io/p",
+  );
+
+  // ── 4. Fallback: API non-ok → public fetch, returns its HTML ────────────────
+  reset();
+  apiHtml = null; // API returns non-ok
+  publicReplies = [{ status: 200, body: "<html>from-public</html>" }];
+  const viaFallback = await runSource(makeCtx({ lastDrop: null }), {
+    url: "https://acme.cloudgrid.io/p",
+  });
+  check("fallback: API attempted then non-ok", apiSourceCalls().length >= 1);
+  check("fallback: exactly one public fetch performed", publicCalls().length === 1);
+  check("fallback: structured.html is the public html", viaFallback.structured.html === "<html>from-public</html>");
+
+  // ── 5. entity_id present → API called with /inspirations/<entity_id>/source ──
+  reset();
+  apiHtml = null;
+  publicReplies = [{ status: 200, body: "<html></html>" }];
+  await runSource(makeCtx({ lastDrop: null }), {
+    url: "https://acme.cloudgrid.io/p",
+    entity_id: "ent-42",
+  });
+  check(
+    "entity_id: API read hits /inspirations/ent-42/source first",
+    apiSourceCalls()[0]?.url === `${API_BASE}/api/v2/inspirations/ent-42/source`,
+  );
+
+  // entity_id echoed in structuredContent (via the API path here).
+  reset();
+  apiHtml = "<html>echo</html>";
+  const echoed = await runSource(makeCtx({ lastDrop: null }), {
+    url: "https://acme.cloudgrid.io/p",
+    entity_id: "ent-42",
+  });
+  check("structured.entity_id echoes input", echoed.structured.entity_id === "ent-42");
+
+  // ── 6. Inline HTML + bytes + truncated ──────────────────────────────────────
+  reset();
+  apiHtml = null;
   const smallHtml = "<!doctype html><html><body>hi</body></html>";
-  replies = [{ status: 200, body: smallHtml }];
+  publicReplies = [{ status: 200, body: smallHtml }];
   const small = await runSource(makeCtx({ lastDrop: null }), { url: "https://acme.cloudgrid.io/p" });
   check("returns html inline in content text", small.text.includes(smallHtml));
-  check("content text has the source prefix line", /Current source for https:\/\/acme\.cloudgrid\.io\/p \(\d+ bytes\)/.test(small.text));
+  check(
+    "content text has the source prefix line",
+    /Current source for https:\/\/acme\.cloudgrid\.io\/p \(\d+ bytes\)/.test(small.text),
+  );
   check("structuredContent.html is the html", small.structured.html === smallHtml);
   check("structured.bytes is the byte length", small.structured.bytes === Buffer.byteLength(smallHtml));
   check("structured.truncated false for small body", small.structured.truncated === false);
-  check("structured.url echoes the fetched url", small.structured.url === "https://acme.cloudgrid.io/p");
+  check("structured.url echoes the resolved url", small.structured.url === "https://acme.cloudgrid.io/p");
 
-  // truncated past 1.5MB.
+  // truncated past 1.5MB — exercised via the API path (shared shaping helper).
   reset();
-  const big = "x".repeat(1_500_001);
-  replies = [{ status: 200, body: big }];
+  apiHtml = "x".repeat(1_500_001);
   const truncatedRes = await runSource(makeCtx({ lastDrop: null }), { url: "https://acme.cloudgrid.io/big" });
   check("bytes reports the FULL size even when truncated", truncatedRes.structured.bytes === 1_500_001);
   check("truncated:true past 1.5MB", truncatedRes.structured.truncated === true);
   check("truncated html is capped at 1.5MB", Buffer.byteLength(truncatedRes.structured.html) === 1_500_000);
   check("truncated note present in text", /too large to return in full/.test(truncatedRes.text));
 
-  // entity_id echoed in structuredContent.
+  // ── 7. Non-200 on the public fallback → graceful fail (no crash) ────────────
   reset();
-  replies = [{ status: 200, body: "<html></html>" }];
-  const echoed = await runSource(makeCtx({ lastDrop: null }), { url: "https://acme.cloudgrid.io/p", entity_id: "ent-42" });
-  check("structured.entity_id echoes input", echoed.structured.entity_id === "ent-42");
-
-  // ── 4. Non-200 → graceful fail (throws a friendly Error, no crash) ─────────
-  reset();
-  replies = [{ status: 404, body: "not found" }];
+  apiHtml = null;
+  publicReplies = [{ status: 404, body: "not found" }];
   let non200Threw = false;
   try {
     await runSource(makeCtx({ lastDrop: null }), { url: "https://acme.cloudgrid.io/gone" });
   } catch (err) {
     non200Threw = /Couldn't read the live drop \(HTTP 404\)/.test(err.message);
   }
-  check("non-200 → graceful fail (HTTP status surfaced)", non200Threw);
+  check("non-200 on public fallback → graceful fail (HTTP status surfaced)", non200Threw);
 
-  // ── 5. Defaults: no inputs + session lastDrop → fetch lastDrop.url ─────────
+  // ── 8. Defaults: no inputs + session lastDrop → reads lastDrop's source ─────
   reset();
-  replies = [{ status: 200, body: "<html>default</html>" }];
+  apiHtml = null;
+  publicReplies = [{ status: 200, body: "<html>default</html>" }];
   const def = await runSource(
     makeCtx({ lastDrop: { entity_id: "e9", url: "https://guest.cloudgrid.io/abc" } }),
     {},
   );
-  check("defaults to session lastDrop.url", fetchCalls[0]?.url === "https://guest.cloudgrid.io/abc");
+  check("defaults to session lastDrop.url (public fallback)", publicCalls()[0]?.url === "https://guest.cloudgrid.io/abc");
   check("defaults echo session entity_id", def.structured.entity_id === "e9");
+  // the session entity_id is also used to key the API read.
+  check(
+    "defaults: API read keyed by session entity_id",
+    apiSourceCalls().some((c) => c.url === `${API_BASE}/api/v2/inspirations/e9/source`),
+  );
 
-  // ── 6 + 7. Registered handlers / no alias / playbook / descriptions ────────
+  // ── 9. Registered handlers / no alias / playbook / descriptions ─────────────
   const server = makeServer();
   registerTools(server, makeCtx({ lastDrop: null }));
 
@@ -231,9 +335,9 @@ try {
     cloudgridHandlers.length === 0,
   );
 
-  // the primary tool still fetches inline HTML.
+  // the primary tool still returns inline HTML (via the API path here).
   reset();
-  replies = [{ status: 200, body: "<html>primary</html>" }];
+  apiHtml = "<html>primary</html>";
   const viaPrimary = await server.handlers.gridctl_source({ url: "https://acme.cloudgrid.io/a" });
   check(
     "gridctl_source returns inline HTML",
