@@ -45,6 +45,14 @@ const AUTHED_HTML_MAX_BYTES = 25_000_000;
 const CONSOLE_URL = "https://console.cloudgrid.io/";
 
 // ── Widget resources (ChatGPT Apps SDK, web edition only) ────────────────────
+// The Apps-SDK UI widgets (openai/outputTemplate → a ui:// html resource) render
+// as a broken black frame in ChatGPT today, hiding the plain-text result. Gate
+// them behind an env flag, DEFAULT OFF, so the drop/plug result is text-first
+// (the live URL is already the first line of the text content) and the widget is
+// optional. Flip MCP_APPS_WIDGETS=1 in the platform manifest to re-enable once
+// the widget HTML is verified to render. The resources stay registered either
+// way (harmless when no tool references them via outputTemplate).
+const APPS_WIDGETS_ENABLED = process.env.MCP_APPS_WIDGETS === "1";
 const LIVE_RESULT_URI = "ui://cloudgrid/live-result.html";
 // URI/resource-name/filename stay `org-picker` — that's the stable contract the
 // web card is registered under; only the JS identifier moves toward grid.
@@ -753,7 +761,7 @@ export async function resolveGridOrAsk(ctx, { token, suppliedGrid, edition }, de
         // `needs_grid` is the new field; `needs_org`/`orgs` are kept as aliases
         // so the existing org-picker.html web widget (reads data.orgs) still works.
         structured: { needs_grid: true, needs_org: true, grids: annotated, orgs: annotated },
-        ...(edition === "web" ? { meta: { "openai/outputTemplate": GRID_PICKER_URI } } : {}),
+        ...(edition === "web" && APPS_WIDGETS_ENABLED ? { meta: { "openai/outputTemplate": GRID_PICKER_URI } } : {}),
       },
     };
   }
@@ -2531,7 +2539,7 @@ export function registerTools(server, ctx) {
         login_url: z.string().optional().describe("Sign-in URL when authentication is needed."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
-      ...(ctx.edition === "web" ? {
+      ...(ctx.edition === "web" && APPS_WIDGETS_ENABLED ? {
         _meta: {
           ui: { resourceUri: LIVE_RESULT_URI, csp: WIDGET_CSP },
           "openai/outputTemplate": LIVE_RESULT_URI,
