@@ -441,6 +441,35 @@ try {
     "grid_plug description mentions grid_source",
     /call grid_source first to retrieve it, then re-plug with target_entity_id/.test(server.descriptions.grid_plug),
   );
+
+  // ── Edition-aware edit flow (spec §6): the playbook carries EACH branch ──────
+  check(
+    "playbook: edit-from-URL branch — grid_source resolves entity_id + single_html",
+    /grid_source/.test(startText) && /entity_id/.test(startText) && /single_html/.test(startText),
+  );
+  check(
+    "playbook: edit-in-place branch — single-HTML + capabilities.replug via target_entity_id / grid+slug",
+    /capabilities\.replug/.test(startText) && /target_entity_id/.test(startText) && /grid\+slug/.test(startText),
+  );
+  check(
+    "playbook: multi-file fallback branch — app/agent or single_html:false → source_download_url + local edition/CLI",
+    /multi-file/.test(startText) && /source_download_url/.test(startText) && /local edition/.test(startText) && /CLI/.test(startText),
+  );
+  check(
+    "playbook: not-owner fork branch — replug:false / not_owner → grid_fork",
+    /not_owner/.test(startText) && /grid_fork/.test(startText),
+  );
+
+  // grid_plug description advertises grid+slug as an alternative re-plug handle.
+  check(
+    "grid_plug description mentions grid+slug re-plug handle",
+    /grid\s*\+\s*slug/.test(server.descriptions.grid_plug),
+  );
+  // grid_source description advertises URL→entity_id resolution + edition metadata.
+  check(
+    "grid_source description mentions resolving entity_id from a URL + capabilities",
+    /entity_id/.test(server.descriptions.grid_source) && /capabilities/.test(server.descriptions.grid_source),
+  );
 } finally {
   globalThis.fetch = realFetch;
 }

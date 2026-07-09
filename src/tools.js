@@ -100,6 +100,10 @@ Operating rules:
 12. To choose what to build: match the request against the workflow when: triggers and the capability-map (grid_fetch({kind:"doc", name:"capability-map"})). Pick the template whose needs: matches what the app requires (persistence → database; scheduled → cron; etc.). Classify the ARTIFACT to pick the deploy: ONE self-contained HTML page (a single file — CSS+JS inline, images/fonts as data: URIs; that is the normal hosted output) → an inspiration — instant, ANY edition, deploy via grid_plug with the inline html param. Only genuinely SEPARATE files/folders (a real assets/ dir, separate .css/.js files, multiple pages, a SPA build) — OR anything needing needs: (data/server/LLM/cron) → a runtime app — grid_plug on a linked folder with a cloudgrid.yaml, local edition only, async build.
 13. Before writing a cloudgrid.yaml, fetch the reference: grid_fetch({kind:"doc", name:"cloudgrid-yaml"}) — it has the full schema and the needs: vocabulary. Declare infrastructure with needs: (the deployer injects from it): needs: { database: true } → Mongo (DATABASE_MONGODB_URL); needs: { cache: true } → Redis; scheduled work → a service of type: cron (Python or Node). Use needs: OR requires:, never both — declaring both is rejected.
 14. Databases — CloudGrid supports both, so never tell the user to self-host. Managed: needs: { database: true } provisions Mongo and injects DATABASE_MONGODB_URL. Bring-your-own (they already run Postgres / MySQL / MongoDB / Supabase / Neon / PlanetScale / etc.): needs: { database: { tier: external, secret: MY_DB } } plus grid secrets set MY_DB=<connection-string> — the connection string lives in env SECRETS, never committed. If asked "what databases does CloudGrid support?": all of them — the managed CloudGrid database out of the box, or bring your own via keys — ask which they want.
+15. Editing an existing thing from just its URL (a fresh chat, no prior context — e.g. "change the background to green here <url>"): call grid_source(url) first. It resolves the entity_id and returns the current HTML plus its kind, single_html, capabilities, and replug_handle — read those to pick the branch:
+  - Single-HTML inspiration you can re-plug (single_html: true and capabilities.replug: true): edit the returned HTML and call grid_plug with target_entity_id (or grid+slug — the replug_handle) to update the SAME URL in place. This works on every edition, including hosted.
+  - Multi-file app or agent (kind is app or agent, or single_html: false): do NOT try to edit it as one inline HTML file. Tell the user it is a multi-file <kind>, give them the entity_id and the source (source_download_url), and explain that rebuilding it needs the local edition (Claude Desktop/Code) or the CLI — the hosted server cannot rebuild a multi-file app.
+  - Not yours (capabilities.replug: false, reason not_owner): do NOT attempt a re-plug. Offer to fork it into the user's own grid with grid_fork and edit the copy instead.
 
 Deploy is via grid_plug on every edition: for a single HTML page pass it inline as the html param (works on the hosted MCP too); for a multi-file app write the files and pass a folder path (local MCP / CLI). A single HTML page deploys synchronously as an inspiration, so you get a URL right away.`;
 
@@ -2412,7 +2416,8 @@ export function registerTools(server, ctx) {
           ? "or `artifact_files` — a multi-file app inline. "
           : "`path` — a local folder/file (a multi-file app); or `artifact_files` — inline files. ") +
         "No target_entity_id → CREATE a new entity (inspiration/app/agent, auto-detected or hinted); " +
-        "with target_entity_id → RE-PLUG: update the SAME entity in place — same entity_id, same URL, same " +
+        "with target_entity_id (or grid+slug — the replug_handle, when you hold only those) → RE-PLUG: " +
+        "update the SAME entity in place — same entity_id, same URL, same " +
         "deploy history, expiry reset. The returned entity_id + url are the durable re-plug handle; persist " +
         "them (plus owner_token for anonymous pages) to update the entity in later sessions. " +
         "Note: in-place re-plug currently supports inspirations (HTML/static pages); to rebuild a deployed " +
@@ -2562,10 +2567,14 @@ export function registerTools(server, ctx) {
       description:
         "Retrieve the CURRENT deployed HTML of an inspiration/drop inline as text, so you can edit it and " +
         "re-plug the SAME URL when you no longer have its source in context (e.g. the user asks to 'change the " +
-        "color' of a drop you made earlier). Defaults to this session's last drop; otherwise pass the public " +
-        "url (or grid+slug). Works for single-document HTML drops/inspirations (the common case). For " +
-        "multi-file or runtime (app/agent) deploys, use grid_download (signed tarball URLs) instead. " +
-        "Fetches the public *.cloudgrid.io URL server-side; read-only, creates nothing.",
+        "color' of a page — even in a fresh chat with only its URL). Defaults to this session's last drop; " +
+        "otherwise pass the public url (or grid+slug). Given just a URL with no session, it resolves the " +
+        "entity_id via the pickup contract and also returns the entity's kind, single_html, capabilities " +
+        "(replug/fork), and replug_handle — read those to decide whether to edit in place (single-HTML + " +
+        "capabilities.replug), fall back for a multi-file app/agent (use source_download_url + the local " +
+        "edition/CLI), or offer a fork when it isn't yours. For multi-file or runtime (app/agent) source " +
+        "bundles, use grid_download (signed tarball URLs). Reads the HTML from the API server-side; " +
+        "read-only, creates nothing.",
       inputSchema: {
         entity_id: z.string().optional().describe("The drop's durable id. Defaults to this session's last drop."),
         url: z.string().optional().describe("The public URL of the drop (e.g. https://<grid>.cloudgrid.io/<slug>). Defaults to this session's last drop URL."),
