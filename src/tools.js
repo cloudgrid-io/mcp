@@ -2038,8 +2038,10 @@ function isCloudgridHost(hostname) {
 }
 
 // Shape an HTML string into the grid_source result (shared by the API-read
-// and the public-fetch paths). Caps the body at SOURCE_MAX_BYTES.
-function shapeSourceResult(sourceUrl, entityId, htmlStr) {
+// and the public-fetch paths). Caps the body at SOURCE_MAX_BYTES. `extra` carries
+// optional edition metadata resolved from the pickup contract (kind, single_html,
+// capabilities, replug_handle, source_download_url) — merged into structured.
+function shapeSourceResult(sourceUrl, entityId, htmlStr, extra = {}) {
   const buf = Buffer.from(htmlStr, "utf-8");
   const totalBytes = buf.length;
   const truncated = totalBytes > SOURCE_MAX_BYTES;
@@ -2055,7 +2057,7 @@ function shapeSourceResult(sourceUrl, entityId, htmlStr) {
   lines.push("", html);
   return {
     text: lines.join("\n"),
-    structured: { url: sourceUrl, entity_id: entityId ?? null, bytes: totalBytes, truncated, html },
+    structured: { url: sourceUrl, entity_id: entityId ?? null, bytes: totalBytes, truncated, html, ...extra },
   };
 }
 
@@ -2089,6 +2091,50 @@ async function readInspirationSourceViaApi(ctx, { entityId, slug, grid }) {
     }
   }
   return null;
+}
+
+// Resolve a public URL / grid+slug to a REAL entity_id (+ edition metadata) via
+// the deployed pickup contract (POST /api/v2/entities/:target/pickup — the same
+// endpoint runClaim uses). Used by runSource when a bare URL arrives with no
+// session entity_id (a fresh chat): the contract returns
+//   { entity_id, slug, grid, kind, single_html, capabilities, replug_handle,
+//     source_download_url, ... }
+// so the agent can re-plug the SAME entity in place. This is a metadata resolve
+// (no claim_token in the body → no ownership transfer). Best-effort: returns null
+// on any failure so the caller falls back to today's behavior — and NEVER fetches
+// the public *.cloudgrid.io URL (the hosted pod cannot egress to it).
+async function resolveEntityViaPickup(ctx, { target, url, grid }) {
+  const pathSeg = target || url;
+  if (!pathSeg) return null;
+  let token = null;
+  try { token = await ctx.getToken(); } catch { /* anonymous is fine */ }
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  // Grid-native header + X-CloudGrid-Org alias (same slug) during the soak.
+  if (grid) {
+    headers["X-CloudGrid-Grid"] = grid;
+    headers["X-CloudGrid-Org"] = grid;
+  }
+  if (ctx.state.anonCookie) headers["Cookie"] = ctx.state.anonCookie;
+  try {
+    const res = await fetch(
+      `${API_BASE}/api/v2/entities/${encodeURIComponent(pathSeg)}/pickup`,
+      {
+        method: "POST",
+        headers,
+        // Send the URL as a resolution key too (the contract accepts id, slug, or
+        // a {url} body). NO claim_token → resolve only, never a claim.
+        body: JSON.stringify(url ? { url } : {}),
+        signal: AbortSignal.timeout(15_000),
+      },
+    );
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null);
+    if (data && typeof data.entity_id === "string" && data.entity_id.length > 0) return data;
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 // Fetch a drop's/inspiration's current deployed HTML inline as text so an agent
@@ -2129,19 +2175,40 @@ export async function runSource(ctx, { entity_id, url, grid, slug } = {}) {
   }
 
   const resolvedUrl = parsed.toString();
-  const eid = entity_id ?? (last && (!entity_id || last.entity_id === entity_id) ? last.entity_id : null);
+  let eid = entity_id ?? (last && (!entity_id || last.entity_id === entity_id) ? last.entity_id : null);
 
-  // ── API-first (reachable) ────────────────────────────────────────────────
-  // Read the HTML from the API server-side rather than fetching the public URL.
-  // The hosted MCP pod can reach the API but NOT the public *.cloudgrid.io
-  // ingress ("fetch failed") — this is the fix for hosted edit-in-place. Derive
-  // the grid/slug hint from the inspiration path URL (`grid.cloudgrid.io/slug`).
+  // Derive the grid/slug hint from the inspiration path URL (`grid.cloudgrid.io/slug`).
   const host = parsed.hostname;
   const gridHint = grid ?? (host.endsWith(".cloudgrid.io") && !host.includes("--") && host.split(".").length === 3
     ? host.split(".")[0] : null);
   const slugHint = slug ?? (parsed.pathname.replace(/^\/+/, "").split("/")[0] || null);
+
+  // ── URL → entity_id (fresh chat, no session) via the pickup contract ──────
+  // When a bare URL/slug arrived with no known entity_id, resolve a REAL
+  // entity_id (+ edition metadata) so the agent can re-plug in place. Best-
+  // effort: a failure falls back to today's behavior (never regress the read),
+  // and we NEVER fetch the public URL for resolution.
+  let extra = {};
+  if (!eid) {
+    const pickup = await resolveEntityViaPickup(ctx, { target: slugHint, url: resolvedUrl, grid: gridHint });
+    if (pickup?.entity_id) {
+      eid = pickup.entity_id;
+      extra = {
+        ...(pickup.kind ? { kind: pickup.kind } : {}),
+        ...(typeof pickup.single_html === "boolean" ? { single_html: pickup.single_html } : {}),
+        ...(pickup.capabilities ? { capabilities: pickup.capabilities } : {}),
+        ...(pickup.replug_handle ? { replug_handle: pickup.replug_handle } : {}),
+        ...(pickup.source_download_url ? { source_download_url: pickup.source_download_url } : {}),
+      };
+    }
+  }
+
+  // ── API-first (reachable) ────────────────────────────────────────────────
+  // Read the HTML from the API server-side rather than fetching the public URL.
+  // The hosted MCP pod can reach the API but NOT the public *.cloudgrid.io
+  // ingress ("fetch failed") — this is the fix for hosted edit-in-place.
   const apiHtml = await readInspirationSourceViaApi(ctx, { entityId: eid, slug: slugHint, grid: gridHint });
-  if (apiHtml != null) return shapeSourceResult(resolvedUrl, eid, apiHtml);
+  if (apiHtml != null) return shapeSourceResult(resolvedUrl, eid, apiHtml, extra);
 
   // ── Fallback: direct public fetch ────────────────────────────────────────
   // Local edition has normal egress; last resort on hosted (e.g. a runtime app
@@ -2177,7 +2244,7 @@ export async function runSource(ctx, { entity_id, url, grid, slug } = {}) {
   }
 
   const buf = Buffer.from(await res.arrayBuffer());
-  return shapeSourceResult(resolvedUrl, eid, buf.toString("utf-8"));
+  return shapeSourceResult(resolvedUrl, eid, buf.toString("utf-8"), extra);
 }
 
 // ── Registration ───────────────────────────────────────────────────────────────
@@ -2492,6 +2559,19 @@ export function registerTools(server, ctx) {
         bytes: z.number().describe("Total size of the live document in bytes."),
         truncated: z.boolean().describe("True if the body exceeded 1.5MB and was cut — the drop may be multi-file."),
         html: z.string().describe("The current deployed HTML (truncated to 1.5MB when oversized)."),
+        kind: z.string().optional().describe("Resolved via the pickup contract: inspiration | app | agent."),
+        single_html: z.boolean().optional().describe("Resolved via the pickup contract: true when this is a single editable HTML document (edit-in-place); false → multi-file."),
+        capabilities: z.object({
+          replug: z.boolean().describe("Whether the caller may re-plug (write) this entity in place."),
+          fork: z.boolean().optional().describe("Whether the caller may fork it."),
+          reason: z.string().optional().describe("Why an action is unavailable, e.g. not_owner."),
+        }).optional().describe("Resolved via the pickup contract: what the caller may do with this entity."),
+        replug_handle: z.object({
+          target_entity_id: z.string().optional().describe("Pass as grid_plug's target_entity_id to re-plug in place."),
+          grid: z.string().optional().describe("The entity's home grid slug."),
+          slug: z.string().optional().describe("The entity's grid-scoped slug."),
+        }).optional().describe("Resolved via the pickup contract: the durable re-plug handle."),
+        source_download_url: z.string().optional().describe("Resolved via the pickup contract: the source-download route (used for the multi-file fallback message)."),
       },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     },
