@@ -100,6 +100,10 @@ Operating rules:
 12. To choose what to build: match the request against the workflow when: triggers and the capability-map (grid_fetch({kind:"doc", name:"capability-map"})). Pick the template whose needs: matches what the app requires (persistence → database; scheduled → cron; etc.). Classify the ARTIFACT to pick the deploy: ONE self-contained HTML page (a single file — CSS+JS inline, images/fonts as data: URIs; that is the normal hosted output) → an inspiration — instant, ANY edition, deploy via grid_plug with the inline html param. Only genuinely SEPARATE files/folders (a real assets/ dir, separate .css/.js files, multiple pages, a SPA build) — OR anything needing needs: (data/server/LLM/cron) → a runtime app — grid_plug on a linked folder with a cloudgrid.yaml, local edition only, async build.
 13. Before writing a cloudgrid.yaml, fetch the reference: grid_fetch({kind:"doc", name:"cloudgrid-yaml"}) — it has the full schema and the needs: vocabulary. Declare infrastructure with needs: (the deployer injects from it): needs: { database: true } → Mongo (DATABASE_MONGODB_URL); needs: { cache: true } → Redis; scheduled work → a service of type: cron (Python or Node). Use needs: OR requires:, never both — declaring both is rejected.
 14. Databases — CloudGrid supports both, so never tell the user to self-host. Managed: needs: { database: true } provisions Mongo and injects DATABASE_MONGODB_URL. Bring-your-own (they already run Postgres / MySQL / MongoDB / Supabase / Neon / PlanetScale / etc.): needs: { database: { tier: external, secret: MY_DB } } plus grid secrets set MY_DB=<connection-string> — the connection string lives in env SECRETS, never committed. If asked "what databases does CloudGrid support?": all of them — the managed CloudGrid database out of the box, or bring your own via keys — ask which they want.
+15. Editing an existing thing from just its URL (a fresh chat, no prior context — e.g. "change the background to green here <url>"): call grid_source(url) first. It resolves the entity_id and returns the current HTML plus its kind, single_html, capabilities, and replug_handle — read those to pick the branch:
+  - Single-HTML inspiration you can re-plug (single_html: true and capabilities.replug: true): edit the returned HTML and call grid_plug with target_entity_id (or grid+slug — the replug_handle) to update the SAME URL in place. This works on every edition, including hosted.
+  - Multi-file app or agent (kind is app or agent, or single_html: false): do NOT try to edit it as one inline HTML file. Tell the user it is a multi-file <kind>, give them the entity_id and the source (source_download_url), and explain that rebuilding it needs the local edition (Claude Desktop/Code) or the CLI — the hosted server cannot rebuild a multi-file app.
+  - Not yours (capabilities.replug: false, reason not_owner): do NOT attempt a re-plug. Offer to fork it into the user's own grid with grid_fork and edit the copy instead.
 
 Deploy is via grid_plug on every edition: for a single HTML page pass it inline as the html param (works on the hosted MCP too); for a multi-file app write the files and pass a folder path (local MCP / CLI). A single HTML page deploys synchronously as an inspiration, so you get a URL right away.`;
 
@@ -1520,6 +1524,7 @@ export async function runPlug(ctx, input, deps = {}) {
     cloudgrid_yaml,
     target_entity_id,
     grid,
+    slug,
     hints,
     anon,
     owner_token,
@@ -1575,7 +1580,19 @@ export async function runPlug(ctx, input, deps = {}) {
     );
   }
 
-  const isEdit = typeof target_entity_id === "string" && target_entity_id.length > 0;
+  // grid+slug re-plug handle (the pickup contract's `replug_handle`): when no
+  // explicit target_entity_id was given but a grid+slug pair is, resolve it to
+  // an existing entity_id and re-plug that in place. A slug that does NOT resolve
+  // to an existing entity → targetEntityId stays empty → this is a CREATE (no
+  // false-positive re-plug). target_entity_id remains the primary/documented
+  // handle. Best-effort resolve (pickup contract); never fetches the public URL.
+  let targetEntityId = target_entity_id;
+  if ((typeof targetEntityId !== "string" || targetEntityId.length === 0) && grid && slug) {
+    const resolved = await resolveEntityViaPickup(ctx, { target: slug, grid });
+    if (resolved?.entity_id) targetEntityId = resolved.entity_id;
+  }
+
+  const isEdit = typeof targetEntityId === "string" && targetEntityId.length > 0;
 
   // An inspiration edit content-versions the FIRST uploaded artifact — when a
   // multi-file folder rides a re-plug, put the primary entry first so the edit
@@ -1595,10 +1612,10 @@ export async function runPlug(ctx, input, deps = {}) {
   if (isEdit && !ownerToken) {
     // Recover the owner token from session state when re-plugging the drop this
     // session made anonymously.
-    if (ctx.state.lastDrop?.entity_id === target_entity_id && ctx.state.lastDrop.owner_token) {
+    if (ctx.state.lastDrop?.entity_id === targetEntityId && ctx.state.lastDrop.owner_token) {
       ownerToken = ctx.state.lastDrop.owner_token;
     } else if (
-      ctx.state.lastAnonClaim?.entity_id === target_entity_id &&
+      ctx.state.lastAnonClaim?.entity_id === targetEntityId &&
       ctx.state.lastAnonClaim.token
     ) {
       ownerToken = ctx.state.lastAnonClaim.token;
@@ -1686,7 +1703,7 @@ export async function runPlug(ctx, input, deps = {}) {
     form.append("artifact", new Blob([a.buffer], { type: a.type || "application/octet-stream" }), a.path);
   }
   if (isEdit) {
-    form.append("target_entity_id", target_entity_id);
+    form.append("target_entity_id", targetEntityId);
     if (useAnonWire) {
       form.append("owner_token", ownerToken);
     } else {
@@ -2038,8 +2055,10 @@ function isCloudgridHost(hostname) {
 }
 
 // Shape an HTML string into the grid_source result (shared by the API-read
-// and the public-fetch paths). Caps the body at SOURCE_MAX_BYTES.
-function shapeSourceResult(sourceUrl, entityId, htmlStr) {
+// and the public-fetch paths). Caps the body at SOURCE_MAX_BYTES. `extra` carries
+// optional edition metadata resolved from the pickup contract (kind, single_html,
+// capabilities, replug_handle, source_download_url) — merged into structured.
+function shapeSourceResult(sourceUrl, entityId, htmlStr, extra = {}) {
   const buf = Buffer.from(htmlStr, "utf-8");
   const totalBytes = buf.length;
   const truncated = totalBytes > SOURCE_MAX_BYTES;
@@ -2055,7 +2074,7 @@ function shapeSourceResult(sourceUrl, entityId, htmlStr) {
   lines.push("", html);
   return {
     text: lines.join("\n"),
-    structured: { url: sourceUrl, entity_id: entityId ?? null, bytes: totalBytes, truncated, html },
+    structured: { url: sourceUrl, entity_id: entityId ?? null, bytes: totalBytes, truncated, html, ...extra },
   };
 }
 
@@ -2089,6 +2108,50 @@ async function readInspirationSourceViaApi(ctx, { entityId, slug, grid }) {
     }
   }
   return null;
+}
+
+// Resolve a public URL / grid+slug to a REAL entity_id (+ edition metadata) via
+// the deployed pickup contract (POST /api/v2/entities/:target/pickup — the same
+// endpoint runClaim uses). Used by runSource when a bare URL arrives with no
+// session entity_id (a fresh chat): the contract returns
+//   { entity_id, slug, grid, kind, single_html, capabilities, replug_handle,
+//     source_download_url, ... }
+// so the agent can re-plug the SAME entity in place. This is a metadata resolve
+// (no claim_token in the body → no ownership transfer). Best-effort: returns null
+// on any failure so the caller falls back to today's behavior — and NEVER fetches
+// the public *.cloudgrid.io URL (the hosted pod cannot egress to it).
+async function resolveEntityViaPickup(ctx, { target, url, grid }) {
+  const pathSeg = target || url;
+  if (!pathSeg) return null;
+  let token = null;
+  try { token = await ctx.getToken(); } catch { /* anonymous is fine */ }
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  // Grid-native header + X-CloudGrid-Org alias (same slug) during the soak.
+  if (grid) {
+    headers["X-CloudGrid-Grid"] = grid;
+    headers["X-CloudGrid-Org"] = grid;
+  }
+  if (ctx.state.anonCookie) headers["Cookie"] = ctx.state.anonCookie;
+  try {
+    const res = await fetch(
+      `${API_BASE}/api/v2/entities/${encodeURIComponent(pathSeg)}/pickup`,
+      {
+        method: "POST",
+        headers,
+        // Send the URL as a resolution key too (the contract accepts id, slug, or
+        // a {url} body). NO claim_token → resolve only, never a claim.
+        body: JSON.stringify(url ? { url } : {}),
+        signal: AbortSignal.timeout(15_000),
+      },
+    );
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null);
+    if (data && typeof data.entity_id === "string" && data.entity_id.length > 0) return data;
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 // Fetch a drop's/inspiration's current deployed HTML inline as text so an agent
@@ -2129,19 +2192,40 @@ export async function runSource(ctx, { entity_id, url, grid, slug } = {}) {
   }
 
   const resolvedUrl = parsed.toString();
-  const eid = entity_id ?? (last && (!entity_id || last.entity_id === entity_id) ? last.entity_id : null);
+  let eid = entity_id ?? (last && (!entity_id || last.entity_id === entity_id) ? last.entity_id : null);
 
-  // ── API-first (reachable) ────────────────────────────────────────────────
-  // Read the HTML from the API server-side rather than fetching the public URL.
-  // The hosted MCP pod can reach the API but NOT the public *.cloudgrid.io
-  // ingress ("fetch failed") — this is the fix for hosted edit-in-place. Derive
-  // the grid/slug hint from the inspiration path URL (`grid.cloudgrid.io/slug`).
+  // Derive the grid/slug hint from the inspiration path URL (`grid.cloudgrid.io/slug`).
   const host = parsed.hostname;
   const gridHint = grid ?? (host.endsWith(".cloudgrid.io") && !host.includes("--") && host.split(".").length === 3
     ? host.split(".")[0] : null);
   const slugHint = slug ?? (parsed.pathname.replace(/^\/+/, "").split("/")[0] || null);
+
+  // ── URL → entity_id (fresh chat, no session) via the pickup contract ──────
+  // When a bare URL/slug arrived with no known entity_id, resolve a REAL
+  // entity_id (+ edition metadata) so the agent can re-plug in place. Best-
+  // effort: a failure falls back to today's behavior (never regress the read),
+  // and we NEVER fetch the public URL for resolution.
+  let extra = {};
+  if (!eid) {
+    const pickup = await resolveEntityViaPickup(ctx, { target: slugHint, url: resolvedUrl, grid: gridHint });
+    if (pickup?.entity_id) {
+      eid = pickup.entity_id;
+      extra = {
+        ...(pickup.kind ? { kind: pickup.kind } : {}),
+        ...(typeof pickup.single_html === "boolean" ? { single_html: pickup.single_html } : {}),
+        ...(pickup.capabilities ? { capabilities: pickup.capabilities } : {}),
+        ...(pickup.replug_handle ? { replug_handle: pickup.replug_handle } : {}),
+        ...(pickup.source_download_url ? { source_download_url: pickup.source_download_url } : {}),
+      };
+    }
+  }
+
+  // ── API-first (reachable) ────────────────────────────────────────────────
+  // Read the HTML from the API server-side rather than fetching the public URL.
+  // The hosted MCP pod can reach the API but NOT the public *.cloudgrid.io
+  // ingress ("fetch failed") — this is the fix for hosted edit-in-place.
   const apiHtml = await readInspirationSourceViaApi(ctx, { entityId: eid, slug: slugHint, grid: gridHint });
-  if (apiHtml != null) return shapeSourceResult(resolvedUrl, eid, apiHtml);
+  if (apiHtml != null) return shapeSourceResult(resolvedUrl, eid, apiHtml, extra);
 
   // ── Fallback: direct public fetch ────────────────────────────────────────
   // Local edition has normal egress; last resort on hosted (e.g. a runtime app
@@ -2177,7 +2261,7 @@ export async function runSource(ctx, { entity_id, url, grid, slug } = {}) {
   }
 
   const buf = Buffer.from(await res.arrayBuffer());
-  return shapeSourceResult(resolvedUrl, eid, buf.toString("utf-8"));
+  return shapeSourceResult(resolvedUrl, eid, buf.toString("utf-8"), extra);
 }
 
 // ── Registration ───────────────────────────────────────────────────────────────
@@ -2299,6 +2383,12 @@ export function registerTools(server, ctx) {
       "never moves grids, but pass its home grid here when it differs from your active grid (the API " +
       "checks your membership in the entity's grid). Anonymous → always the Guest grid.",
     ),
+    slug: z.string().optional().describe(
+      "Alternative RE-PLUG handle: paired with `grid`, resolves to an existing entity (the pickup " +
+      "contract's replug_handle) and updates it in place — for a client that holds only grid+slug, not the " +
+      "raw entity_id. target_entity_id takes precedence. A grid+slug that does NOT resolve to an existing " +
+      "entity is treated as a CREATE (never a false-positive re-plug).",
+    ),
     hints: z.object({
       kind: z.enum(["inspiration", "app", "agent"]).optional().describe("Force the detected kind; omit to let the server auto-detect."),
       yaml: z.string().optional().describe("An inline cloudgrid.yaml override used as a detection hint."),
@@ -2326,7 +2416,8 @@ export function registerTools(server, ctx) {
           ? "or `artifact_files` — a multi-file app inline. "
           : "`path` — a local folder/file (a multi-file app); or `artifact_files` — inline files. ") +
         "No target_entity_id → CREATE a new entity (inspiration/app/agent, auto-detected or hinted); " +
-        "with target_entity_id → RE-PLUG: update the SAME entity in place — same entity_id, same URL, same " +
+        "with target_entity_id (or grid+slug — the replug_handle, when you hold only those) → RE-PLUG: " +
+        "update the SAME entity in place — same entity_id, same URL, same " +
         "deploy history, expiry reset. The returned entity_id + url are the durable re-plug handle; persist " +
         "them (plus owner_token for anonymous pages) to update the entity in later sessions. " +
         "Note: in-place re-plug currently supports inspirations (HTML/static pages); to rebuild a deployed " +
@@ -2476,10 +2567,14 @@ export function registerTools(server, ctx) {
       description:
         "Retrieve the CURRENT deployed HTML of an inspiration/drop inline as text, so you can edit it and " +
         "re-plug the SAME URL when you no longer have its source in context (e.g. the user asks to 'change the " +
-        "color' of a drop you made earlier). Defaults to this session's last drop; otherwise pass the public " +
-        "url (or grid+slug). Works for single-document HTML drops/inspirations (the common case). For " +
-        "multi-file or runtime (app/agent) deploys, use grid_download (signed tarball URLs) instead. " +
-        "Fetches the public *.cloudgrid.io URL server-side; read-only, creates nothing.",
+        "color' of a page — even in a fresh chat with only its URL). Defaults to this session's last drop; " +
+        "otherwise pass the public url (or grid+slug). Given just a URL with no session, it resolves the " +
+        "entity_id via the pickup contract and also returns the entity's kind, single_html, capabilities " +
+        "(replug/fork), and replug_handle — read those to decide whether to edit in place (single-HTML + " +
+        "capabilities.replug), fall back for a multi-file app/agent (use source_download_url + the local " +
+        "edition/CLI), or offer a fork when it isn't yours. For multi-file or runtime (app/agent) source " +
+        "bundles, use grid_download (signed tarball URLs). Reads the HTML from the API server-side; " +
+        "read-only, creates nothing.",
       inputSchema: {
         entity_id: z.string().optional().describe("The drop's durable id. Defaults to this session's last drop."),
         url: z.string().optional().describe("The public URL of the drop (e.g. https://<grid>.cloudgrid.io/<slug>). Defaults to this session's last drop URL."),
@@ -2492,6 +2587,19 @@ export function registerTools(server, ctx) {
         bytes: z.number().describe("Total size of the live document in bytes."),
         truncated: z.boolean().describe("True if the body exceeded 1.5MB and was cut — the drop may be multi-file."),
         html: z.string().describe("The current deployed HTML (truncated to 1.5MB when oversized)."),
+        kind: z.string().optional().describe("Resolved via the pickup contract: inspiration | app | agent."),
+        single_html: z.boolean().optional().describe("Resolved via the pickup contract: true when this is a single editable HTML document (edit-in-place); false → multi-file."),
+        capabilities: z.object({
+          replug: z.boolean().describe("Whether the caller may re-plug (write) this entity in place."),
+          fork: z.boolean().optional().describe("Whether the caller may fork it."),
+          reason: z.string().optional().describe("Why an action is unavailable, e.g. not_owner."),
+        }).optional().describe("Resolved via the pickup contract: what the caller may do with this entity."),
+        replug_handle: z.object({
+          target_entity_id: z.string().optional().describe("Pass as grid_plug's target_entity_id to re-plug in place."),
+          grid: z.string().optional().describe("The entity's home grid slug."),
+          slug: z.string().optional().describe("The entity's grid-scoped slug."),
+        }).optional().describe("Resolved via the pickup contract: the durable re-plug handle."),
+        source_download_url: z.string().optional().describe("Resolved via the pickup contract: the source-download route (used for the multi-file fallback message)."),
       },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     },

@@ -77,11 +77,17 @@ function makeCtx({ token = null, edition = "web", lastDrop = null } = {}) {
 let fetchCalls = [];
 let apiHtml = null; // default: force fallback so the public path is exercised
 let publicReplies = [];
+// Pickup-contract reply (POST /api/v2/entities/:target/pickup). Default null →
+// the mock responds 404, so the best-effort url→entity_id resolve is a no-op and
+// existing (pre-pickup) behavior is preserved.
+let pickupReply = null;
 const realFetch = globalThis.fetch;
 
 const isApiSourceUrl = (u) => /\/api\/v2\/inspirations\/[^/]+\/source$/.test(u);
+const isPickupUrl = (u) => /\/api\/v2\/entities\/[^/]+\/pickup$/.test(u);
 const apiSourceCalls = () => fetchCalls.filter((c) => isApiSourceUrl(c.url));
-const publicCalls = () => fetchCalls.filter((c) => !isApiSourceUrl(c.url));
+const pickupCalls = () => fetchCalls.filter((c) => isPickupUrl(c.url));
+const publicCalls = () => fetchCalls.filter((c) => !isApiSourceUrl(c.url) && !isPickupUrl(c.url));
 
 function makeResponse({ status = 200, body = "", headers = {}, finalUrl, url }) {
   const res = new Response(String(body), {
@@ -97,6 +103,11 @@ function makeResponse({ status = 200, body = "", headers = {}, finalUrl, url }) 
 globalThis.fetch = async (url, opts = {}) => {
   const u = String(url);
   fetchCalls.push({ url: u, method: opts.method || "GET", headers: opts.headers || {} });
+  if (isPickupUrl(u)) {
+    // Pickup-contract resolve path (POST). Respond from pickupReply, or 404.
+    const r = pickupReply ?? { status: 404, body: JSON.stringify({ error: "not found" }) };
+    return makeResponse({ status: r.status, body: typeof r.body === "string" ? r.body : JSON.stringify(r.body), url: u });
+  }
   if (isApiSourceUrl(u)) {
     // API read path: respond with { html } (200) or non-ok to force fallback.
     if (typeof apiHtml === "string") {
@@ -113,6 +124,7 @@ const reset = () => {
   fetchCalls = [];
   apiHtml = null; // fallback by default
   publicReplies = [];
+  pickupReply = null; // pickup resolve is a no-op (404) unless a test arms it
 };
 
 try {
@@ -322,6 +334,72 @@ try {
     apiSourceCalls().some((c) => c.url === `${API_BASE}/api/v2/inspirations/e9/source`),
   );
 
+  // ── 10. URL → entity_id via the pickup contract (fresh chat, no session) ────
+  // A bare URL with no session lastDrop and no entity_id resolves a REAL
+  // entity_id (+ edition metadata) through the deployed pickup contract, so the
+  // agent can re-plug in place. The HTML still comes from the API read.
+  const pickupBody = {
+    entity_id: "e9",
+    slug: "page",
+    grid: "acme",
+    kind: "inspiration",
+    single_html: true,
+    version: 3,
+    url: "https://acme.cloudgrid.io/page",
+    owner: { handle: "me", is_you: true },
+    capabilities: { replug: true, fork: true },
+    replug_handle: { target_entity_id: "e9", grid: "acme", slug: "page" },
+    source_download_url: "/api/v2/inspirations/page/source",
+  };
+
+  reset();
+  apiHtml = "<!doctype html><html><body>picked-up</body></html>";
+  pickupReply = { status: 200, body: pickupBody };
+  const picked = await runSource(
+    makeCtx({ token: "jwt-x", lastDrop: null }),
+    { url: "https://acme.cloudgrid.io/page" },
+  );
+  check("pickup resolve: entity_id resolved (not null)", picked.structured.entity_id === "e9");
+  check("pickup resolve: HTML still returned via the API read", picked.structured.html === apiHtml);
+  check("pickup resolve: the pickup contract was called exactly once", pickupCalls().length === 1);
+  check("pickup resolve: contract POSTed (not fetched public)", pickupCalls()[0]?.method === "POST");
+  check("pickup resolve: NO public *.cloudgrid.io fetch for resolution", publicCalls().length === 0);
+  check("pickup resolve: carries kind", picked.structured.kind === "inspiration");
+  check("pickup resolve: carries single_html", picked.structured.single_html === true);
+  check("pickup resolve: carries capabilities.replug", picked.structured.capabilities?.replug === true);
+  check("pickup resolve: carries replug_handle", picked.structured.replug_handle?.target_entity_id === "e9");
+  check("pickup resolve: carries source_download_url", picked.structured.source_download_url === "/api/v2/inspirations/page/source");
+  // The API read is keyed by the resolved entity_id.
+  check(
+    "pickup resolve: API read keyed by resolved entity_id",
+    apiSourceCalls().some((c) => c.url === `${API_BASE}/api/v2/inspirations/e9/source`),
+  );
+
+  // Best-effort: pickup failure → falls back to today's behavior (no throw, HTML
+  // still served via the API read, entity_id null). Never regress the read.
+  reset();
+  apiHtml = "<html>still-served</html>";
+  pickupReply = { status: 500, body: { error: "boom" } };
+  const degraded = await runSource(
+    makeCtx({ token: "jwt-x", lastDrop: null }),
+    { url: "https://acme.cloudgrid.io/page" },
+  );
+  check("pickup failure: does not throw; HTML still returned", degraded.structured.html === "<html>still-served</html>");
+  check("pickup failure: entity_id falls back to null", degraded.structured.entity_id === null);
+  check("pickup failure: still no public fetch", publicCalls().length === 0);
+
+  // When the entity_id is already known (session state), the pickup resolve is
+  // SKIPPED — no needless contract call.
+  reset();
+  apiHtml = "<html>known</html>";
+  pickupReply = { status: 200, body: { entity_id: "should-not-be-used" } };
+  const known = await runSource(
+    makeCtx({ lastDrop: { entity_id: "e1", url: "https://acme.cloudgrid.io/s" } }),
+    {},
+  );
+  check("pickup skipped when entity_id already known (session)", pickupCalls().length === 0);
+  check("pickup skipped: session entity_id preserved", known.structured.entity_id === "e1");
+
   // ── 9. Registered handlers / no alias / playbook / descriptions ─────────────
   const server = makeServer();
   registerTools(server, makeCtx({ lastDrop: null }));
@@ -362,6 +440,35 @@ try {
   check(
     "grid_plug description mentions grid_source",
     /call grid_source first to retrieve it, then re-plug with target_entity_id/.test(server.descriptions.grid_plug),
+  );
+
+  // ── Edition-aware edit flow (spec §6): the playbook carries EACH branch ──────
+  check(
+    "playbook: edit-from-URL branch — grid_source resolves entity_id + single_html",
+    /grid_source/.test(startText) && /entity_id/.test(startText) && /single_html/.test(startText),
+  );
+  check(
+    "playbook: edit-in-place branch — single-HTML + capabilities.replug via target_entity_id / grid+slug",
+    /capabilities\.replug/.test(startText) && /target_entity_id/.test(startText) && /grid\+slug/.test(startText),
+  );
+  check(
+    "playbook: multi-file fallback branch — app/agent or single_html:false → source_download_url + local edition/CLI",
+    /multi-file/.test(startText) && /source_download_url/.test(startText) && /local edition/.test(startText) && /CLI/.test(startText),
+  );
+  check(
+    "playbook: not-owner fork branch — replug:false / not_owner → grid_fork",
+    /not_owner/.test(startText) && /grid_fork/.test(startText),
+  );
+
+  // grid_plug description advertises grid+slug as an alternative re-plug handle.
+  check(
+    "grid_plug description mentions grid+slug re-plug handle",
+    /grid\s*\+\s*slug/.test(server.descriptions.grid_plug),
+  );
+  // grid_source description advertises URL→entity_id resolution + edition metadata.
+  check(
+    "grid_source description mentions resolving entity_id from a URL + capabilities",
+    /entity_id/.test(server.descriptions.grid_source) && /capabilities/.test(server.descriptions.grid_source),
   );
 } finally {
   globalThis.fetch = realFetch;

@@ -409,6 +409,63 @@ try {
     check("issue#48: the cloudgrid_yaml param wins over an inlined stale manifest", formField("name") === "only-once");
   }
 
+  // ── grid+slug re-plug (from the pickup contract's replug_handle) ────────────
+  // A client holding only the grid+slug handle (not the raw entity_id) re-plugs
+  // in place: runPlug resolves grid+slug → entity_id via the pickup contract,
+  // then updates that entity. A slug that does NOT resolve → CREATE (no false-
+  // positive). target_entity_id stays the primary handle.
+  const isPickup = (u) => /\/api\/v2\/entities\/[^/]+\/pickup$/.test(u);
+
+  // (a) grid+slug that resolves → RE-PLUG the resolved entity in place.
+  {
+    const gsCtx = makeCtx({ token: "jwt-gs", edition: "local" });
+    gsCtx.getActiveGrid = async () => "acme";
+    const before = calls.length;
+    replies = [
+      // pickup resolve: grid+slug → an existing entity
+      { status: 200, body: { entity_id: "ent-gs", slug: "page", grid: "acme", kind: "inspiration", single_html: true, capabilities: { replug: true, fork: true }, replug_handle: { target_entity_id: "ent-gs", grid: "acme", slug: "page" } } },
+      // the /plug re-plug
+      { status: 202, body: { entity_id: "ent-gs", slug: "page", grid: "acme", url: "https://acme.cloudgrid.io/page", status: "live" } },
+    ];
+    const gs = await runPlug(gsCtx, { html: "<h1>edited</h1>", grid: "acme", slug: "page" });
+    const madeCalls = calls.slice(before);
+    const pickupCall = madeCalls.find((c) => isPickup(c.url));
+    const plugPost = madeCalls.find((c) => c.url.endsWith("/api/v2/plug") && c.method === "POST");
+    check("grid+slug: resolves via the pickup contract (POST /entities/page/pickup)", Boolean(pickupCall) && pickupCall.url.endsWith("/api/v2/entities/page/pickup") && pickupCall.method === "POST");
+    check("grid+slug: pickup resolve carries the grid header", pickupCall?.headers?.["X-CloudGrid-Grid"] === "acme");
+    check("grid+slug: /plug re-plugs the RESOLVED entity (not a create)", plugPost?.form?.get("target_entity_id") === "ent-gs");
+    check("grid+slug: authed re-plug carries the cloudgrid.yaml part", plugPost?.form?.get("cloudgrid.yaml") !== null);
+    check("grid+slug: says Updated in place + keeps the URL", /Updated in place/.test(gs.text) && gs.structured.url === "https://acme.cloudgrid.io/page");
+  }
+
+  // (b) grid+slug that does NOT resolve (404) → CREATE, never a false-positive re-plug.
+  {
+    const gnCtx = makeCtx({ token: "jwt-gn", edition: "local" });
+    gnCtx.getActiveGrid = async () => "acme";
+    const before = calls.length;
+    replies = [
+      { status: 404, body: { error: { code: "NOT_FOUND", message: "no such entity" } } }, // pickup resolve: nonexistent
+      { status: 201, body: { entity_id: "ent-new", slug: "brand-new", grid: "acme", url: "https://acme.cloudgrid.io/brand-new", status: "live" } },
+    ];
+    const gn = await runPlug(gnCtx, { html: "<h1>new</h1>", grid: "acme", slug: "brand-new" });
+    const madeCalls = calls.slice(before);
+    const plugPost = madeCalls.find((c) => c.url.endsWith("/api/v2/plug") && c.method === "POST");
+    check("grid+slug nonexistent: pickup resolve attempted", madeCalls.some((c) => isPickup(c.url)));
+    check("grid+slug nonexistent: /plug sends NO target (CREATE, no false-positive)", plugPost?.form?.get("target_entity_id") === null);
+    check("grid+slug nonexistent: creates a NEW entity", gn.structured.entity_id === "ent-new");
+  }
+
+  // (c) target_entity_id stays PRIMARY: when present, no pickup resolve happens.
+  {
+    const primaryCtx = makeCtx({ token: "jwt-p", edition: "local" });
+    const before = calls.length;
+    replies = [{ status: 202, body: { entity_id: "ent-primary", slug: "s", grid: "acme", url: "https://acme.cloudgrid.io/s", status: "live" } }];
+    await runPlug(primaryCtx, { html: "<h1>x</h1>", target_entity_id: "ent-primary", grid: "acme", slug: "page" });
+    const madeCalls = calls.slice(before);
+    check("target_entity_id primary: NO pickup resolve when it is present", !madeCalls.some((c) => isPickup(c.url)));
+    check("target_entity_id primary: /plug targets it directly", madeCalls.find((c) => c.url.endsWith("/api/v2/plug"))?.form?.get("target_entity_id") === "ent-primary");
+  }
+
   // ── parseManifestName unit checks ──────────────────────────────────────────
   check("parseManifestName: top-level name", parseManifestName("name: foo\nservices: {}\n") === "foo");
   check("parseManifestName: quoted", parseManifestName('name: "bar baz"\n') === "bar baz");
