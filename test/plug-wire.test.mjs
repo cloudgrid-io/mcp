@@ -183,6 +183,51 @@ try {
   const a3 = await runPlug(authedCtx, { html: "<h1>v3</h1>" });
   check("empty server url falls back to client composition", a3.structured.url === "https://atomic.cloudgrid.io/s3");
 
+  // ── hosted "share a link with a friend": web authed inspiration create is made
+  //    link-visible so the URL renders without a sign-in wall. A follow-up PATCH
+  //    to /inspirations/:id rides after the /plug POST — so assertions target the
+  //    /plug POST specifically, never lastCall().
+  {
+    const webAuthed = makeCtx({ token: "jwt-web", edition: "web" });
+    webAuthed.getActiveGrid = async () => "acme";
+    const before = calls.length;
+    replies = [
+      { status: 201, body: { entity_id: "ent-w", slug: "sw", grid: "acme", url: "https://acme.cloudgrid.io/sw", status: "live" } },
+      // the visibility PATCH reply (best-effort; any 2xx is fine)
+      { status: 200, body: { visibility: "link" } },
+    ];
+    const w = await runPlug(webAuthed, { html: "<h1>hosted share</h1>" });
+    const plugPost = calls
+      .slice(before)
+      .find((c) => c.url.endsWith("/api/v2/plug") && c.method === "POST");
+    const patch = calls
+      .slice(before)
+      .find((c) => c.url.includes("/api/v2/inspirations/") && c.method === "PATCH");
+    check("web authed html create posts to /plug with Authorization", Boolean(plugPost) && plugPost.headers.Authorization === "Bearer jwt-web");
+    check("web authed html create upgrades visibility (PATCH /inspirations/:id)", Boolean(patch));
+    check("visibility PATCH carries the grid header", patch?.headers?.["X-CloudGrid-Grid"] === "acme");
+    check("web authed html create → result is link-visible", w.structured.current_visibility === "link");
+    check("web authed html create → surfaces the shareable-link message", /Visible to: Anyone with the link/.test(w.text));
+    check("web authed html create → says Your app is live", /Your app is live/.test(w.text));
+    check("web authed html create → offers visibility options", Array.isArray(w.structured.visibility_options) && w.structured.visibility_options.some((o) => o.value === "link"));
+  }
+
+  // A runtime app create on web is NOT auto-linked (only inspirations are).
+  {
+    const webApp = makeCtx({ token: "jwt-app", edition: "web" });
+    webApp.getActiveGrid = async () => "acme";
+    const before = calls.length;
+    replies = [
+      { status: 202, body: { entity_id: "ent-app", slug: "app1", grid: "acme", url: "https://app1.acme.cloudgrid.io", status: "live", detection: { kind: "app" } } },
+    ];
+    const wa = await runPlug(webApp, { artifact_files: [{ path: "index.html", content: "<h1>x</h1>" }], hints: { kind: "app" } });
+    const patch = calls
+      .slice(before)
+      .find((c) => c.url.includes("/api/v2/inspirations/") && c.method === "PATCH");
+    check("web authed APP create → NOT auto-linked (no visibility PATCH)", !patch);
+    check("web authed APP create → no link-visibility in result", wa.structured.current_visibility === undefined);
+  }
+
   // ── runPlug: artifact_files wire (hosted) ──────────────────────────────────
   const plugCtx = makeCtx();
   replies = [

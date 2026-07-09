@@ -142,7 +142,7 @@ try {
     }),
   );
   const drop = await client.callTool({ name: "grid_plug", arguments: { html: "<h1>authed</h1>" } });
-  check("authed plug reports the live URL (web edition)", (drop.content?.[0]?.text ?? "").includes("Live:"));
+  check("authed plug reports Your app is live (web edition)", (drop.content?.[0]?.text ?? "").includes("Your app is live"));
   check("authed plug composed the live URL from slug + grid", (drop.content?.[0]?.text ?? "").includes("https://e2e-bot.cloudgrid.io/mock-1"));
   check("upstream plug received the OAuth Bearer", dropAuthHeader === `Bearer ${FAKE_JWT}`);
 

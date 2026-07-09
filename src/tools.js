@@ -42,6 +42,15 @@ const ANON_HTML_MAX_BYTES = 2_000_000;
 // folder-plug path uses PLUG_MAX_TOTAL_BYTES = 100MB, but the single-artifact
 // inline limit is not yet confirmed) and raise this to match.
 const AUTHED_HTML_MAX_BYTES = 25_000_000;
+const CONSOLE_URL = "https://console.cloudgrid.io/";
+
+const VISIBILITY_LABELS = {
+  private: "Only you",
+  org: "Your org",
+  authenticated: "Anyone signed in",
+  space: "A space",
+  link: "Anyone with the link",
+};
 
 // ── Widget resources (ChatGPT Apps SDK, web edition only) ────────────────────
 // The Apps-SDK UI widgets (openai/outputTemplate → a ui:// html resource) render
@@ -1464,6 +1473,32 @@ export async function plugViaCliFallback(ctx, artifacts, deps = {}) {
   }
 }
 
+// After an authenticated WEB inspiration create, upgrade visibility to "link" so
+// the page is shareable and its preview renders without a sign-in wall — the
+// whole point of the hosted "share a link with a friend" flow. Best-effort: a
+// failure here never fails the publish (the user can always call grid_visibility).
+async function upgradeVisibilityToLink(ctx, entityId, orgSlug) {
+  const token = await ctx.getToken();
+  if (!token || !entityId) return false;
+  try {
+    const hdrs = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+    // Grid-native header + X-CloudGrid-Org alias (same value) during the soak.
+    // Never send conflicting values → 400 GRID_HEADER_CONFLICT.
+    if (orgSlug) {
+      hdrs["X-CloudGrid-Grid"] = orgSlug;
+      hdrs["X-CloudGrid-Org"] = orgSlug;
+    }
+    const res = await fetch(`${API_BASE}/api/v2/inspirations/${encodeURIComponent(entityId)}`, {
+      method: "PATCH",
+      headers: hdrs,
+      body: JSON.stringify({ visibility: "link" }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The unified create/re-plug verb (spec v2 §3). Two intents on one tool, keyed
  * by `target_entity_id`:
@@ -1602,6 +1637,8 @@ export async function runPlug(ctx, input, deps = {}) {
   }
 
   const headers = {};
+  // The authed target grid — also reused for the post-create visibility upgrade.
+  let orgSlug = null;
   if (!useAnonWire && authToken) {
     headers["Authorization"] = `Bearer ${authToken}`;
     // On create, `grid` picks where the entity lands. On re-plug the entity's
@@ -1609,7 +1646,7 @@ export async function runPlug(ctx, input, deps = {}) {
     // the caller's membership from this header and requires it to MATCH the
     // entity's grid, so pass `grid` here too when the target lives outside the
     // active grid.
-    const orgSlug = grid || (await ctx.getActiveGrid());
+    orgSlug = grid || (await ctx.getActiveGrid());
     // Grid-native header + X-CloudGrid-Org alias (same slug) during the soak.
     if (orgSlug) {
       headers["X-CloudGrid-Grid"] = orgSlug;
@@ -1780,6 +1817,20 @@ export async function runPlug(ctx, input, deps = {}) {
   // the terminal states get the live wording; anything still building points at
   // the poll_url and grid_status.
   const isBuilding = data.status === "building" || Boolean(data.poll_url);
+
+  // An authed CREATE of an INSPIRATION (the single-file `html` path, or a server-
+  // detected inspiration — NOT a runtime app/agent, NOT a build in flight, NOT an
+  // anon guest drop). This is the case that (on the hosted edition) must be made
+  // link-visible so the shared URL renders without a sign-in wall.
+  const detectedKind = data.detection?.kind;
+  const isInspirationCreate =
+    !isEdit &&
+    !useAnonWire &&
+    !isBuilding &&
+    detectedKind !== "app" &&
+    detectedKind !== "agent" &&
+    (inlineHtmlBytes != null || detectedKind === "inspiration");
+
   const lines = [];
   if (isBuilding) {
     lines.push(
@@ -1792,8 +1843,14 @@ export async function runPlug(ctx, input, deps = {}) {
         ? `Poll ${data.poll_url} or run grid_status until it is ready (trace ${data.trace_id ?? "n/a"}). Do not report it as live until then.`
         : "Run grid_status until it is ready. Do not report it as live until then.",
     );
+  } else if (isEdit) {
+    lines.push(`Updated in place: ${url}`);
+  } else if (isInspirationCreate) {
+    // Authed inspiration create — owned by the caller. Wording mirrors the drop verb.
+    lines.push(ctx.edition === "web" ? `Your app is live: ${url}` : `Published to your org: ${url}`);
+    if (ctx.edition !== "web") lines.push("Owned by you.");
   } else {
-    lines.push(isEdit ? `Updated in place: ${url}` : `Live: ${url}`);
+    lines.push(`Live: ${url}`);
   }
   if (data.entity_id) {
     lines.push(
@@ -1803,6 +1860,22 @@ export async function runPlug(ctx, input, deps = {}) {
   if (data.claim_message) lines.push(data.claim_message);
   if (isEdit && useAnonWire) {
     lines.push("The owner_token was re-minted for the reset expiry — replace the stored one.");
+  }
+
+  // Hosted "share a link with a friend": a signed-in WEB inspiration create is
+  // upgraded to "link" visibility so its preview renders without a sign-in wall.
+  // Scoped EXACTLY to web + create + inspiration — never runtime apps/agents,
+  // edits, anon drops, or the local edition (which stays owned/org-scoped).
+  if (isInspirationCreate && ctx.edition === "web" && data.entity_id) {
+    await upgradeVisibilityToLink(ctx, data.entity_id, orgSlug);
+    const vis = "link";
+    structured.console_url = CONSOLE_URL;
+    structured.current_visibility = vis;
+    structured.visibility_options = Object.entries(VISIBILITY_LABELS).map(([v, l]) => ({ value: v, label: l }));
+    lines.push(`See and manage all your apps in your grid: ${CONSOLE_URL}`);
+    lines.push(
+      `Visible to: ${VISIBILITY_LABELS[vis]}. Want to restrict access? I can set it to only you or your org.`,
+    );
   }
   return { text: lines.join("\n"), structured };
 }
@@ -2271,6 +2344,12 @@ export function registerTools(server, ctx) {
         claim_url: z.string().optional().describe("Anon create only: sign-in link to claim ownership."),
         claim_message: z.string().optional().describe("Anon create only: the claim nudge to relay."),
         owner_token: z.string().optional().describe("Anonymous drops: the bearer owner token (re-plug + claim). Re-minted on every anonymous edit — persist the newest."),
+        console_url: z.string().optional().describe("Web authed inspiration create: URL to manage all apps in the grid."),
+        current_visibility: z.string().optional().describe("Web authed inspiration create: the visibility set after publish (link)."),
+        visibility_options: z.array(z.object({
+          value: z.string().describe("Visibility value to pass to grid_visibility."),
+          label: z.string().describe("Human-readable label."),
+        })).optional().describe("Web authed inspiration create: available visibility levels."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
       ...(ctx.edition === "web" && APPS_WIDGETS_ENABLED ? {
