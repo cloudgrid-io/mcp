@@ -1520,6 +1520,7 @@ export async function runPlug(ctx, input, deps = {}) {
     cloudgrid_yaml,
     target_entity_id,
     grid,
+    slug,
     hints,
     anon,
     owner_token,
@@ -1575,7 +1576,19 @@ export async function runPlug(ctx, input, deps = {}) {
     );
   }
 
-  const isEdit = typeof target_entity_id === "string" && target_entity_id.length > 0;
+  // grid+slug re-plug handle (the pickup contract's `replug_handle`): when no
+  // explicit target_entity_id was given but a grid+slug pair is, resolve it to
+  // an existing entity_id and re-plug that in place. A slug that does NOT resolve
+  // to an existing entity → targetEntityId stays empty → this is a CREATE (no
+  // false-positive re-plug). target_entity_id remains the primary/documented
+  // handle. Best-effort resolve (pickup contract); never fetches the public URL.
+  let targetEntityId = target_entity_id;
+  if ((typeof targetEntityId !== "string" || targetEntityId.length === 0) && grid && slug) {
+    const resolved = await resolveEntityViaPickup(ctx, { target: slug, grid });
+    if (resolved?.entity_id) targetEntityId = resolved.entity_id;
+  }
+
+  const isEdit = typeof targetEntityId === "string" && targetEntityId.length > 0;
 
   // An inspiration edit content-versions the FIRST uploaded artifact — when a
   // multi-file folder rides a re-plug, put the primary entry first so the edit
@@ -1595,10 +1608,10 @@ export async function runPlug(ctx, input, deps = {}) {
   if (isEdit && !ownerToken) {
     // Recover the owner token from session state when re-plugging the drop this
     // session made anonymously.
-    if (ctx.state.lastDrop?.entity_id === target_entity_id && ctx.state.lastDrop.owner_token) {
+    if (ctx.state.lastDrop?.entity_id === targetEntityId && ctx.state.lastDrop.owner_token) {
       ownerToken = ctx.state.lastDrop.owner_token;
     } else if (
-      ctx.state.lastAnonClaim?.entity_id === target_entity_id &&
+      ctx.state.lastAnonClaim?.entity_id === targetEntityId &&
       ctx.state.lastAnonClaim.token
     ) {
       ownerToken = ctx.state.lastAnonClaim.token;
@@ -1686,7 +1699,7 @@ export async function runPlug(ctx, input, deps = {}) {
     form.append("artifact", new Blob([a.buffer], { type: a.type || "application/octet-stream" }), a.path);
   }
   if (isEdit) {
-    form.append("target_entity_id", target_entity_id);
+    form.append("target_entity_id", targetEntityId);
     if (useAnonWire) {
       form.append("owner_token", ownerToken);
     } else {
@@ -2365,6 +2378,12 @@ export function registerTools(server, ctx) {
       "On create: the grid slug to plug into (omit to use the caller's active grid). On re-plug the entity " +
       "never moves grids, but pass its home grid here when it differs from your active grid (the API " +
       "checks your membership in the entity's grid). Anonymous → always the Guest grid.",
+    ),
+    slug: z.string().optional().describe(
+      "Alternative RE-PLUG handle: paired with `grid`, resolves to an existing entity (the pickup " +
+      "contract's replug_handle) and updates it in place — for a client that holds only grid+slug, not the " +
+      "raw entity_id. target_entity_id takes precedence. A grid+slug that does NOT resolve to an existing " +
+      "entity is treated as a CREATE (never a false-positive re-plug).",
     ),
     hints: z.object({
       kind: z.enum(["inspiration", "app", "agent"]).optional().describe("Force the detected kind; omit to let the server auto-detect."),
