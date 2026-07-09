@@ -20,21 +20,20 @@ function check(label, cond) {
 
 await client.connect(transport);
 
-// 1. Identity drop — should land in the user's org, owned.
+// 1. Identity publish — should land in the user's grid, owned.
 const idDrop = await client.callTool({
-  name: "grid_drop",
-  arguments: { html: "<h1>identity drop smoke</h1>", org, filename: "id-smoke.html" },
+  name: "grid_plug",
+  arguments: { html: "<h1>identity drop smoke</h1>", grid: org, filename: "id-smoke.html" },
 });
 const idText = idDrop.content?.[0]?.text ?? "";
-console.log("--- identity drop ---\n" + idText);
-check("identity drop succeeded", idDrop.isError !== true);
-check("identity drop is owned (Published to your org)", /Published to your org/.test(idText));
-check(`identity drop landed in ${org}`, idText.includes(`${org}.cloudgrid.io`));
+console.log("--- identity publish ---\n" + idText);
+check("identity publish succeeded", idDrop.isError !== true);
+check(`identity publish landed in ${org}`, idText.includes(`${org}.cloudgrid.io`));
 
-// 2. Anonymous drop — should return a Live guest URL and arm the claim.
+// 2. Anonymous publish — should return a Live guest URL and arm the claim.
 const anon = await client.callTool({
-  name: "grid_drop",
-  arguments: { html: "<h1>anon drop smoke</h1>", anonymous: true, filename: "anon-smoke.html" },
+  name: "grid_plug",
+  arguments: { html: "<h1>anon drop smoke</h1>", anon: true, filename: "anon-smoke.html" },
 });
 const anonText = anon.content?.[0]?.text ?? "";
 console.log("--- anonymous drop ---\n" + anonText);

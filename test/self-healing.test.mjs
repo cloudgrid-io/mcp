@@ -7,7 +7,7 @@
 //   2. The LOCAL-edition CLI self-heal rung: a signed-in CREATE that hits the
 //      known 400 SCOPE_INVALID platform bug is retried through the bundled CLI.
 //      Only local + create + signed-in triggers it; web / anon / edit do NOT.
-//      Asserted against the real runDrop/runPlug via mocked fetch + an injected
+//      Asserted against the real runPlug via mocked fetch + an injected
 //      CLI runner (the deps seam).
 //   3. grid_fetch corpus resolution for kind:"rule" (and troubleshooting).
 //
@@ -18,7 +18,6 @@ import { fileURLToPath } from "node:url";
 import {
   errorGuidance,
   parseCliPlugUrl,
-  runDrop,
   runPlug,
   fetchCorpus,
 } from "../src/tools.js";
@@ -163,15 +162,15 @@ try {
     check("runPlug fallback text notes the CLI recovery", /bundled CloudGrid CLI/.test(res.text));
   }
 
-  // runDrop: same trigger via the HTML-drop path.
+  // runPlug via the inline `html` single-file path: same trigger, same self-heal.
   {
     calls.length = 0;
     replies = [SCOPE_INVALID_400];
     const ctx = makeCtx({ token: "jwt", edition: "local" });
     const run = makeCliRunner("Outlet: https://drop-healed.atomic.cloudgrid.io\n");
-    const res = await runDrop(ctx, { html: "<h1>hi</h1>" }, { run, makeTmp });
-    check("runDrop local authed create SCOPE_INVALID → CLI invoked", run.invocations.length === 1);
-    check("runDrop fallback returns the CLI-parsed URL", res.structured.url === "https://drop-healed.atomic.cloudgrid.io");
+    const res = await runPlug(ctx, { html: "<h1>hi</h1>" }, { run, makeTmp });
+    check("runPlug html local authed create SCOPE_INVALID → CLI invoked", run.invocations.length === 1);
+    check("runPlug html fallback returns the CLI-parsed URL", res.structured.url === "https://drop-healed.atomic.cloudgrid.io");
   }
 
   // ═══ 3b. CLI self-heal rung — NON-trigger cases (must NOT fire) ════════════

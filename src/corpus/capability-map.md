@@ -4,9 +4,14 @@ This is the index an LLM uses to turn a user request into the right CloudGrid
 template, the way Superpowers matches a skill's `when:`. Match the request to a
 template by its `when:` triggers, adopt that template's `needs:`, then deploy:
 
-- **static → inspiration** (instant, any client / any edition) via `grid_drop`.
-- **anything needing `needs:` → runtime** (async build, **local edition** only)
-  via `grid_plug` on a linked folder.
+> **One deploy verb: `grid_plug`.** Classify the artifact to pick the shape —
+> ONE self-contained HTML page (CSS+JS inline, images/fonts as data: URIs) →
+> **inspiration**; separate files/folders/assets or any `needs:` → **runtime app**.
+
+- **single self-contained HTML page → inspiration** (instant, any client / any
+  edition) via `grid_plug` with the inline `html` param.
+- **separate files/folders/assets, or anything needing `needs:` → runtime app**
+  (async build, **local edition** only) via `grid_plug` on a linked folder.
 
 Fetch this doc any time with `grid_fetch("doc", "capability-map")`. For the full
 cloudgrid.yaml schema (every field, the `needs:` injection table, the
@@ -173,9 +178,10 @@ engine hint. Cron is NOT a need — it is a **service type** (`type: cron` with
    `api-service`); talks to an LLM → `ai: true` + `database` (`ai-app`); scheduled
    work → a `type: cron` service (Python/Node, supported on 0.14.0). (Held for now:
    RAG's ideal `vector: pgvector`, #1545 — store embeddings in Mongo until it lands.)
-3. Static (`needs: none`) → publish as an inspiration with `grid_drop`
-   (instant, any edition). Anything with a `needs:` → runtime, local edition,
-   `grid_plug` a linked folder, then poll to a live URL.
+3. One self-contained HTML page (`needs: none`, assets inlined) → publish as an
+   inspiration with `grid_plug` and the inline `html` param (instant, any
+   edition). Separate files/folders/assets, or anything with a `needs:` →
+   runtime, local edition, `grid_plug` a linked folder, then poll to a live URL.
 
 ## FAQ
 

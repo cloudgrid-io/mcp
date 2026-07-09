@@ -358,11 +358,7 @@ try {
       /grid_source[\s\S]*target_entity_id[\s\S]*Do not ask the user to paste/.test(startText),
   );
 
-  // drop/plug descriptions carry the new clause.
-  check(
-    "grid_drop description mentions grid_source",
-    /call grid_source first to retrieve it, then re-plug with target_entity_id/.test(server.descriptions.grid_drop),
-  );
+  // grid_plug description carries the new clause.
   check(
     "grid_plug description mentions grid_source",
     /call grid_source first to retrieve it, then re-plug with target_entity_id/.test(server.descriptions.grid_plug),

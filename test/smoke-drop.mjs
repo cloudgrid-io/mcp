@@ -1,7 +1,7 @@
-// Live drop smoke test: spawn the server, call grid_drop with inline HTML,
+// Live drop smoke test: spawn the server, call grid_plug with inline HTML,
 // confirm a live URL comes back, then fetch that URL and confirm it serves.
-// This creates a REAL anonymous drop (inspirations only, 7-day auto-expiry), so
-// it is kept out of `npm run smoke`. Run on demand: node test/smoke-drop.mjs
+// This creates a REAL anonymous inspiration (7-day auto-expiry), so it is kept
+// out of `npm run smoke`. Run on demand: node test/smoke-drop.mjs
 //
 // No login needed — that is the point.
 
@@ -20,7 +20,7 @@ function check(label, cond) {
 await client.connect(transport);
 
 const html = "<h1>Dropped from the MCP smoke test</h1><p>No login. No CLI.</p>";
-const res = await client.callTool({ name: "grid_drop", arguments: { html } });
+const res = await client.callTool({ name: "grid_plug", arguments: { html, anon: true } });
 const text = res.content?.[0]?.text ?? "";
 console.log("--- tool output ---\n" + text);
 

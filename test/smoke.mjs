@@ -14,7 +14,6 @@ const GRIDCTL = [
   "grid_start",
   "grid_fetch",
   "grid_report",
-  "grid_drop",
   "grid_claim",
   "grid_fork",
   "grid_download",
@@ -74,27 +73,24 @@ check(
   cloudgridNames.length === 0,
 );
 
-// Local edition: grid_drop must include the `path` parameter, plus the
-// unified-plug re-plug handles (entity_id / owner_token / fresh).
-const dropTool = tools.find((t) => t.name === "grid_drop");
-const dropProps = dropTool?.inputSchema?.properties ?? {};
-check("local drop has `path` param", "path" in dropProps);
-check("local drop has `html` param", "html" in dropProps);
-check("drop has `entity_id` re-plug param", "entity_id" in dropProps);
-check("drop has `owner_token` param", "owner_token" in dropProps);
-check("drop description says re-drops update in place", (dropTool?.description ?? "").includes("in place"));
+// grid_drop is GONE — folded into grid_plug (the one deploy/share verb).
+check("grid_drop is no longer advertised", !nameSet.has("grid_drop"));
 
-// grid_plug is the unified direct-API create/re-plug verb (spec v2 §3) —
-// no longer a CLI wrapper. Local edition: `path` + `artifact_files` +
+// grid_plug is the unified direct-API create/re-plug verb (spec v2 §3) and now
+// the single deploy/share verb — it absorbed the drop single-file publish via
+// the inline `html` param. Local edition: `html` + `path` + `artifact_files` +
 // `target_entity_id`; the old CLI-wrap `target` param is gone.
 const plugTool = tools.find((t) => t.name === "grid_plug");
 const plugProps = plugTool?.inputSchema?.properties ?? {};
+check("plug has `html` single-file param (absorbed from drop)", "html" in plugProps);
+check("plug has `filename` param", "filename" in plugProps);
 check("local plug has `path` param", "path" in plugProps);
 check("plug has `artifact_files` param", "artifact_files" in plugProps);
 check("plug has `target_entity_id` param", "target_entity_id" in plugProps);
 check("plug has `owner_token` param", "owner_token" in plugProps);
 check("plug has `anon` param", "anon" in plugProps);
 check("plug dropped the CLI-wrap `target` param", !("target" in plugProps));
+check("plug description routes the share/publish intent", /share|publish|send/i.test(plugTool?.description ?? ""));
 
 // Agent Core: grid_start returns the playbook + presentation workflow.
 const start = await client.callTool({ name: "grid_start", arguments: {} });

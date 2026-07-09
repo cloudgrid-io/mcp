@@ -2,7 +2,7 @@
 //
 // The same tool core as the local edition, served over the MCP Streamable HTTP
 // transport so web clients (claude.ai) can connect by URL with nothing installed.
-// The light, CLI-free toolset only: drop, claim, login. Identity is a per-session
+// The light, CLI-free toolset only: plug, claim, login. Identity is a per-session
 // token held in memory for the life of the MCP session (no local files on a
 // shared host).
 //

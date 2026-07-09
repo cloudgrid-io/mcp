@@ -39,13 +39,13 @@ npx skills add cloudgrid-io/skills
 /plugin install cloudgrid
 ```
 - **Find it under `/plugin`**; the skills also show under `/skills` (labeled Plugin).
-- Invoke as **`/cloudgrid:drop`** (plugin namespace + short skill name, like `superpowers:brainstorming`), or describe the task.
+- Invoke as **`/cloudgrid:plug`** (plugin namespace + short skill name, like `superpowers:brainstorming`), or describe the task.
 
 ### Route 3 — the MCP server
 ```
 claude mcp add cloudgrid -- npx -y @cloudgrid-io/mcp
 ```
-- **Find it under `/mcp`.** Exposes tools `grid_drop`, `grid_login`, …
+- **Find it under `/mcp`.** Exposes tools `grid_plug`, `grid_login`, …
 - Invoke by describing the task; the model calls the tool.
 
 > Where did my install go? `/skills` (skills), `/plugin` (plugin), `/mcp` (MCP).
