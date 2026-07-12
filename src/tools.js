@@ -2101,8 +2101,17 @@ async function readInspirationSourceViaApi(ctx, { entityId, slug, grid }) {
         { method: "GET", headers, signal: AbortSignal.timeout(15_000) },
       );
       if (!res.ok) continue;
-      const data = await res.json().catch(() => null);
-      if (data && typeof data.html === "string") return data.html;
+      // The route (GET /v2/inspirations/:seg/source) serves the RAW HTML bytes
+      // as text/html — NOT a JSON { html } envelope. Read the body as text.
+      // (Tolerate a JSON { html } shape too, in case a variant ever returns it.)
+      const ct = (res.headers.get("content-type") || "").toLowerCase();
+      if (ct.includes("application/json")) {
+        const data = await res.json().catch(() => null);
+        if (data && typeof data.html === "string") return data.html;
+        continue;
+      }
+      const html = await res.text().catch(() => null);
+      if (typeof html === "string" && html.length > 0) return html;
     } catch {
       // try the next attempt, then the public-fetch fallback
     }

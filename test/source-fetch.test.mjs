@@ -109,9 +109,16 @@ globalThis.fetch = async (url, opts = {}) => {
     return makeResponse({ status: r.status, body: typeof r.body === "string" ? r.body : JSON.stringify(r.body), url: u });
   }
   if (isApiSourceUrl(u)) {
-    // API read path: respond with { html } (200) or non-ok to force fallback.
+    // API read path. The real route (GET /api/v2/inspirations/:seg/source)
+    // returns the RAW HTML bytes as text/html — NOT a JSON { html } envelope.
+    // Mock it faithfully so the reader is tested against the real contract.
     if (typeof apiHtml === "string") {
-      return makeResponse({ status: 200, body: JSON.stringify({ html: apiHtml }), url: u });
+      return makeResponse({
+        status: 200,
+        body: apiHtml,
+        headers: { "content-type": "text/html; charset=utf-8" },
+        url: u,
+      });
     }
     return makeResponse({ status: 403, body: JSON.stringify({ error: "no source" }), url: u });
   }
