@@ -1931,24 +1931,50 @@ async function authedApiCall(ctx, { method, pathName, body, verb }) {
   }
   if (!res.ok) {
     const msg = data?.error?.message || data?.message || raw || `HTTP ${res.status}`;
-    const code = data?.error?.code ? ` ${data.error.code}` : "";
-    throw new Error(`${verb} failed (HTTP ${res.status}${code}): ${msg}`);
+    const codeStr = data?.error?.code || null;
+    const err = new Error(`${verb} failed (HTTP ${res.status}${codeStr ? ` ${codeStr}` : ""}): ${msg}`);
+    // Expose the structured status/code so callers can branch (e.g. runFork's
+    // NOT_A_RUNTIME → inspiration-route fallback). Additive: existing callers
+    // only read `.message`.
+    err.status = res.status;
+    err.code = codeStr;
+    throw err;
   }
   return data;
 }
 
-// Fork: start a NEW entity from an existing runtime, copy-on-write with lineage.
-async function runFork(ctx, { id, into_org_slug, name, source_version_id }) {
-  const data = await authedApiCall(ctx, {
-    method: "POST",
-    pathName: `/api/v2/runtimes/${encodeURIComponent(id)}/fork`,
-    body: {
-      ...(into_org_slug ? { into_org_slug } : {}),
-      ...(name ? { name } : {}),
-      ...(source_version_id ? { source_version_id } : {}),
-    },
-    verb: "Fork",
-  });
+// Fork: start a NEW entity from an existing source, copy-on-write with lineage.
+// Kind-aware (one fork verb, mirrors the CLI `fork` command): the caller may
+// not know the source's kind, so try the runtime route first and, when the
+// server reports the target is an inspiration (`400 NOT_A_RUNTIME`, emitted by
+// requireEntityAccess before the runtime handler runs), retry the inspiration
+// route. The inspiration remix lands in the caller's active grid, so no
+// `into_org_slug`; `source_version_id` has no meaning for inspirations.
+export async function runFork(ctx, { id, into_org_slug, name, source_version_id }) {
+  let data;
+  try {
+    data = await authedApiCall(ctx, {
+      method: "POST",
+      pathName: `/api/v2/runtimes/${encodeURIComponent(id)}/fork`,
+      body: {
+        ...(into_org_slug ? { into_org_slug } : {}),
+        ...(name ? { name } : {}),
+        ...(source_version_id ? { source_version_id } : {}),
+      },
+      verb: "Fork",
+    });
+  } catch (err) {
+    if (err && err.code === "NOT_A_RUNTIME") {
+      data = await authedApiCall(ctx, {
+        method: "POST",
+        pathName: `/api/v2/inspirations/${encodeURIComponent(id)}/fork`,
+        body: { ...(name ? { name } : {}) },
+        verb: "Fork",
+      });
+    } else {
+      throw err;
+    }
+  }
   const gridSlug = data?.grid_slug ?? data?.org?.slug ?? null;
   const lines = [
     `Forked: ${data?.name ?? id} (entity_id=${data?.entity_id ?? "?"})${gridSlug ? ` in grid ${gridSlug}` : ""}`,
@@ -2511,7 +2537,8 @@ export function registerTools(server, ctx) {
       description:
         "Start a NEW entity from an existing runtime (copy-on-write, lineage recorded). Lands in the " +
         "source's home grid by default; cross-grid only for system templates or forkable:'public' sources. " +
-        "Requires sign-in. Calls POST /api/v2/runtimes/:id/fork directly.",
+        "Requires sign-in. Kind-aware: forks a runtime (app/agent) OR an inspiration — " +
+        "tries POST /api/v2/runtimes/:id/fork and falls back to /api/v2/inspirations/:id/fork.",
       inputSchema: {
         id: z.string().describe("The source runtime: a canonical UUID or <grid-slug>/<entity-slug>."),
         into_org_slug: z.string().optional().describe("Destination grid slug. Required only when you belong to more than one grid."),
