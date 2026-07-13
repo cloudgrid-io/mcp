@@ -1,6 +1,6 @@
 {
   "name": "@cloudgrid-io/mcp",
-  "version": "0.19.1",
+  "version": "0.19.2",
   "description": "MCP server for CloudGrid. Three editions: a local stdio server (full toolset), a hosted web server (light, CLI-free toolset), and a public docs server (search_cloudgrid_documentation) over MCP Streamable HTTP.",
   "type": "module",
   "bin": {
@@ -40,7 +40,8 @@
     "start:docs": "node src/docs.js",
     "snapshot:corpus": "node scripts/snapshot-corpus.mjs",
     "build:mcpb": "node scripts/build-mcpb.mjs",
-    "test:widgets": "node test/apps-widgets.test.mjs"
+    "test:widgets": "node test/apps-widgets.test.mjs",
+    "test:fork": "node test/fork.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
