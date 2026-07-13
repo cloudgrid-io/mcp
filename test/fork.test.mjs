@@ -1,4 +1,4 @@
-// grid_fork kind-awareness (Decision 044 §4). The runtime fork route rejects a
+// grid_fork kind-awareness (one fork verb). The runtime fork route rejects a
 // non-runtime with `400 NOT_A_RUNTIME`; runFork must then retry the inspiration
 // route — mirroring the CLI `fork` command. Regression for the reported bug
 // "fork works for runtimes only, not inspirations" (the MCP hardcoded the

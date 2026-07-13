@@ -1944,7 +1944,7 @@ async function authedApiCall(ctx, { method, pathName, body, verb }) {
 }
 
 // Fork: start a NEW entity from an existing source, copy-on-write with lineage.
-// Kind-aware (Decision 044 §4, mirrors the CLI `fork` command): the caller may
+// Kind-aware (one fork verb, mirrors the CLI `fork` command): the caller may
 // not know the source's kind, so try the runtime route first and, when the
 // server reports the target is an inspiration (`400 NOT_A_RUNTIME`, emitted by
 // requireEntityAccess before the runtime handler runs), retry the inspiration
