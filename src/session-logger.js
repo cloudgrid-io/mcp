@@ -213,5 +213,7 @@ export class SessionLogger {
 // costs nothing when QA logging is dark.
 export function createSessionLogger(opts) {
   if (!opts || !opts.sink) return null;
-  return new SessionLogger(opts);
+  const env = opts.env || process.env;
+  const idleMs = env.CLOUDGRID_QA_IDLE_MS ? Number(env.CLOUDGRID_QA_IDLE_MS) : undefined;
+  return new SessionLogger({ ...opts, ...(Number.isFinite(idleMs) ? { idleMs } : {}) });
 }

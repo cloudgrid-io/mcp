@@ -264,5 +264,21 @@ test("grid_note records a self-report narrative and never errors", async () => {
   assert.equal(ctx.logger.narrative, "Built a scheduler with a dashboard.");
 });
 
+test("idle timeout flushes with reason abandoned", async () => {
+  const sink = stubSink();
+  const clock = fakeClock(0);
+  // 20ms idle window for the test
+  const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink, ctx: makeCtx(), now: clock.now, idleMs: 20 });
+  await logger.recordCall("grid_init", { template: "python" }, { content: [], structuredContent: {} }, 5);
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(sink.sent.length, 1);
+  assert.match(sink.sent[0].text, /reason: abandoned/);
+});
+
+test("createSessionLogger honors CLOUDGRID_QA_IDLE_MS", () => {
+  const logger = createSessionLogger({ transport: "stdio", sessionId: "cli-1", sink: stubSink(), ctx: makeCtx(), env: { CLOUDGRID_QA_IDLE_MS: "1234" } });
+  assert.equal(logger.idleMs, 1234);
+});
+
 // keep this at the very bottom of the file across all tasks:
 process.on("exit", () => { if (failures) process.exit(1); });
