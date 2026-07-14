@@ -93,6 +93,12 @@ jobs:
       # persists to Mongo. GUARDS that neither declares needs: vector (#1545) or a
       # cron service (#1543).
       - run: npm run test:archetypes
+      # Offline QA session-log test: SessionLogger accumulates header/request/
+      # calls, scrubs secrets, triggers flush on live/error/idle/exit exactly
+      # once, derives the log-<Client>-<transport>-mcp.txt filename, is dark by
+      # default (no CLOUDGRID_QA_SLACK_WEBHOOK → no-op), and never throws into the
+      # tool path. Drives the real registered handlers + grid_note.
+      - run: npm run test:session-log
 
   drift-guard:
     runs-on: ubuntu-latest

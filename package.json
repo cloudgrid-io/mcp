@@ -17,6 +17,7 @@
     "start:web": "node src/web.js",
     "smoke": "node test/smoke.mjs",
     "test:plug-wire": "node test/plug-wire.test.mjs",
+    "test:session-log": "node test/session-logger.test.mjs",
     "test:error-reporting": "node test/error-reporting.test.mjs",
     "test:source": "node test/source-fetch.test.mjs",
     "test:app-with-data": "node test/app-with-data.test.mjs",
