@@ -23,7 +23,7 @@ function check(label, cond) {
 // Always use the pinned version via npx to guarantee the test runs against the
 // same CLI version the MCP is tested against — not whatever is on $PATH.
 
-const CLI_PIN = "@cloudgrid-io/cli@~0.12";
+const CLI_PIN = "@cloudgrid-io/cli@latest";
 
 async function getHelpText(verb) {
   const npx = process.platform === "win32" ? "npx.cmd" : "npx";
@@ -47,10 +47,15 @@ const REQUIRED_SUBCOMMANDS = {
 // ── Parse the Commands section from --help ──────────────────────────────────
 
 function parseVerbs(helpText) {
-  // Each command line in the help starts with exactly two spaces then the verb:
-  //   init [options] [kind] [name]          Set up the current folder, ...
-  // Continuation lines are indented much further (40+ spaces). We only match
-  // lines starting with exactly "  " followed by a word character.
+  // Two Commands layouts appear:
+  //  - top-level `grid --help`: 2-space group headers ("  Basic", "  Advanced")
+  //    with verbs nested at 4 spaces ("    init  ...").
+  //  - subcommand help (`grid get --help`): plain commander, subcommands at 2
+  //    spaces ("  grids  ...").
+  // Verbs/subcommands are lowercase; group headers are Capitalized. Match a
+  // lowercase word at 2–4 leading spaces — this catches both verb layouts while
+  // skipping the Capitalized group headers and the deeper (~37-space)
+  // continuation/description lines.
   const verbs = new Set();
   let inCommands = false;
   for (const line of helpText.split("\n")) {
@@ -59,8 +64,7 @@ function parseVerbs(helpText) {
       continue;
     }
     if (!inCommands) continue;
-    // Command lines start with exactly 2 spaces, then the verb name.
-    const m = line.match(/^  (\w[\w-]*)/);
+    const m = line.match(/^ {2,4}([a-z][\w-]*)/);
     if (m) verbs.add(m[1]);
   }
   return verbs;
