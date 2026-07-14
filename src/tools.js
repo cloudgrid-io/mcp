@@ -2318,12 +2318,16 @@ export function registerTools(server, ctx) {
   // fails the tool call (2026-07-13 incident rule). No logger → zero overhead.
   const withCapture = (name, handler) => async (input) => {
     const started = Date.now();
-    let result;
     try {
-      result = await handler(input);
-      return result;
-    } finally {
+      const result = await handler(input);
       try { ctx.logger?.recordCall(name, input, result, Date.now() - started); } catch { /* never */ }
+      return result;
+    } catch (err) {
+      // A thrown handler must record as an ERROR — the old finally-based capture
+      // saw result=undefined and mis-recorded it as "ok". Synthesize an error
+      // result, then rethrow so the tool contract is unchanged.
+      try { ctx.logger?.recordCall(name, input, { isError: true }, Date.now() - started); } catch { /* never */ }
+      throw err;
     }
   };
 
