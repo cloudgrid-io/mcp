@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { scrubText, deriveFilename } from "../src/session-logger.js";
 import { renderLogText } from "../src/session-logger.js";
 import { SessionLogger } from "../src/session-logger.js";
+import { createSink, SlackWebhookSink } from "../src/log-sink.js";
 
 let failures = 0;
 function test(label, fn) {
@@ -183,6 +184,30 @@ test("flush never throws when the sink rejects", async () => {
   const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink: badSink, ctx: makeCtx(), now: () => 0 });
   await logger.recordCall("grid_init", {}, { content: [] }, 10);
   await assert.doesNotReject(() => logger.flush("abandoned"));
+});
+
+test("createSink returns null when webhook unset (dark by default)", () => {
+  assert.equal(createSink({}), null);
+});
+test("createSink returns a SlackWebhookSink when webhook set", () => {
+  const sink = createSink({ CLOUDGRID_QA_SLACK_WEBHOOK: "https://hooks.slack.com/services/X" });
+  assert.ok(sink instanceof SlackWebhookSink);
+});
+test("SlackWebhookSink.send POSTs a JSON body with the log text", async () => {
+  const seen = [];
+  const fakeFetch = async (url, opts) => { seen.push({ url, opts }); return { ok: true }; };
+  const sink = new SlackWebhookSink("https://hooks.slack.com/services/X", { fetchImpl: fakeFetch });
+  await sink.send({ filename: "log-x-stdio-mcp.txt", summary: "u · cg · x · live", text: "BODY-LINE-1\nBODY-LINE-2" });
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].url, "https://hooks.slack.com/services/X");
+  const body = JSON.parse(seen[0].opts.body);
+  assert.match(body.text, /log-x-stdio-mcp\.txt/);
+  assert.match(body.text, /u · cg · x · live/);
+  assert.match(body.text, /BODY-LINE-1/);
+});
+test("SlackWebhookSink.send never throws on a network error", async () => {
+  const sink = new SlackWebhookSink("https://x", { fetchImpl: async () => { throw new Error("net"); } });
+  await assert.doesNotReject(() => sink.send({ filename: "f", summary: "s", text: "t" }));
 });
 
 // keep this at the very bottom of the file across all tasks:
