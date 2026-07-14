@@ -28,6 +28,38 @@ test("scrubText leaves ordinary prose intact", () => {
   const s = "build me an app that sends emails on a schedule";
   assert.equal(scrubText(s), s);
 });
+test("scrubText redacts a GitHub PAT", () => {
+  const tok = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  assert.equal(scrubText(`token ${tok} here`).includes(tok), false);
+});
+test("scrubText redacts a Slack token", () => {
+  const tok = "xoxb-123456789012-abcdefABCDEF";
+  assert.equal(scrubText(`slack ${tok} here`).includes(tok), false);
+});
+test("scrubText redacts an AWS access key id", () => {
+  const tok = "AKIAIOSFODNN7EXAMPLE";
+  assert.equal(scrubText(`aws ${tok} here`).includes(tok), false);
+});
+test("scrubText redacts a Google API key", () => {
+  const tok = "AIzaSyABCDEF0123456789abcdef0123456789XYZ";
+  assert.equal(scrubText(`gcp ${tok} here`).includes(tok), false);
+});
+test("scrubText redacts a Stripe secret key", () => {
+  const tok = "sk_live_51SUPERSECRETvalue000";
+  assert.equal(scrubText(`stripe ${tok} here`).includes(tok), false);
+});
+test("scrubText redacts a PEM private key block", () => {
+  const pem = "-----BEGIN RSA PRIVATE KEY-----\nMIIBsecretkeymaterial\n-----END RSA PRIVATE KEY-----";
+  const out = scrubText(`key:\n${pem}\ndone`);
+  assert.equal(out.includes("MIIBsecretkeymaterial"), false);
+  assert.equal(out.includes("BEGIN RSA PRIVATE KEY"), false);
+});
+test("scrubText redacts basic-auth URL creds but keeps scheme and host", () => {
+  const out = scrubText("clone https://user:hunter2@example.com/x now");
+  assert.equal(out.includes("user:hunter2"), false);
+  assert.equal(out.includes("example.com"), true);
+  assert.equal(out.includes("https://"), true);
+});
 
 test("deriveFilename hosted ChatGPT", () => {
   assert.equal(deriveFilename("ChatGPT", "hosted"), "log-ChatGPT-hosted-mcp.txt");

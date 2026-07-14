@@ -13,8 +13,15 @@ import { decodeJwt } from "./auth.js";
 // Value-level scrub for free text (user_request, narrative) where there are no
 // object keys for scrubReportContext to key off. Redacts credential SHAPES.
 const TEXT_SECRET_PATTERNS = [
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, // PEM private key block
   /eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{0,}/g, // JWT
   /\bBearer\s+[A-Za-z0-9._-]{8,}/gi,                              // Bearer <token>
+  /\bghp_[A-Za-z0-9]{20,}\b/g,                                    // GitHub PAT
+  /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g,                            // GitHub fine-grained PAT
+  /\bxox[baprs]-[A-Za-z0-9-]{10,}/g,                              // Slack tokens
+  /\bAKIA[0-9A-Z]{16}\b/g,                                        // AWS access key id
+  /\bAIza[0-9A-Za-z_\-]{30,}\b/g,                                 // Google API key
+  /\bsk_(?:live|test)_[0-9A-Za-z]{16,}\b/g,                       // Stripe secret keys
   /\bsk-[A-Za-z0-9]{16,}/g,                                       // sk- API keys
   /\b[0-9a-fA-F]{32,}\b/g,                                        // long hex runs
 ];
@@ -22,6 +29,8 @@ export function scrubText(text) {
   if (typeof text !== "string") return text;
   let out = text;
   for (const re of TEXT_SECRET_PATTERNS) out = out.replace(re, "[REDACTED]");
+  // Basic-auth URL creds: keep scheme+host, redact only the user:pass@ segment.
+  out = out.replace(/([a-zA-Z][a-zA-Z0-9+.\-]*:\/\/)[^\s:@/]+:[^\s:@/]+@/g, "$1[REDACTED]@");
   return out;
 }
 
