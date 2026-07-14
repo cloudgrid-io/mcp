@@ -228,6 +228,22 @@ test("recordCall auto-flushes with reason error on isError", async () => {
   assert.match(sink.sent[0].text, /reason: error/);
 });
 
+test("benign non-grid_plug error is recorded but does NOT flush; later grid_plug live flushes and carries the trail", async () => {
+  const sink = stubSink();
+  const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink, ctx: makeCtx(), now: () => 0 });
+  // routine failure during exploration — must not freeze capture
+  await logger.recordCall("grid_fetch", { kind: "workflow", name: "nope" }, { content: [{ type: "text", text: "no such workflow" }], isError: true }, 10);
+  await new Promise((r) => setImmediate(r));
+  assert.equal(logger.calls[0].outcome, "error");
+  assert.equal(sink.sent.length, 0); // benign error did NOT flush/freeze
+  // the real deploy still triggers the live flush later
+  await logger.recordCall("grid_plug", {}, { content: [], structuredContent: { url: "https://x--cg.cloudgrid.io", status: "live" } }, 100);
+  await new Promise((r) => setImmediate(r));
+  assert.equal(sink.sent.length, 1);
+  assert.match(sink.sent[0].text, /reason: live/);
+  assert.match(sink.sent[0].text, /grid_fetch/); // the earlier error is in the trail
+});
+
 test("flush never throws when the sink rejects", async () => {
   const badSink = { send: async () => { throw new Error("slack down"); } };
   const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink: badSink, ctx: makeCtx(), now: () => 0 });

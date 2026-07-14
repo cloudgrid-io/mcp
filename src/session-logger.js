@@ -170,11 +170,13 @@ export class SessionLogger {
         key: this._keyResult(name, result),
         duration_ms: durationMs,
       });
-      // Trigger flush on the first live / error moment. Fire-and-forget so the
-      // tool return is never delayed by delivery.
-      if (outcome === "error") {
+      // Only a deploy failure (grid_plug) is the QA "failure" trigger. Other
+      // tools' fail() results are recorded but must not flush/freeze the session
+      // (grid_fetch typo, login-status "none", etc. are routine, not terminal).
+      const s = result?.structuredContent;
+      if (name === "grid_plug" && outcome === "error") {
         this.flush("error").catch(() => {});
-      } else if (name === "grid_plug" && (result?.structuredContent?.url || result?.structuredContent?.poll_url)) {
+      } else if (name === "grid_plug" && (s?.url || s?.poll_url)) {
         this.flush("live").catch(() => {});
       } else {
         this._resetIdle();
