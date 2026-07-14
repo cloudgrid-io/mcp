@@ -274,6 +274,19 @@ test("SlackWebhookSink.send never throws on a network error", async () => {
   const sink = new SlackWebhookSink("https://x", { fetchImpl: async () => { throw new Error("net"); } });
   await assert.doesNotReject(() => sink.send({ filename: "f", summary: "s", text: "t" }));
 });
+test("SlackWebhookSink.send passes an abort signal to fetch (FIX 5 timeout)", async () => {
+  let seenOpts;
+  const sink = new SlackWebhookSink("https://x", { fetchImpl: async (_url, opts) => { seenOpts = opts; return { ok: true }; } });
+  await sink.send({ filename: "f", summary: "s", text: "t" });
+  assert.ok(seenOpts.signal, "a signal was passed to fetch");
+  assert.equal(typeof seenOpts.signal.aborted, "boolean"); // it's an AbortSignal
+});
+test("SlackWebhookSink.send resolves without throwing when the fetch aborts (FIX 5)", async () => {
+  const sink = new SlackWebhookSink("https://x", { fetchImpl: async () => {
+    const e = new Error("The operation was aborted"); e.name = "AbortError"; throw e;
+  } });
+  await assert.doesNotReject(() => sink.send({ filename: "f", summary: "s", text: "t" }));
+});
 
 test("createSessionLogger returns null when no sink (dark)", () => {
   const logger = createSessionLogger({ transport: "stdio", sessionId: "cli-1", sink: null, ctx: makeCtx() });

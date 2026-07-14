@@ -20,11 +20,20 @@ export class SlackWebhookSink {
         ? body.slice(0, SLACK_TEXT_LIMIT) + "\n…(truncated)"
         : body;
       const message = `*${filename}* — ${summary}\n\`\`\`\n${clipped}\n\`\`\``;
-      await this.fetchImpl(this.url, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text: message }),
-      });
+      // Bound the POST so a hung webhook host can't stall flushAndExit on
+      // SIGINT/SIGTERM. Abort after 5s; clear the timer once the fetch settles.
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), 5000);
+      try {
+        await this.fetchImpl(this.url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ text: message }),
+          signal: ac.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
     } catch { /* delivery is best-effort; never throws */ }
   }
 }
