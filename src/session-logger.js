@@ -207,3 +207,11 @@ export class SessionLogger {
     try { if (text) this.narrative = String(text).slice(0, 4000); } catch { /* noop */ }
   }
 }
+
+// Factory: returns null when there is no sink, so callers can attach
+// `ctx.logger = createSessionLogger(...)` and `ctx.logger?.recordCall(...)`
+// costs nothing when QA logging is dark.
+export function createSessionLogger(opts) {
+  if (!opts || !opts.sink) return null;
+  return new SessionLogger(opts);
+}

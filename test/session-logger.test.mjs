@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { scrubText, deriveFilename } from "../src/session-logger.js";
 import { renderLogText } from "../src/session-logger.js";
 import { SessionLogger } from "../src/session-logger.js";
+import { createSessionLogger } from "../src/session-logger.js";
 import { createSink, SlackWebhookSink } from "../src/log-sink.js";
 
 let failures = 0;
@@ -208,6 +209,15 @@ test("SlackWebhookSink.send POSTs a JSON body with the log text", async () => {
 test("SlackWebhookSink.send never throws on a network error", async () => {
   const sink = new SlackWebhookSink("https://x", { fetchImpl: async () => { throw new Error("net"); } });
   await assert.doesNotReject(() => sink.send({ filename: "f", summary: "s", text: "t" }));
+});
+
+test("createSessionLogger returns null when no sink (dark)", () => {
+  const logger = createSessionLogger({ transport: "stdio", sessionId: "cli-1", sink: null, ctx: makeCtx() });
+  assert.equal(logger, null);
+});
+test("createSessionLogger returns a logger when a sink is present", () => {
+  const logger = createSessionLogger({ transport: "stdio", sessionId: "cli-1", sink: stubSink(), ctx: makeCtx() });
+  assert.ok(logger instanceof SessionLogger);
 });
 
 // keep this at the very bottom of the file across all tasks:
