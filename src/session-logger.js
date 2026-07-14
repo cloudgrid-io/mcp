@@ -34,3 +34,41 @@ export function deriveFilename(clientName, transport) {
     .replace(/^-+|-+$/g, "") || "unknown";
   return `log-${client}-${transport}-mcp.txt`;
 }
+
+const RULE = "-".repeat(64);
+const BAR = "=".repeat(64);
+
+// Assemble the human-readable .txt. Pure — no I/O. Mirrors the example shape in
+// the design doc §10.
+export function renderLogText(p) {
+  const h = p.header || {};
+  const client = `${h.client_name || "unknown"} ${h.client_version || ""}`.trim();
+  const lines = [
+    BAR,
+    "CloudGrid QA session log",
+    `reason: ${p.reason}`,
+    `session_id: ${p.session_id}`,
+    `started_at: ${p.started_at}   ended_at: ${p.ended_at || "-"}`,
+    `user_id: ${h.user_id || "-"}   grid: ${h.grid || "-"}   user: ${h.user || "-"}`,
+    `client: ${client}   transport: ${h.transport || "-"}`,
+    RULE,
+    p.user_request
+      ? `user_request: ${p.user_request}`
+      : "user_request: (not provided by this host)",
+    RULE,
+  ];
+  for (const c of p.calls || []) {
+    const args = c.args ? ` args=${JSON.stringify(c.args)}` : "";
+    const dur = c.duration_ms != null ? `  (${(c.duration_ms / 1000).toFixed(1)}s)` : "";
+    lines.push(`[${c.at}] ${c.name}${args}  ${c.outcome}${dur}`);
+    if (c.key) lines.push(`           → ${c.key}`);
+  }
+  lines.push(RULE);
+  lines.push(
+    p.llm_report
+      ? `llm_report (self-reported): ${p.llm_report}`
+      : "llm_report: (not available — host does not support sampling and no report submitted)",
+  );
+  lines.push(BAR);
+  return lines.join("\n") + "\n";
+}

@@ -1,6 +1,7 @@
 // test/session-logger.test.mjs
 import assert from "node:assert/strict";
 import { scrubText, deriveFilename } from "../src/session-logger.js";
+import { renderLogText } from "../src/session-logger.js";
 
 let failures = 0;
 function test(label, fn) {
@@ -33,6 +34,46 @@ test("deriveFilename stdio claude-code", () => {
 test("deriveFilename sanitizes odd client names and null", () => {
   assert.equal(deriveFilename("Weird/Client v2", "hosted"), "log-Weird-Client-v2-hosted-mcp.txt");
   assert.equal(deriveFilename(null, "stdio"), "log-unknown-stdio-mcp.txt");
+});
+
+const samplePayload = {
+  reason: "live",
+  session_id: "cli-9f2a1c",
+  started_at: "2026-07-14T10:22:04Z",
+  ended_at: "2026-07-14T10:24:51Z",
+  header: { user_id: "u_abc", grid: "cg", user: "dev@atomiclabs.io", client_name: "claude-code", client_version: "2.1.209", transport: "stdio" },
+  user_request: "build me a scheduler",
+  calls: [
+    { at: "10:22:07", name: "grid_init", args: { template: "python" }, outcome: "ok", key: null, duration_ms: 1200 },
+    { at: "10:22:41", name: "grid_plug", args: { dir: "." }, outcome: "ok", key: "url=https://x--cg.cloudgrid.io status=live", duration_ms: 28500 },
+  ],
+  llm_report: null,
+};
+
+test("renderLogText carries header, request, calls, reason", () => {
+  const txt = renderLogText(samplePayload);
+  assert.match(txt, /CloudGrid QA session log/);
+  assert.match(txt, /reason: live/);
+  assert.match(txt, /user_id: u_abc/);
+  assert.match(txt, /grid: cg/);
+  assert.match(txt, /client: claude-code 2\.1\.209/);
+  assert.match(txt, /transport: stdio/);
+  assert.match(txt, /user_request: build me a scheduler/);
+  assert.match(txt, /grid_init/);
+  assert.match(txt, /grid_plug/);
+  assert.match(txt, /url=https:\/\/x--cg\.cloudgrid\.io/);
+});
+test("renderLogText prints not-provided when user_request absent", () => {
+  const txt = renderLogText({ ...samplePayload, user_request: null });
+  assert.match(txt, /user_request: \(not provided by this host\)/);
+});
+test("renderLogText prints not-available when llm_report absent", () => {
+  const txt = renderLogText(samplePayload);
+  assert.match(txt, /llm_report: \(not available/);
+});
+test("renderLogText labels a present narrative as self-reported", () => {
+  const txt = renderLogText({ ...samplePayload, llm_report: "Scaffolded a scheduler." });
+  assert.match(txt, /llm_report \(self-reported\): Scaffolded a scheduler\./);
 });
 
 // keep this at the very bottom of the file across all tasks:
