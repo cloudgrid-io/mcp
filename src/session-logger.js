@@ -110,4 +110,40 @@ export class SessionLogger {
     };
     return this.header;
   }
+
+  // hh:mm:ss in UTC from an epoch-ms value, for the per-call timestamp column.
+  _clock(ms) {
+    try { return new Date(ms).toISOString().slice(11, 19); } catch { return "--:--:--"; }
+  }
+
+  // Pull the QA-relevant result fields into a one-line "key" string.
+  _keyResult(name, result) {
+    const s = result?.structuredContent;
+    if (!s || typeof s !== "object") return null;
+    const parts = [];
+    if (s.url) parts.push(`url=${s.url}`);
+    if (s.poll_url) parts.push(`poll_url=${s.poll_url}`);
+    if (s.status) parts.push(`status=${s.status}`);
+    if (s.entity_id) parts.push(`entity=${s.entity_id}`);
+    return parts.length ? parts.join(" ") : null;
+  }
+
+  // Fire-and-forget from the tool wrapper. NEVER throws to the caller.
+  async recordCall(name, input, result, durationMs) {
+    try {
+      if (this.flushed) return;
+      await this.resolveHeader();
+      const outcome = result?.isError ? "error" : "ok";
+      let args = null;
+      try { args = input ? scrubReportContext(input) : null; } catch { args = null; }
+      this.calls.push({
+        at: this._clock(this.now()),
+        name,
+        args,
+        outcome,
+        key: this._keyResult(name, result),
+        duration_ms: durationMs,
+      });
+    } catch { /* capture never affects the tool path */ }
+  }
 }

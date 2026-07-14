@@ -122,5 +122,30 @@ test("resolveHeader degrades to dashes with no token/client", async () => {
   assert.equal(h.client_name, null);
 });
 
+test("recordCall stores scrubbed args and ok outcome", async () => {
+  const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink: stubSink(), ctx: makeCtx(), now: () => 0 });
+  await logger.recordCall("grid_init", { template: "python", api_key: "sk-SHOULDvanish01234567" }, { content: [], structuredContent: {} }, 1200);
+  assert.equal(logger.calls.length, 1);
+  const c = logger.calls[0];
+  assert.equal(c.name, "grid_init");
+  assert.equal(c.outcome, "ok");
+  assert.equal(c.args.template, "python");
+  assert.equal(c.args.api_key, "[REDACTED]");
+  assert.equal(c.duration_ms, 1200);
+});
+
+test("recordCall marks error outcome on isError result", async () => {
+  const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink: stubSink(), ctx: makeCtx(), now: () => 0 });
+  await logger.recordCall("grid_plug", {}, { content: [{ type: "text", text: "boom" }], isError: true }, 50);
+  assert.equal(logger.calls[0].outcome, "error");
+});
+
+test("recordCall extracts grid_plug url/status into key", async () => {
+  const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink: stubSink(), ctx: makeCtx(), now: () => 0 });
+  await logger.recordCall("grid_plug", {}, { content: [], structuredContent: { url: "https://x--cg.cloudgrid.io", status: "live", entity_id: "e_1" } }, 100);
+  assert.match(logger.calls[0].key, /url=https:\/\/x--cg\.cloudgrid\.io/);
+  assert.match(logger.calls[0].key, /status=live/);
+});
+
 // keep this at the very bottom of the file across all tasks:
 process.on("exit", () => { if (failures) process.exit(1); });
