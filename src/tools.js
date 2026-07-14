@@ -231,12 +231,15 @@ function resolveCwd(cwd) {
   return abs;
 }
 
-// Pin the CLI version for the lazy npx fallback so behaviour is reproducible.
-// MCP 0.8.0 is tested against CLI 0.12.
-const CLI_NPX_PKG = "@cloudgrid-io/cli@~0.12";
+// The lazy npx fallback always fetches the LATEST published CLI, so the MCP is
+// never left behind the platform's required CLI version (a pinned range went
+// stale and the API then rejected it with "install the latest CLI").
+const CLI_NPX_PKG = "@cloudgrid-io/cli@latest";
 
-// Minimum CLI version that supports the verbs and flags the MCP passes.
-const MIN_CLI_VERSION = "0.12.0";
+// Minimum CLI version the MCP will USE if it finds one already installed. Below
+// this, skip the local/global CLI and fall back to `npx @latest`. Keep at (or
+// above) the platform's current required floor.
+const MIN_CLI_VERSION = "0.15.0";
 
 // Verb map for the drift guard: each CLI-wrapping tool's top-level verb(s).
 // The drift-guard test imports this and asserts every verb exists in `cloudgrid --help`.
