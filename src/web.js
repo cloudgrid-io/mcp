@@ -22,6 +22,8 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { registerTools, decodeJwt } from "./tools.js";
 import { mountOAuth, bearerChallenge } from "./oauth.js";
+import { createSessionLogger } from "./session-logger.js";
+import { createSink } from "./log-sink.js";
 
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url)));
 
@@ -126,6 +128,9 @@ app.post("/mcp", async (req, res) => {
     },
   });
   transport.onclose = () => {
+    // Flush the QA log when the host closes the session (abandoned / build-only).
+    // Fire-and-forget; never blocks the close path.
+    try { webCtx.logger?.flush("abandoned").catch(() => {}); } catch { /* never */ }
     if (transport.sessionId) {
       delete transports[transport.sessionId];
       delete sessionAuth[transport.sessionId];
@@ -133,6 +138,16 @@ app.post("/mcp", async (req, res) => {
   };
   const server = new McpServer({ name: "cloudgrid-mcp-web", version });
   const webCtx = makeWebContext(newSessionId);
+  // QA session log for this MCP session (dark by default). Keyed by the session
+  // id — the host connection boundary. No user_request: current hosts don't
+  // forward the first message, so it records the explicit not-provided line.
+  webCtx.sessionId = newSessionId;
+  webCtx.logger = createSessionLogger({
+    transport: "hosted",
+    sessionId: newSessionId,
+    sink: createSink(process.env),
+    ctx: webCtx,
+  });
   registerTools(server, webCtx);
   // Capture the calling agent's clientInfo (name+version) for this session once
   // the MCP handshake completes, so grid_report can attribute the origin
