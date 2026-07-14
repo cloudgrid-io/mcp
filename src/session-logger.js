@@ -25,3 +25,12 @@ export function scrubText(text) {
   for (const re of TEXT_SECRET_PATTERNS) out = out.replace(re, "[REDACTED]");
   return out;
 }
+
+// log-<Client>-<transport>-mcp.txt. Client comes from the initialize
+// handshake clientInfo; sanitized to a filename-safe token.
+export function deriveFilename(clientName, transport) {
+  const client = String(clientName || "unknown")
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "unknown";
+  return `log-${client}-${transport}-mcp.txt`;
+}

@@ -1,6 +1,6 @@
 // test/session-logger.test.mjs
 import assert from "node:assert/strict";
-import { scrubText } from "../src/session-logger.js";
+import { scrubText, deriveFilename } from "../src/session-logger.js";
 
 let failures = 0;
 function test(label, fn) {
@@ -22,6 +22,17 @@ test("scrubText redacts an sk- key and long hex", () => {
 test("scrubText leaves ordinary prose intact", () => {
   const s = "build me an app that sends emails on a schedule";
   assert.equal(scrubText(s), s);
+});
+
+test("deriveFilename hosted ChatGPT", () => {
+  assert.equal(deriveFilename("ChatGPT", "hosted"), "log-ChatGPT-hosted-mcp.txt");
+});
+test("deriveFilename stdio claude-code", () => {
+  assert.equal(deriveFilename("claude-code", "stdio"), "log-claude-code-stdio-mcp.txt");
+});
+test("deriveFilename sanitizes odd client names and null", () => {
+  assert.equal(deriveFilename("Weird/Client v2", "hosted"), "log-Weird-Client-v2-hosted-mcp.txt");
+  assert.equal(deriveFilename(null, "stdio"), "log-unknown-stdio-mcp.txt");
 });
 
 // keep this at the very bottom of the file across all tasks:
