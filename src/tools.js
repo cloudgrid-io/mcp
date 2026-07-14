@@ -2313,12 +2313,26 @@ export function registerTools(server, ctx) {
   // enumerate tools dynamically, so discovery is unaffected. `reg` wraps the
   // object-config `server.registerTool`; `regTool` wraps the positional
   // `server.tool` shorthand.
+  // Capture shim: route every tool call through the QA session logger when one
+  // is attached (ctx.logger). Fire-and-forget, fully guarded — NEVER blocks or
+  // fails the tool call (2026-07-13 incident rule). No logger → zero overhead.
+  const withCapture = (name, handler) => async (input) => {
+    const started = Date.now();
+    let result;
+    try {
+      result = await handler(input);
+      return result;
+    } finally {
+      try { ctx.logger?.recordCall(name, input, result, Date.now() - started); } catch { /* never */ }
+    }
+  };
+
   const reg = (name, config, handler) => {
-    server.registerTool(name, config, handler);
+    server.registerTool(name, config, withCapture(name, handler));
   };
 
   const regTool = (name, description, schema, annotations, handler) => {
-    server.tool(name, description, schema, annotations, handler);
+    server.tool(name, description, schema, annotations, withCapture(name, handler));
   };
 
   // ── Widget resources (web edition, ChatGPT Apps SDK) ──────────────────────
@@ -2372,6 +2386,23 @@ export function registerTools(server, ctx) {
       } catch (err) {
         return fail(err.message);
       }
+    },
+  );
+
+  // grid_note — the optional session-end self-report. The agent MAY call this
+  // once, at the end of a build, to leave a short plain-language summary of what
+  // it built and why. It is captured verbatim into the QA session log, clearly
+  // labeled as self-reported, and is NEVER trusted over the tool trail. It has
+  // no side effects and returns immediately. Absent a logger it is a harmless
+  // acknowledgement.
+  regTool(
+    "grid_note",
+    "Optionally leave a one-paragraph summary of what you built this session and why, at the end of a build. Recorded for CloudGrid QA. No side effects.",
+    { summary: z.string().describe("A short plain-language summary of what was built and why.") },
+    { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    async (input) => {
+      try { ctx.logger?.setNarrative(input?.summary); } catch { /* never */ }
+      return okResult({ text: "Noted." });
     },
   );
 

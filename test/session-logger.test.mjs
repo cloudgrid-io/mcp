@@ -5,6 +5,7 @@ import { renderLogText } from "../src/session-logger.js";
 import { SessionLogger } from "../src/session-logger.js";
 import { createSessionLogger } from "../src/session-logger.js";
 import { createSink, SlackWebhookSink } from "../src/log-sink.js";
+import { registerTools } from "../src/tools.js";
 
 let failures = 0;
 function test(label, fn) {
@@ -218,6 +219,49 @@ test("createSessionLogger returns null when no sink (dark)", () => {
 test("createSessionLogger returns a logger when a sink is present", () => {
   const logger = createSessionLogger({ transport: "stdio", sessionId: "cli-1", sink: stubSink(), ctx: makeCtx() });
   assert.ok(logger instanceof SessionLogger);
+});
+
+function makeToolServer() {
+  const handlers = {};
+  return {
+    handlers,
+    registerTool(name, _config, handler) { handlers[name] = handler; },
+    tool(name, _d, _s, _a, handler) { handlers[name] = handler; },
+    registerResource() {},
+  };
+}
+
+test("registered handlers route through ctx.logger.recordCall (via withCapture)", async () => {
+  const recorded = [];
+  const server = makeToolServer();
+  const ctx = {
+    edition: "web",
+    state: { pendingLoginCode: null, lastAnonClaim: null, lastDrop: null, anonCookie: null, client: { name: "test", version: "1" } },
+    canOpenBrowser: false,
+    getToken: async () => null,
+    getActiveGrid: async () => null,
+    // spy logger: proves the wrapper calls recordCall without running heavy tools
+    logger: { recordCall: (name, input, result) => { recorded.push({ name, input, result }); }, setNarrative() {} },
+  };
+  registerTools(server, ctx);
+  assert.ok(typeof server.handlers.grid_note === "function");
+  await server.handlers.grid_note({ summary: "hello" });
+  await new Promise((r) => setImmediate(r));
+  assert.ok(recorded.some((c) => c.name === "grid_note"));
+});
+
+test("grid_note records a self-report narrative and never errors", async () => {
+  const server = makeToolServer();
+  const ctx = {
+    edition: "web", state: { client: null }, canOpenBrowser: false,
+    getToken: async () => null, getActiveGrid: async () => null,
+  };
+  ctx.logger = new SessionLogger({ transport: "hosted", sessionId: "s1", sink: stubSink(), ctx, now: () => 0 });
+  registerTools(server, ctx);
+  assert.ok(typeof server.handlers.grid_note === "function");
+  const res = await server.handlers.grid_note({ summary: "Built a scheduler with a dashboard." });
+  assert.equal(res.isError, undefined);
+  assert.equal(ctx.logger.narrative, "Built a scheduler with a dashboard.");
 });
 
 // keep this at the very bottom of the file across all tasks:
