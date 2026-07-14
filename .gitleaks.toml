@@ -1,0 +1,20 @@
+# gitleaks config for cloudgrid-io/mcp.
+#
+# Keep ALL default gitleaks rules in force everywhere, and allowlist only the two
+# files that intentionally contain credential-SHAPED strings as part of the QA
+# session-log secret-scrubber:
+#   - test/session-logger.test.mjs — planted fake secrets (Stripe/GitHub/AWS/GCP/
+#     Slack/JWT/PEM/basic-auth) that PROVE the scrubber redacts them. None are real.
+#   - src/session-logger.js — the scrubber's credential-shape regex literals
+#     (e.g. the "-----BEGIN … PRIVATE KEY-----" PEM header pattern).
+#
+# Scoped to these two paths only; the rest of the repo is scanned normally.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "QA session-log scrubber: intentional credential-shaped test fixtures + regex literals (no real secrets)."
+paths = [
+  '''test/session-logger\.test\.mjs''',
+  '''src/session-logger\.js''',
+]
