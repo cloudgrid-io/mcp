@@ -1,3 +1,17 @@
+## 0.19.3
+
+- **fix(plug): `grid_plug` output-schema `-32602`.** `grid_plug` declares one
+  `outputSchema` but returns three response shapes: the plug result, the
+  grid-picker "which grid?" ask (`needs_grid`/`needs_org`/`grids`/`orgs`), and the
+  signed-in CLI-fallback recovery (`via`). The MCP SDK renders the schema with
+  `additionalProperties:false` and the client validates every result against it,
+  so the two non-plug-result shapes were rejected with `MCP error -32602:
+  Structured content does not match the tool's output schema: data must NOT have
+  additional properties` (repeated once per undeclared key — 4× for the picker).
+  Declared the picker + CLI-fallback fields on the schema so all three modes
+  validate; the schema stays tight for genuinely-unknown keys. Adds an offline
+  Client↔Server round-trip regression test (`test:plug-output-schema`).
+
 ## 0.17.0
 
 - Hard rename (no aliases): every `gridctl_<verb>` MCP tool identifier → `grid_<verb>` (all 35 tools), and the bare `gridctl` CLI term → `grid` in descriptions, the PLAYBOOK, README, and REMOTE. Corpus re-snapshotted from cloudgrid-io/skills 0.13.0 (also renamed). Runtime CLI exec is unchanged — the server still shells out to the installed `cloudgrid` binary with the same subcommand argv (`grid` is an alias of the same binary); `CLI_TOOL_VERBS` values (CLI subcommands) are untouched, only the map keys were renamed. Prior changelog entries below are historical and keep their original `gridctl_*` wording.

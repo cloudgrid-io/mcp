@@ -43,6 +43,13 @@ jobs:
       # on authed multi-grid creates (like grid_drop), never on edits/anon,
       # and proceeds on an explicit/single grid. Drives the real tool handlers.
       - run: npm run test:grid-picker
+      # Offline output-schema regression (grid_plug -32602): grid_plug has one
+      # outputSchema but three response modes (plug result / grid-picker ask /
+      # CLI-fallback). The SDK renders it with additionalProperties:false and the
+      # client validates every result — the picker's needs_grid/grids/orgs and the
+      # fallback's `via` must be declared or the client throws -32602. Drives a real
+      # Client<->Server round-trip.
+      - run: npm run test:plug-output-schema
       # Offline consent-gated error-reporting test (0.8.1): grid_report posts
       # {app:"mcp", message, context, node_version, platform} to
       # /api/v2/errors/feedback (Bearer authed / trusted-server anon), scrubs
