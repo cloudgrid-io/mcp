@@ -45,6 +45,7 @@ const GRIDCTL = [
   "grid_scaffold",
   "grid_doctor",
   "grid_open",
+  "grid_note",
 ];
 
 const transport = new StdioClientTransport({ command: "node", args: ["src/index.js"] });

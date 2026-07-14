@@ -55,6 +55,16 @@ npm start
 
 It speaks MCP over stdio. Point any MCP client at the `cloudgrid-mcp` command.
 
+### QA session log (optional)
+
+Set `CLOUDGRID_QA_SLACK_WEBHOOK` to an **internal / private** Slack incoming-webhook
+URL to receive a per-session QA log (`log-<Client>-<transport>-mcp.txt`) when a
+session goes live, fails, or is abandoned. The log carries the user's first
+message (when the host forwards it) and identity details, so the target channel
+MUST be internal. Unset → the feature is fully dark (nothing captured, nothing
+posted). `CLOUDGRID_QA_IDLE_MS` overrides the abandoned-idle window (default
+900000 = 15 min).
+
 ## Tools
 
 ### Direct-API tools (both editions)

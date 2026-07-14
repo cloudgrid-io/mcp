@@ -15,6 +15,9 @@ import {
   writeCredentials,
   credentialsPath,
 } from "./auth.js";
+import { randomUUID } from "node:crypto";
+import { createSessionLogger } from "./session-logger.js";
+import { createSink } from "./log-sink.js";
 
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url)));
 
@@ -27,6 +30,18 @@ const ctx = {
   saveToken: async (jwt) => await writeCredentials(jwt),
   savedLocationNote: () => `Credentials saved to ${credentialsPath()}.`,
 };
+
+// QA session log (dark by default: no CLOUDGRID_QA_SLACK_WEBHOOK → null → no-op).
+// The stdio process IS the session. user_request is forwarded by Claude Code via
+// CLOUDGRID_USER_REQUEST when present.
+ctx.sessionId = `cli-${randomUUID()}`;
+ctx.logger = createSessionLogger({
+  transport: "stdio",
+  sessionId: ctx.sessionId,
+  sink: createSink(process.env),
+  ctx,
+  userRequest: process.env.CLOUDGRID_USER_REQUEST || null,
+});
 
 const server = new McpServer({ name: "cloudgrid-mcp", version });
 registerTools(server, ctx);
@@ -45,3 +60,17 @@ server.server.oninitialized = () => {
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
+
+// Flush the QA log once on shutdown if nothing triggered a flush during the
+// session (abandoned / build-only session). Best-effort — a hard kill may cut
+// delivery short; that is acceptable for QA. Guarded so it never crashes exit.
+let shuttingDown = false;
+async function flushAndExit(code) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  try { await ctx.logger?.flush("abandoned"); } catch { /* never */ }
+  process.exit(code);
+}
+process.on("SIGINT", () => flushAndExit(0));
+process.on("SIGTERM", () => flushAndExit(0));
+process.on("beforeExit", () => { ctx.logger?.flush("abandoned").catch(() => {}); });
