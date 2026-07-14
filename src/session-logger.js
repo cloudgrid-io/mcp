@@ -144,6 +144,66 @@ export class SessionLogger {
         key: this._keyResult(name, result),
         duration_ms: durationMs,
       });
+      // Trigger flush on the first live / error moment. Fire-and-forget so the
+      // tool return is never delayed by delivery.
+      if (outcome === "error") {
+        this.flush("error").catch(() => {});
+      } else if (name === "grid_plug" && (result?.structuredContent?.url || result?.structuredContent?.poll_url)) {
+        this.flush("live").catch(() => {});
+      } else {
+        this._resetIdle();
+      }
     } catch { /* capture never affects the tool path */ }
+  }
+
+  _resetIdle() {
+    try {
+      if (this.idleTimer) clearTimeout(this.idleTimer);
+      if (this.flushed || !this.idleMs) return;
+      this.idleTimer = setTimeout(() => { this.flush("abandoned").catch(() => {}); }, this.idleMs);
+      if (this.idleTimer.unref) this.idleTimer.unref(); // don't keep the process alive
+    } catch { /* timers best-effort */ }
+  }
+
+  _summary(header, reason) {
+    const url = [...this.calls].reverse().find((c) => c.key && c.key.includes("url="))?.key || "";
+    return [
+      header.user || header.user_id || "anon",
+      header.grid || "-",
+      `${header.client_name || "unknown"} ${header.client_version || ""}`.trim(),
+      reason,
+      url,
+    ].join(" · ");
+  }
+
+  async flush(reason) {
+    if (this.flushed) return;
+    this.flushed = true;
+    try { if (this.idleTimer) clearTimeout(this.idleTimer); } catch { /* noop */ }
+    try {
+      const header = await this.resolveHeader();
+      const payload = {
+        reason,
+        session_id: this.sessionId,
+        started_at: new Date(this.startedMs).toISOString(),
+        ended_at: new Date(this.now()).toISOString(),
+        header,
+        user_request: this.userRequest,
+        calls: this.calls,
+        llm_report: this.narrative ? scrubText(this.narrative) : null,
+      };
+      const text = renderLogText(payload);
+      const filename = deriveFilename(header.client_name, this.transport);
+      const summary = this._summary(header, reason);
+      await this.sink.send({ filename, summary, text });
+    } catch { /* delivery never affects the tool path */ }
+  }
+
+  setUserRequest(text) {
+    try { if (!this.userRequest && text) this.userRequest = scrubText(text); } catch { /* noop */ }
+  }
+
+  setNarrative(text) {
+    try { if (text) this.narrative = String(text).slice(0, 4000); } catch { /* noop */ }
   }
 }

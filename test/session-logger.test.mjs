@@ -147,5 +147,43 @@ test("recordCall extracts grid_plug url/status into key", async () => {
   assert.match(logger.calls[0].key, /status=live/);
 });
 
+test("flush sends once with rendered text + filename", async () => {
+  const sink = stubSink();
+  const ctx = makeCtx({ client: { name: "claude-code", version: "2.1.209" } });
+  const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink, ctx, now: () => 0 });
+  await logger.recordCall("grid_init", { template: "python" }, { content: [], structuredContent: {} }, 100);
+  await logger.flush("abandoned");
+  await logger.flush("abandoned"); // second call is a no-op
+  assert.equal(sink.sent.length, 1);
+  assert.equal(sink.sent[0].filename, "log-claude-code-stdio-mcp.txt");
+  assert.match(sink.sent[0].text, /reason: abandoned/);
+  assert.match(sink.sent[0].summary, /claude-code/);
+});
+
+test("recordCall auto-flushes with reason live on a grid_plug url", async () => {
+  const sink = stubSink();
+  const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink, ctx: makeCtx(), now: () => 0 });
+  await logger.recordCall("grid_plug", {}, { content: [], structuredContent: { url: "https://x--cg.cloudgrid.io", status: "live" } }, 100);
+  await new Promise((r) => setImmediate(r)); // let the fire-and-forget flush settle
+  assert.equal(sink.sent.length, 1);
+  assert.match(sink.sent[0].text, /reason: live/);
+});
+
+test("recordCall auto-flushes with reason error on isError", async () => {
+  const sink = stubSink();
+  const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink, ctx: makeCtx(), now: () => 0 });
+  await logger.recordCall("grid_plug", {}, { content: [{ type: "text", text: "boom" }], isError: true }, 100);
+  await new Promise((r) => setImmediate(r));
+  assert.equal(sink.sent.length, 1);
+  assert.match(sink.sent[0].text, /reason: error/);
+});
+
+test("flush never throws when the sink rejects", async () => {
+  const badSink = { send: async () => { throw new Error("slack down"); } };
+  const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink: badSink, ctx: makeCtx(), now: () => 0 });
+  await logger.recordCall("grid_init", {}, { content: [] }, 10);
+  await assert.doesNotReject(() => logger.flush("abandoned"));
+});
+
 // keep this at the very bottom of the file across all tasks:
 process.on("exit", () => { if (failures) process.exit(1); });
