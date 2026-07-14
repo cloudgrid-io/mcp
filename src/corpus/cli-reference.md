@@ -42,9 +42,9 @@ brew install cloudgrid-io/tap/cloudgrid
 npm install -g @cloudgrid-io/cli
 ```
 
-**Manual** — download the latest from [Releases](https://github.com/cloudgrid-io/cli/releases), extract, and put `cloudgrid` on your `$PATH`.
+**Manual** — download the latest from [Releases](https://github.com/cloudgrid-io/cli/releases), extract, and put `grid` on your `$PATH`.
 
-Verify: `grid --version` and `grid doctor`. The shorthand `cg` works for every command.
+Verify: `grid --version` and `grid doctor`.
 
 ## Quickstart
 
@@ -134,7 +134,7 @@ rm -rf ~/.cloudgrid                  # remove stored credentials + config
 
 ## Troubleshooting
 
-- **`cloudgrid: command not found`** — ensure the npm global bin (or Homebrew bin) is on `$PATH`; re-run the installer.
+- **`grid: command not found`** — ensure the npm global bin (or Homebrew bin) is on `$PATH`; re-run the installer.
 - **Auth errors / 401** — `grid login` again; check `grid whoami` shows the expected org, switch with `grid use <org>`.
 - **Deploy fails** — run `grid doctor`; check `grid logs` and `grid status <name>` for the trace.
 

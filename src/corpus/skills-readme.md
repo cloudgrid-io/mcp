@@ -2,7 +2,7 @@
 
 Multi-agent skills for CloudGrid. Install them in Claude Code, Codex, or Cursor,
 and your agent can build, ship, and run things on CloudGrid through the
-`cloudgrid` CLI.
+`grid` CLI.
 
 ## Why CloudGrid
 

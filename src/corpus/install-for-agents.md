@@ -5,7 +5,7 @@ order. Stop and ask the user only where a step says to.
 
 ## 1. Ensure the CLI is present
 
-Check whether `cloudgrid` is on `$PATH`:
+Check whether `grid` is on `$PATH`:
 
 ```
 grid --version
@@ -44,7 +44,7 @@ Load the `SKILL.md` for the action the user wants:
 
 Each `SKILL.md` carries its own steps. Follow them exactly. The common rules:
 
-- Wrap only the `cloudgrid` CLI. Do not call the API directly.
+- Wrap only the `grid` CLI. Do not call the API directly.
 - Detect the user's language from their first message and reply in it. Keep
   technical flags in English.
 - Print results concisely: URLs and short summaries. Never dump raw JSON or IDs.

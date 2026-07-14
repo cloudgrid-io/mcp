@@ -15,7 +15,7 @@ Stream or tail logs from an entity's pods. Wraps `grid logs`.
 
 ## Step 0 — Bootstrap
 
-1. If `cloudgrid` is not on `$PATH`: `npm install -g @cloudgrid-io/cli`
+1. If `grid` is not on `$PATH`: `npm install -g @cloudgrid-io/cli`
 2. If `grid whoami` fails: ask the user to run `grid login`. Wait for
    confirmation.
 

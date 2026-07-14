@@ -9,7 +9,7 @@ It ships in two editions from one codebase:
 - **Web (hosted HTTP)** — a light, CLI-free toolset (drop, claim, login,
   visibility) for web clients like claude.ai. See [REMOTE.md](REMOTE.md).
 
-The local edition wraps the `cloudgrid` CLI for authenticated operations (the CLI
+The local edition wraps the `grid` CLI for authenticated operations (the CLI
 handles auth, org context, and error formatting) and calls the API directly for the
 drop, claim, and login tools.
 
@@ -36,7 +36,7 @@ npm install -g @cloudgrid-io/cli
 grid login
 ```
 
-The server reads no credentials directly. It runs `cloudgrid`, which uses its own
+The server reads no credentials directly. It runs `grid`, which uses its own
 stored credentials at `~/.cloudgrid/credentials`.
 
 ## Run

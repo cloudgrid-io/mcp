@@ -17,7 +17,7 @@ diagram. Use this after a change so discovery reflects the current state. Wraps
 
 ## Step 0 — Bootstrap
 
-1. If `cloudgrid` is not on `$PATH`: `npm install -g @cloudgrid-io/cli`
+1. If `grid` is not on `$PATH`: `npm install -g @cloudgrid-io/cli`
 2. If `grid whoami` fails: ask the user to run `grid login`. Wait for
    confirmation.
 

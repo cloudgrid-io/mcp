@@ -18,7 +18,7 @@ There are two paths. Pick the first that fits.
 
 ## Path 1 — the CLI is installed
 
-If `cloudgrid` is on `$PATH`, this is the simplest and safest:
+If `grid` is on `$PATH`, this is the simplest and safest:
 
 ```
 grid login
