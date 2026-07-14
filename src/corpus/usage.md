@@ -15,7 +15,7 @@ Which one you use depends on the client. Pick your client below.
 
 - **Node 18+** (for `npx`).
 - **No login needed to try it** — anonymous drop works out of the box. For owned
-  drops (into your org), run `cloudgrid login` once, or use the `login` skill / the
+  drops (into your org), run `grid login` once, or use the `login` skill / the
   `grid_login` MCP tool.
 
 ---

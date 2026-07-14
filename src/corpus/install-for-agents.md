@@ -5,10 +5,10 @@ order. Stop and ask the user only where a step says to.
 
 ## 1. Ensure the CLI is present
 
-Check whether `cloudgrid` is on `$PATH`:
+Check whether `grid` is on `$PATH`:
 
 ```
-cloudgrid --version
+grid --version
 ```
 
 If that fails, install it:
@@ -20,10 +20,10 @@ npm install -g @cloudgrid-io/cli
 ## 2. Ensure the user is logged in
 
 ```
-cloudgrid whoami
+grid whoami
 ```
 
-If that fails, tell the user to run `cloudgrid login` and wait for them to confirm.
+If that fails, tell the user to run `grid login` and wait for them to confirm.
 Do not attempt to log in for them. Do not invent an auth flow.
 
 ## 3. Confirm the skills are available
@@ -44,7 +44,7 @@ Load the `SKILL.md` for the action the user wants:
 
 Each `SKILL.md` carries its own steps. Follow them exactly. The common rules:
 
-- Wrap only the `cloudgrid` CLI. Do not call the API directly.
+- Wrap only the `grid` CLI. Do not call the API directly.
 - Detect the user's language from their first message and reply in it. Keep
   technical flags in English.
 - Print results concisely: URLs and short summaries. Never dump raw JSON or IDs.

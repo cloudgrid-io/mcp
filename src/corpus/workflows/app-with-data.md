@@ -115,7 +115,7 @@ response is `status: "building"` with a `poll_url` / entity, NOT a live URL yet.
 
 Give the user the live app URL — that is the deliverable. To iterate, re-plug
 the SAME entity (`target_entity_id`) so it updates the same URL. Runtime re-plug
-uses the CLI path (`cloudgrid plug` in the linked folder), per the plug
+uses the CLI path (`grid plug` in the linked folder), per the plug
 description.
 
 Keep it honest: async build, local-edition only, credentials injected by the

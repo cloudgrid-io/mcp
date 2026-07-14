@@ -9,7 +9,7 @@ It ships in two editions from one codebase:
 - **Web (hosted HTTP)** — a light, CLI-free toolset (drop, claim, login,
   visibility) for web clients like claude.ai. See [REMOTE.md](REMOTE.md).
 
-The local edition wraps the `cloudgrid` CLI for authenticated operations (the CLI
+The local edition wraps the `grid` CLI for authenticated operations (the CLI
 handles auth, org context, and error formatting) and calls the API directly for the
 drop, claim, and login tools.
 
@@ -33,10 +33,10 @@ Install and log in to the CLI:
 
 ```
 npm install -g @cloudgrid-io/cli
-cloudgrid login
+grid login
 ```
 
-The server reads no credentials directly. It runs `cloudgrid`, which uses its own
+The server reads no credentials directly. It runs `grid`, which uses its own
 stored credentials at `~/.cloudgrid/credentials`.
 
 ## Run
@@ -79,28 +79,28 @@ also work in the web edition where no CLI exists. `grid_login` writes the same
 
 | Tool | Wraps | Notes |
 |---|---|---|
-| `grid_init` | `cloudgrid init` | Register an app or agent; optionally seed a web service. |
-| `grid_logs` | `cloudgrid logs` | Snapshot of recent logs. Does not stream. Read-only. |
-| `grid_share` | `cloudgrid visibility set` | Set visibility, default link. |
-| `grid_feedback` | `cloudgrid feedback list` | Read the org feedback feed. Read-only. |
-| `grid_whoami` | `cloudgrid whoami` | Show the signed-in user and active org. Read-only. |
-| `grid_use` | `cloudgrid use` | Switch the active org. |
-| `grid_logout` | `cloudgrid logout` | Sign out and clear local credentials. Destructive. |
-| `grid_status` | `cloudgrid status` | Org dashboard or entity detail. Read-only. |
-| `grid_info` | `cloudgrid info` | Entity metadata. Read-only. |
-| `grid_get` | `cloudgrid get grids\|entities\|spaces` | List grids, entities, or spaces. Read-only. |
-| `grid_describe_grid` | `cloudgrid describe grid <slug>` | Grid detail. Read-only. |
-| `grid_pickup` | `cloudgrid pickup <name>` | Download an entity's source and bind the folder. |
-| `grid_rename` | `cloudgrid rename` | Rename an entity's display name. |
-| `grid_unplug` | `cloudgrid unplug` | Take an entity off the grid. Destructive; requires confirm. |
-| `grid_delete` | `cloudgrid delete entity` | Archive an inspiration. Destructive; requires confirm. |
-| `grid_rollback` | `cloudgrid rollback` | Rollback to a previous version. |
-| `grid_versions` | `cloudgrid versions` | List published versions. Read-only. |
-| `grid_env` | `cloudgrid env` | Get, set, or list environment variables. |
-| `grid_secrets` | `cloudgrid secrets` | Set or list secret names. Never returns secret values. |
-| `grid_scaffold` | `cloudgrid scaffold` | Generate starter files. |
-| `grid_doctor` | `cloudgrid doctor` | Run local diagnostics. Read-only. |
-| `grid_open` | `cloudgrid open --print` | Return the public URL. Does not open a browser. Read-only. |
+| `grid_init` | `grid init` | Register an app or agent; optionally seed a web service. |
+| `grid_logs` | `grid logs` | Snapshot of recent logs. Does not stream. Read-only. |
+| `grid_share` | `grid visibility set` | Set visibility, default link. |
+| `grid_feedback` | `grid feedback list` | Read the org feedback feed. Read-only. |
+| `grid_whoami` | `grid whoami` | Show the signed-in user and active org. Read-only. |
+| `grid_use` | `grid use` | Switch the active org. |
+| `grid_logout` | `grid logout` | Sign out and clear local credentials. Destructive. |
+| `grid_status` | `grid status` | Org dashboard or entity detail. Read-only. |
+| `grid_info` | `grid info` | Entity metadata. Read-only. |
+| `grid_get` | `grid get grids\|entities\|spaces` | List grids, entities, or spaces. Read-only. |
+| `grid_describe_grid` | `grid describe grid <slug>` | Grid detail. Read-only. |
+| `grid_pickup` | `grid pickup <name>` | Download an entity's source and bind the folder. |
+| `grid_rename` | `grid rename` | Rename an entity's display name. |
+| `grid_unplug` | `grid unplug` | Take an entity off the grid. Destructive; requires confirm. |
+| `grid_delete` | `grid delete entity` | Archive an inspiration. Destructive; requires confirm. |
+| `grid_rollback` | `grid rollback` | Rollback to a previous version. |
+| `grid_versions` | `grid versions` | List published versions. Read-only. |
+| `grid_env` | `grid env` | Get, set, or list environment variables. |
+| `grid_secrets` | `grid secrets` | Set or list secret names. Never returns secret values. |
+| `grid_scaffold` | `grid scaffold` | Generate starter files. |
+| `grid_doctor` | `grid doctor` | Run local diagnostics. Read-only. |
+| `grid_open` | `grid open --print` | Return the public URL. Does not open a browser. Read-only. |
 
 `grid_share` and `grid_visibility` overlap on purpose: `grid_share`
 wraps the CLI and defaults to `link`; `grid_visibility` is direct API, takes an

@@ -4,7 +4,7 @@ name: share
 description: |
   Make a CloudGrid entity shareable and print its URL. Use when the user wants to
   share a link, make something public, send an app to someone, or get a shareable
-  URL. Wraps cloudgrid visibility.
+  URL. Wraps grid visibility.
 argument-hint: "[name]"
 allowed-tools: Bash
 ---
@@ -12,12 +12,12 @@ allowed-tools: Bash
 # CloudGrid Share
 
 Set an entity's visibility so others can reach it, then print the URL. Wraps
-`cloudgrid visibility set`.
+`grid visibility set`.
 
 ## Step 0 — Bootstrap
 
-1. If `cloudgrid` is not on `$PATH`: `npm install -g @cloudgrid-io/cli`
-2. If `cloudgrid whoami` fails: ask the user to run `cloudgrid login`. Wait for
+1. If `grid` is not on `$PATH`: `npm install -g @cloudgrid-io/cli`
+2. If `grid whoami` fails: ask the user to run `grid login`. Wait for
    confirmation.
 
 ## UX rules
@@ -31,14 +31,14 @@ Set an entity's visibility so others can reach it, then print the URL. Wraps
 To make an entity reachable by anyone with the link:
 
 ```
-cloudgrid visibility set my-thing link
+grid visibility set my-thing link
 ```
 
 The command prints the outlet URL. Hand that URL to the user.
 
 ## Visibility modes
 
-`cloudgrid visibility set <slug> <mode>` accepts:
+`grid visibility set <slug> <mode>` accepts:
 
 - `link` — anyone with the URL can open it. Use this for sharing.
 - `private` — only the owner.

@@ -6,7 +6,7 @@ description: |
   wants to ship, deploy, publish, share, send a friend a link, or go live — a
   single HTML page or a full app. One self-contained HTML page publishes instantly
   as an inspiration (any edition, no login needed); a multi-file app deploys from a
-  directory or URL. Wraps cloudgrid plug.
+  directory or URL. Wraps grid plug.
 argument-hint: "[path-or-url]"
 allowed-tools: Bash
 ---
@@ -23,7 +23,7 @@ Deploy or share a creation and get a public URL. This is the one deploy/share ve
   **any edition**, no login required. See "Share a single HTML page" below.
 - **Anything more** — separate files/folders, a real `assets/` dir, separate
   `.css`/`.js`, multiple pages, a SPA build — **or** any data/server/LLM/cron need
-  → a **runtime app**: `cloudgrid plug` on a linked folder, **local edition only**,
+  → a **runtime app**: `grid plug` on a linked folder, **local edition only**,
   async build. See "Deploy an app" below.
 
 ## Share a single HTML page (the fast path)
@@ -75,12 +75,12 @@ Print the `url` on its own line so it can be copied in one go. A single page is 
 
 ## Deploy an app
 
-Wraps `cloudgrid plug`. Prints the live URL when it is done.
+Wraps `grid plug`. Prints the live URL when it is done.
 
 ## Step 0 — Bootstrap
 
-1. If `cloudgrid` is not on `$PATH`: `npm install -g @cloudgrid-io/cli`
-2. If `cloudgrid whoami` fails: ask the user to run `cloudgrid login`. Wait for
+1. If `grid` is not on `$PATH`: `npm install -g @cloudgrid-io/cli`
+2. If `grid whoami` fails: ask the user to run `grid login`. Wait for
    confirmation.
 
 ## UX rules
@@ -95,7 +95,7 @@ Wraps `cloudgrid plug`. Prints the live URL when it is done.
 Most of the time, run it from the project directory with no arguments:
 
 ```
-cloudgrid plug
+grid plug
 ```
 
 It uses the entity linked to the directory, builds, deploys, and prints the URL.
@@ -103,9 +103,9 @@ A first deploy usually takes about 30 seconds; larger builds take longer.
 
 Other shapes:
 
-- **A specific path:** `cloudgrid plug ./site`
-- **A URL as an inspiration:** `cloudgrid plug https://example.com`
-- **Bind to an existing entity first:** `cloudgrid plug --existing <entity-id>`
+- **A specific path:** `grid plug ./site`
+- **A URL as an inspiration:** `grid plug https://example.com`
+- **Bind to an existing entity first:** `grid plug --existing <entity-id>`
 
 If this is the user's first deploy in the org, the CLI may ask which org to use.
 Pass `--org <slug>` to skip that prompt.

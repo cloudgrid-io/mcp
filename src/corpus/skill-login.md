@@ -18,10 +18,10 @@ There are two paths. Pick the first that fits.
 
 ## Path 1 — the CLI is installed
 
-If `cloudgrid` is on `$PATH`, this is the simplest and safest:
+If `grid` is on `$PATH`, this is the simplest and safest:
 
 ```
-cloudgrid login
+grid login
 ```
 
 It opens the browser, handles the OAuth flow, and stores the token. Stop here.
@@ -74,7 +74,7 @@ uses (`~/.cloudgrid/credentials`), so the two share one identity.
 
 ## After login
 
-Confirm the user is signed in (`cloudgrid whoami` if the CLI is present). If they
+Confirm the user is signed in (`grid whoami` if the CLI is present). If they
 made an anonymous drop earlier, this is the moment to offer to claim it.
 
 ## Notes

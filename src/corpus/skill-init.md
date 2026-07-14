@@ -4,7 +4,7 @@ name: init
 description: |
   Scaffold a new CloudGrid app or agent. Use when the user wants to start a new
   project, create a new entity, set up a new app or agent, or seed a web service
-  (node, nextjs, python, or static) before deploying. Wraps cloudgrid init.
+  (node, nextjs, python, or static) before deploying. Wraps grid init.
 argument-hint: "[app|agent] [name]"
 allowed-tools: Bash
 ---
@@ -12,12 +12,12 @@ allowed-tools: Bash
 # CloudGrid Init
 
 Register a new app or agent in the active org and, optionally, seed a web service
-to deploy. Wraps `cloudgrid init`. After this, `cloudgrid:plug` deploys it.
+to deploy. Wraps `grid init`. After this, `cloudgrid:plug` deploys it.
 
 ## Step 0 — Bootstrap
 
-1. If `cloudgrid` is not on `$PATH`: `npm install -g @cloudgrid-io/cli`
-2. If `cloudgrid whoami` fails: ask the user to run `cloudgrid login`. Wait for
+1. If `grid` is not on `$PATH`: `npm install -g @cloudgrid-io/cli`
+2. If `grid whoami` fails: ask the user to run `grid login`. Wait for
    confirmation.
 
 ## UX rules
@@ -47,25 +47,25 @@ Optional, only if the user implies them:
 Register an app and seed a static site:
 
 ```
-cloudgrid init app my-thing --type static
+grid init app my-thing --type static
 ```
 
 Register an agent:
 
 ```
-cloudgrid init agent my-helper
+grid init agent my-helper
 ```
 
 Register without seeding any files (you will add your own):
 
 ```
-cloudgrid init app my-thing
+grid init app my-thing
 ```
 
 ## After init
 
 Tell the user the entity is registered and what is next: `cd` into the directory
-(if seeded) and run `cloudgrid plug` to deploy. Hand off to `cloudgrid:plug`.
+(if seeded) and run `grid plug` to deploy. Hand off to `cloudgrid:plug`.
 
 ## References
 

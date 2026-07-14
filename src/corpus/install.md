@@ -5,14 +5,14 @@ cover the CLI prerequisite, then each agent.
 
 ## Prerequisite: the CloudGrid CLI
 
-Every skill drives the `cloudgrid` CLI. Install it once and log in:
+Every skill drives the `grid` CLI. Install it once and log in:
 
 ```
 npm install -g @cloudgrid-io/cli
-cloudgrid login
+grid login
 ```
 
-`cloudgrid whoami` confirms you are logged in.
+`grid whoami` confirms you are logged in.
 
 ## Add the skills
 
@@ -124,7 +124,7 @@ The MCP server is published separately as
 npx -y @cloudgrid-io/mcp
 ```
 
-It wraps the same `cloudgrid` CLI and uses the same credentials, so no extra login
+It wraps the same `grid` CLI and uses the same credentials, so no extra login
 is needed. Remote-capable clients can point at `https://mcp.cloudgrid.io/mcp`
 instead. See [USAGE.md](USAGE.md) for per-client snippets.
 
@@ -138,7 +138,7 @@ Desktop: Settings, Extensions, Install from file):
 https://github.com/cloudgrid-io/mcp/releases/latest/download/cloudgrid.mcpb
 ```
 
-The bundle carries the full local toolset (including the `cloudgrid` CLI), so deploy
+The bundle carries the full local toolset (including the `grid` CLI), so deploy
 and secrets tools work without a separate install. Sign in from chat with the
 `grid_login` tool on first use.
 

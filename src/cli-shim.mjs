@@ -19,7 +19,7 @@
 // It also strips ELECTRON_RUN_AS_NODE from the environment: the variable has
 // done its job once this file is executing, and letting it leak further would
 // break anything Electron-based the CLI spawns later (e.g. a browser opened
-// for `cloudgrid login` would silently boot as a headless Node process).
+// for `grid login` would silently boot as a headless Node process).
 
 import { pathToFileURL } from "node:url";
 
