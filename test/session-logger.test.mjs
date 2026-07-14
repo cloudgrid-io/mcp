@@ -1,6 +1,6 @@
 // test/session-logger.test.mjs
 import assert from "node:assert/strict";
-import { scrubText, deriveFilename } from "../src/session-logger.js";
+import { scrubText, deriveFilename, scrubArgs } from "../src/session-logger.js";
 import { renderLogText } from "../src/session-logger.js";
 import { SessionLogger } from "../src/session-logger.js";
 import { createSessionLogger } from "../src/session-logger.js";
@@ -127,14 +127,61 @@ test("resolveHeader degrades to dashes with no token/client", async () => {
 
 test("recordCall stores scrubbed args and ok outcome", async () => {
   const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink: stubSink(), ctx: makeCtx(), now: () => 0 });
-  await logger.recordCall("grid_init", { template: "python", api_key: "sk-SHOULDvanish01234567" }, { content: [], structuredContent: {} }, 1200);
+  await logger.recordCall("grid_init", { name: "sched", template: "python", api_key: "sk-SHOULDvanish01234567" }, { content: [], structuredContent: {} }, 1200);
   assert.equal(logger.calls.length, 1);
   const c = logger.calls[0];
   assert.equal(c.name, "grid_init");
   assert.equal(c.outcome, "ok");
-  assert.equal(c.args.template, "python");
-  assert.equal(c.args.api_key, "[REDACTED]");
+  assert.equal(c.args.name, "sched");        // allowlisted → retained
+  assert.equal(c.args.template, "[omitted]"); // not allowlisted → dropped
+  assert.equal(c.args.api_key, "[omitted]");  // not allowlisted → dropped
   assert.equal(c.duration_ms, 1200);
+});
+
+test("scrubArgs drops grid_secrets value but keeps key/name", async () => {
+  const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink: stubSink(), ctx: makeCtx(), now: () => 0 });
+  await logger.recordCall("grid_secrets", { action: "set", name: "API_KEY", key: "API_KEY", value: "sk-SUPERsecret0123456789" }, { content: [], structuredContent: {} }, 10);
+  const a = logger.calls[0].args;
+  assert.equal(a.value, "[omitted]");
+  assert.equal(a.name, "API_KEY");
+  assert.equal(a.key, "API_KEY");
+  assert.equal(a.action, "set");
+});
+
+test("scrubArgs drops grid_env value", async () => {
+  const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink: stubSink(), ctx: makeCtx(), now: () => 0 });
+  await logger.recordCall("grid_env", { action: "set", name: "TOKEN", value: "hunter2-very-secret" }, { content: [], structuredContent: {} }, 10);
+  assert.equal(logger.calls[0].args.value, "[omitted]");
+});
+
+test("scrubArgs drops grid_claim claim_url and claim_token", async () => {
+  const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink: stubSink(), ctx: makeCtx(), now: () => 0 });
+  await logger.recordCall("grid_claim", { claim_url: "https://cloudgrid.io/claim?token=abc123secret", claim_token: "abc123secret" }, { content: [], structuredContent: {} }, 10);
+  assert.equal(logger.calls[0].args.claim_url, "[omitted]");
+  assert.equal(logger.calls[0].args.claim_token, "[omitted]");
+});
+
+test("scrubArgs drops grid_plug html/cloudgrid_yaml but keeps grid/filename/target_entity_id", async () => {
+  const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink: stubSink(), ctx: makeCtx(), now: () => 0 });
+  await logger.recordCall("grid_plug", {
+    grid: "cg", filename: "index.html", target_entity_id: "e_1",
+    html: "<html>secret markup with sk-ABCDdef0123456789ABCD</html>",
+    cloudgrid_yaml: "env:\n  KEY: sk-ABCDdef0123456789ABCD",
+  }, { content: [], structuredContent: {} }, 10);
+  const a = logger.calls[0].args;
+  assert.equal(a.html, "[omitted]");
+  assert.equal(a.cloudgrid_yaml, "[omitted]");
+  assert.equal(a.grid, "cg");
+  assert.equal(a.filename, "index.html");
+  assert.equal(a.target_entity_id, "e_1");
+});
+
+test("scrubArgs value-scrubs an allowlisted string containing a JWT", async () => {
+  const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink: stubSink(), ctx: makeCtx(), now: () => 0 });
+  const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1XzEifQ.c2ln";
+  await logger.recordCall("grid_login", { url: `https://x.io/cb?jwt=${jwt}` }, { content: [], structuredContent: {} }, 10);
+  assert.equal(logger.calls[0].args.url.includes(jwt), false);
+  assert.match(logger.calls[0].args.url, /\[REDACTED\]/);
 });
 
 test("recordCall marks error outcome on isError result", async () => {

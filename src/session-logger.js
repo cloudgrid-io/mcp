@@ -8,7 +8,6 @@
 //
 // Non-negotiable: capture NEVER blocks or fails a tool call (2026-07-13
 // incident rule). recordCall is fire-and-forget; every path is try/catch'ed.
-import { scrubReportContext } from "./tools.js";
 import { decodeJwt } from "./auth.js";
 
 // Value-level scrub for free text (user_request, narrative) where there are no
@@ -24,6 +23,34 @@ export function scrubText(text) {
   let out = text;
   for (const re of TEXT_SECRET_PATTERNS) out = out.replace(re, "[REDACTED]");
   return out;
+}
+
+// Default-DENY arg capture for the QA log. Only these known-safe, non-sensitive
+// scalar keys are retained verbatim (then value-scrubbed); every other key is
+// dropped to "[omitted]" so a secret/content VALUE can never reach the log even
+// if a future tool adds a new sensitive arg. Security posture: allowlist, not
+// denylist. (Design doc §8: an internal channel must not receive tokens.)
+const ALLOWED_ARG_KEYS = new Set([
+  "action", "name", "slug", "kind", "type", "grid", "org",
+  "entity_id", "target_entity_id", "dir", "cwd", "mode", "tail",
+  "since", "limit", "visibility", "version", "filename", "anon",
+  "force", "confirm", "new_name", "role", "domain", "when",
+  "single_html", "replug", "fork", "no_bind", "key", "url",
+  "path", "target_dir", "label", "encoding",
+]);
+
+// Redact a tool's raw input for the QA log: keep only allowlisted keys, mark the
+// rest "[omitted]", value-scrub retained strings. NEVER throws.
+export function scrubArgs(input) {
+  try {
+    if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+    const out = {};
+    for (const [k, v] of Object.entries(input)) {
+      if (!ALLOWED_ARG_KEYS.has(k)) { out[k] = "[omitted]"; continue; }
+      out[k] = typeof v === "string" ? scrubText(v) : v;
+    }
+    return out;
+  } catch { return null; }
 }
 
 // log-<Client>-<transport>-mcp.txt. Client comes from the initialize
@@ -134,8 +161,7 @@ export class SessionLogger {
       if (this.flushed) return;
       await this.resolveHeader();
       const outcome = result?.isError ? "error" : "ok";
-      let args = null;
-      try { args = input ? scrubReportContext(input) : null; } catch { args = null; }
+      const args = scrubArgs(input);
       this.calls.push({
         at: this._clock(this.now()),
         name,
