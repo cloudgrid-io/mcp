@@ -72,3 +72,42 @@ export function renderLogText(p) {
   lines.push(BAR);
   return lines.join("\n") + "\n";
 }
+
+export class SessionLogger {
+  constructor({ transport, sessionId, sink, ctx, userRequest = null, idleMs = 15 * 60 * 1000, now = () => Date.now() }) {
+    this.transport = transport;
+    this.sessionId = sessionId;
+    this.sink = sink;
+    this.ctx = ctx;
+    this.now = now;
+    this.idleMs = idleMs;
+    this.startedMs = now();
+    this.calls = [];
+    this.header = null;
+    this.userRequest = userRequest ? scrubText(userRequest) : null;
+    this.narrative = null;
+    this.flushed = false;
+    this.idleTimer = null;
+  }
+
+  async resolveHeader() {
+    if (this.header) return this.header;
+    let claims = {};
+    try {
+      const token = await this.ctx.getToken();
+      if (token) claims = decodeJwt(token) || {};
+    } catch { /* identity best-effort */ }
+    let grid = null;
+    try { grid = await this.ctx.getActiveGrid(); } catch { /* best-effort */ }
+    const client = this.ctx.state?.client || null;
+    this.header = {
+      user_id: claims.sub ?? null,
+      user: claims.email ?? claims.name ?? null,
+      grid: grid ?? null,
+      client_name: client?.name ?? null,
+      client_version: client?.version ?? null,
+      transport: this.transport,
+    };
+    return this.header;
+  }
+}

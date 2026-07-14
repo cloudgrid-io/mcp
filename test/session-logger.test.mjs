@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { scrubText, deriveFilename } from "../src/session-logger.js";
 import { renderLogText } from "../src/session-logger.js";
+import { SessionLogger } from "../src/session-logger.js";
 
 let failures = 0;
 function test(label, fn) {
@@ -74,6 +75,51 @@ test("renderLogText prints not-available when llm_report absent", () => {
 test("renderLogText labels a present narrative as self-reported", () => {
   const txt = renderLogText({ ...samplePayload, llm_report: "Scaffolded a scheduler." });
   assert.match(txt, /llm_report \(self-reported\): Scaffolded a scheduler\./);
+});
+
+// Fake JWT with claims {sub, email, name}. header.b64 . payload.b64 . sig
+function fakeJwt(claims) {
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+  return `${b64({ alg: "none" })}.${b64(claims)}.sig`;
+}
+function makeCtx({ token = null, grid = null, client = null } = {}) {
+  return {
+    getToken: async () => token,
+    getActiveGrid: async () => grid,
+    state: { client },
+  };
+}
+function stubSink() {
+  const sent = [];
+  return { sent, send: async (payload) => { sent.push(payload); } };
+}
+// deterministic clock
+function fakeClock(startMs = 1_700_000_000_000) {
+  let t = startMs;
+  return { now: () => t, advance: (ms) => { t += ms; } };
+}
+
+test("resolveHeader pulls identity from token, grid, client", async () => {
+  const ctx = makeCtx({
+    token: fakeJwt({ sub: "u_1", email: "d@x.io", name: "Dev" }),
+    grid: "cg",
+    client: { name: "claude-code", version: "2.1.209" },
+  });
+  const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink: stubSink(), ctx, now: () => 0 });
+  const h = await logger.resolveHeader();
+  assert.equal(h.user_id, "u_1");
+  assert.equal(h.user, "d@x.io");
+  assert.equal(h.grid, "cg");
+  assert.equal(h.client_name, "claude-code");
+  assert.equal(h.client_version, "2.1.209");
+  assert.equal(h.transport, "stdio");
+});
+
+test("resolveHeader degrades to dashes with no token/client", async () => {
+  const logger = new SessionLogger({ transport: "hosted", sessionId: "s1", sink: stubSink(), ctx: makeCtx(), now: () => 0 });
+  const h = await logger.resolveHeader();
+  assert.equal(h.user_id, null);
+  assert.equal(h.client_name, null);
 });
 
 // keep this at the very bottom of the file across all tasks:
