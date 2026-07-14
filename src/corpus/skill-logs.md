@@ -4,19 +4,19 @@ name: logs
 description: |
   Tail logs for a CloudGrid entity. Use when the user wants to see logs, watch
   output, follow a running app, debug a deploy, or check why something is failing.
-  Wraps cloudgrid logs.
+  Wraps grid logs.
 argument-hint: "[name]"
 allowed-tools: Bash
 ---
 
 # CloudGrid Logs
 
-Stream or tail logs from an entity's pods. Wraps `cloudgrid logs`.
+Stream or tail logs from an entity's pods. Wraps `grid logs`.
 
 ## Step 0 — Bootstrap
 
 1. If `cloudgrid` is not on `$PATH`: `npm install -g @cloudgrid-io/cli`
-2. If `cloudgrid whoami` fails: ask the user to run `cloudgrid login`. Wait for
+2. If `grid whoami` fails: ask the user to run `grid login`. Wait for
    confirmation.
 
 ## UX rules
@@ -30,7 +30,7 @@ Stream or tail logs from an entity's pods. Wraps `cloudgrid logs`.
 Tail the recent logs for an entity by name:
 
 ```
-cloudgrid logs my-thing
+grid logs my-thing
 ```
 
 With no name, it uses the entity linked to the current directory.

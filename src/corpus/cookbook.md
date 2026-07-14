@@ -9,7 +9,7 @@ The CLI is installed and you are logged in:
 
 ```
 npm install -g @cloudgrid-io/cli
-cloudgrid login
+grid login
 ```
 
 ## The build-and-ship loop
@@ -23,27 +23,27 @@ init  ->  plug  ->  logs  ->  share  ->  feedback
 Register a new app and seed a static web service:
 
 ```
-cloudgrid init app my-thing --type static
+grid init app my-thing --type static
 ```
 
 `--type` accepts `node`, `nextjs`, `python`, or `static`. For an agent, use
-`cloudgrid init agent my-thing`.
+`grid init agent my-thing`.
 
 ### 2. Deploy
 
 From the project directory, deploy it:
 
 ```
-cloudgrid plug
+grid plug
 ```
 
-`cloudgrid plug` also takes a path or a URL. It builds and deploys, then prints the
+`grid plug` also takes a path or a URL. It builds and deploys, then prints the
 live URL. This usually takes about 30 seconds.
 
 ### 3. Watch the logs
 
 ```
-cloudgrid logs my-thing --follow
+grid logs my-thing --follow
 ```
 
 Drop `--follow` for a one-time tail. `--since 5m` limits how far back to read.
@@ -53,13 +53,13 @@ Drop `--follow` for a one-time tail. `--since 5m` limits how far back to read.
 Make the entity reachable by anyone with the link. The command prints the URL:
 
 ```
-cloudgrid visibility set my-thing link
+grid visibility set my-thing link
 ```
 
 ### 5. Read feedback
 
 ```
-cloudgrid feedback list
+grid feedback list
 ```
 
 ## Share an artifact with no account
@@ -98,10 +98,10 @@ the drop's expiry. Editing an archived or expired drop returns 409
 
 - **Ship an existing directory:** `plug`
 - **Deploy a URL as an inspiration:** `plug https://example.com`
-- **Refresh discovery metadata after a change:** `cloudgrid brain refresh my-thing --wait`
+- **Refresh discovery metadata after a change:** `grid brain refresh my-thing --wait`
 
 ## Notes
 
 - Every command uses the active org and linked entity when you omit the name. Run
-  `cloudgrid whoami` to see the active context.
+  `grid whoami` to see the active context.
 - These skills wrap the CLI. Anything the CLI can do, a skill can drive.

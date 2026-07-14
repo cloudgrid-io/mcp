@@ -9,10 +9,10 @@ Every skill drives the `cloudgrid` CLI. Install it once and log in:
 
 ```
 npm install -g @cloudgrid-io/cli
-cloudgrid login
+grid login
 ```
 
-`cloudgrid whoami` confirms you are logged in.
+`grid whoami` confirms you are logged in.
 
 ## Add the skills
 

@@ -8,7 +8,7 @@ order. Stop and ask the user only where a step says to.
 Check whether `cloudgrid` is on `$PATH`:
 
 ```
-cloudgrid --version
+grid --version
 ```
 
 If that fails, install it:
@@ -20,10 +20,10 @@ npm install -g @cloudgrid-io/cli
 ## 2. Ensure the user is logged in
 
 ```
-cloudgrid whoami
+grid whoami
 ```
 
-If that fails, tell the user to run `cloudgrid login` and wait for them to confirm.
+If that fails, tell the user to run `grid login` and wait for them to confirm.
 Do not attempt to log in for them. Do not invent an auth flow.
 
 ## 3. Confirm the skills are available

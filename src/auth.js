@@ -1,6 +1,6 @@
 // CLI-free sign-in against CloudGrid's existing OAuth backend.
 //
-// The flow is the same one `cloudgrid login` uses, driven without the CLI:
+// The flow is the same one `grid login` uses, driven without the CLI:
 //   1. pick a UUID `code`
 //   2. user opens GET /auth/login?code=<code> and signs in with Google
 //   3. poll GET /auth/status?code=<code> until it returns the signed JWT (once)

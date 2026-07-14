@@ -4,7 +4,7 @@ name: brain
 description: |
   Refresh a CloudGrid entity's Grid Brain metadata. Use when the user wants to
   re-classify an entity, regenerate its description, tags, or diagram, or update
-  how it appears in discovery after a change. Wraps cloudgrid brain refresh.
+  how it appears in discovery after a change. Wraps grid brain refresh.
 argument-hint: "[name]"
 allowed-tools: Bash
 ---
@@ -13,12 +13,12 @@ allowed-tools: Bash
 
 Re-run the Grid Brain hooks for an entity to re-classify its description, tags, and
 diagram. Use this after a change so discovery reflects the current state. Wraps
-`cloudgrid brain refresh`.
+`grid brain refresh`.
 
 ## Step 0 — Bootstrap
 
 1. If `cloudgrid` is not on `$PATH`: `npm install -g @cloudgrid-io/cli`
-2. If `cloudgrid whoami` fails: ask the user to run `cloudgrid login`. Wait for
+2. If `grid whoami` fails: ask the user to run `grid login`. Wait for
    confirmation.
 
 ## UX rules
@@ -30,7 +30,7 @@ diagram. Use this after a change so discovery reflects the current state. Wraps
 ## How to run it
 
 ```
-cloudgrid brain refresh my-thing --wait
+grid brain refresh my-thing --wait
 ```
 
 `--wait` polls until the refresh finishes, up to about 60 seconds. Without it, the
@@ -46,4 +46,4 @@ Other flags:
 
 The refresh reports each hook: classify (description and tags), identification, and
 the diagram. Summarize the outcome in one line, for example "Re-classified with 3
-tags." Suggest `cloudgrid status <name>` if the user wants the full updated entity.
+tags." Suggest `grid status <name>` if the user wants the full updated entity.

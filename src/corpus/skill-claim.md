@@ -21,7 +21,7 @@ re-homes the drop into the user's grid, so its public URL changes from
 ## Step 0 — sign in first
 
 Claiming needs an identity. If the user is not signed in, run the `cloudgrid:login`
-skill (or `cloudgrid login` with the CLI) first.
+skill (or `grid login` with the CLI) first.
 
 ## What you need
 

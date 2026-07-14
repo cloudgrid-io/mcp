@@ -22,7 +22,7 @@ behalf: scaffold, deploy, tail logs, share, read feedback. Everything here is fr
 2. Log in:
 
    ```
-   cloudgrid login
+   grid login
    ```
 
 3. Add the agent-core. In Claude Code (recommended):
