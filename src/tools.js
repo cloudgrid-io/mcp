@@ -2846,7 +2846,7 @@ export function registerTools(server, ctx) {
   // editions expose them. The anon docs edition (src/docs.js) does NOT call
   // registerTools, so it never gets them (spec F3).
 
-  server.registerTool(
+  reg(
     "grid_start",
     {
       description:
@@ -2902,7 +2902,7 @@ export function registerTools(server, ctx) {
     },
   );
 
-  server.registerTool(
+  reg(
     "grid_fetch",
     {
       description:

@@ -332,6 +332,27 @@ test("withCapture records a thrown handler as error, not ok (FIX 3)", async () =
   assert.equal(rec.outcome, "error");
 });
 
+test("grid_start and grid_fetch route through the capture shim (FIX 4)", async () => {
+  const recorded = [];
+  const server = makeToolServer();
+  const ctx = {
+    edition: "web",
+    state: { client: { name: "test", version: "1" } },
+    canOpenBrowser: false,
+    getToken: async () => null,
+    getActiveGrid: async () => null,
+    logger: { recordCall: (name) => { recorded.push(name); }, setNarrative() {} },
+  };
+  registerTools(server, ctx);
+  assert.ok(typeof server.handlers.grid_fetch === "function");
+  assert.ok(typeof server.handlers.grid_start === "function");
+  await server.handlers.grid_start({});
+  await server.handlers.grid_fetch({ kind: "workflow", name: "nope" });
+  await new Promise((r) => setImmediate(r));
+  assert.ok(recorded.includes("grid_start"), "grid_start was captured");
+  assert.ok(recorded.includes("grid_fetch"), "grid_fetch was captured");
+});
+
 test("grid_note records a self-report narrative and never errors", async () => {
   const server = makeToolServer();
   const ctx = {
