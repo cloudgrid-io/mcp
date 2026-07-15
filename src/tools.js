@@ -1783,8 +1783,8 @@ export async function runPlug(ctx, input, deps = {}) {
     if (err?.name === "AbortError" || err?.name === "TimeoutError") {
       throw new Error(
         `The deploy request timed out after ${Math.round(uploadTimeoutMs / 1000)}s. ` +
-          `The build may still be running on CloudGrid — check grid_status (or your grid) ` +
-          `before deploying again, so you don't create a duplicate.`,
+          `The build may still be running on CloudGrid — check the deploy status ` +
+          `(poll_url / grid_status, or your grid) before deploying again, so you don't create a duplicate.`,
       );
     }
     throw new Error(`Could not reach CloudGrid at ${API_BASE}: ${err.message}`);
