@@ -2765,9 +2765,9 @@ export function registerTools(server, ctx) {
 
   // Org listing — both editions.
   reg(
-    "grid_orgs",
+    "grid_list",
     {
-      description: "List the signed-in user's organizations. Returns each org's slug, name, role, and render_ready status. Orgs where render_ready is false are still provisioning — pages published there may not load yet. Prefer a render_ready org; if the user insists on a not-ready one, warn them that pages may not load and suggest waiting or choosing a ready org instead. Requires sign-in.",
+      description: "List the signed-in user's grids, each with slug, name, role, and provisioning status. A grid that is still provisioning (render_ready false) may not serve pages yet — prefer a ready grid, and if the user insists on a not-ready one, warn them that pages may not load. Requires sign-in.",
       inputSchema: {},
       outputSchema: {
         orgs: z.array(z.object({

@@ -46,7 +46,7 @@ try {
   const names = toolList.map((t) => t.name).sort();
   console.log("web tools:", names.join(", "));
   // New grid_* names (direct-API + Agent Core) on the authed web edition.
-  for (const t of ["grid_claim", "grid_plug", "grid_fork", "grid_download", "grid_login", "grid_login_status", "grid_visibility", "grid_orgs", "grid_start", "grid_fetch", "grid_report"]) {
+  for (const t of ["grid_claim", "grid_plug", "grid_fork", "grid_download", "grid_login", "grid_login_status", "grid_visibility", "grid_list", "grid_start", "grid_fetch", "grid_report"]) {
     check(`exposes ${t}`, names.includes(t));
   }
   // 0.10.0: the deprecated cloudgrid_* aliases are GONE. No advertised tool name

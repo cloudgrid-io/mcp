@@ -359,7 +359,7 @@ test("registered handlers route through ctx.logger.recordCall (via withCapture)"
 });
 
 test("withCapture records a thrown handler as error, not ok (FIX 3)", async () => {
-  // grid_orgs' handler awaits ctx.getToken() OUTSIDE any try/catch, so a
+  // grid_list's handler awaits ctx.getToken() OUTSIDE any try/catch, so a
   // rejecting getToken makes the registered handler genuinely throw — the exact
   // case where the old finally-based capture wrongly recorded outcome "ok".
   const server = makeToolServer();
@@ -370,9 +370,9 @@ test("withCapture records a thrown handler as error, not ok (FIX 3)", async () =
   };
   ctx.logger = new SessionLogger({ transport: "hosted", sessionId: "s1", sink: stubSink(), ctx, now: () => 0 });
   registerTools(server, ctx);
-  await assert.rejects(() => server.handlers.grid_orgs({})); // the throw still propagates
+  await assert.rejects(() => server.handlers.grid_list({})); // the throw still propagates
   await new Promise((r) => setImmediate(r)); // let the fire-and-forget recordCall settle
-  const rec = ctx.logger.calls.find((c) => c.name === "grid_orgs");
+  const rec = ctx.logger.calls.find((c) => c.name === "grid_list");
   assert.ok(rec, "the thrown call was recorded");
   assert.equal(rec.outcome, "error");
 });
