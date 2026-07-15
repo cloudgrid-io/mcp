@@ -45,7 +45,7 @@ npx skills add cloudgrid-io/skills
 ```
 claude mcp add cloudgrid -- npx -y @cloudgrid-io/mcp
 ```
-- **Find it under `/mcp`.** Exposes tools `grid_plug`, `grid_login`, …
+- **Find it under `/mcp`.** Exposes tools `grid_deploy`, `grid_login`, …
 - Invoke by describing the task; the model calls the tool.
 
 > Where did my install go? `/skills` (skills), `/plugin` (plugin), `/mcp` (MCP).

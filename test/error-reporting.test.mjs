@@ -64,13 +64,13 @@ try {
   // ═══ 1. scrubReportContext ════════════════════════════════════════════════
   {
     const scrubbed = scrubReportContext({
-      tool: "grid_plug",
+      tool: "grid_deploy",
       api_key: "sk-live-123",
       nested: { authToken: "abc", ok: "keep" },
       password: "hunter2",
       list: [{ secret: "x", label: "y" }],
     });
-    check("scrub keeps non-secret keys", scrubbed.tool === "grid_plug" && scrubbed.nested.ok === "keep");
+    check("scrub keeps non-secret keys", scrubbed.tool === "grid_deploy" && scrubbed.nested.ok === "keep");
     check("scrub redacts api_key", scrubbed.api_key === "[REDACTED]");
     check("scrub redacts nested authToken", scrubbed.nested.authToken === "[REDACTED]");
     check("scrub redacts password", scrubbed.password === "[REDACTED]");
@@ -88,7 +88,7 @@ try {
     });
     const res = await runReport(ctx, {
       message: "deploy failed",
-      context: { tool: "grid_plug", error_code: "INTERNAL_ERROR", api_key: "sk-secret" },
+      context: { tool: "grid_deploy", error_code: "INTERNAL_ERROR", api_key: "sk-secret" },
       trace_id: "trace-9",
       failed_step: "build",
       http_status: 500,
@@ -109,7 +109,7 @@ try {
     check("body forwards trace_id", c.body.trace_id === "trace-9");
     check("body forwards failed_step", c.body.failed_step === "build");
     check("body forwards http_status", c.body.http_status === 500);
-    check("body forwards context.tool", c.body.context.tool === "grid_plug");
+    check("body forwards context.tool", c.body.context.tool === "grid_deploy");
     check("scrubs secret keys in context before sending", c.body.context.api_key === "[REDACTED]");
     check("does NOT set include_conversation by default", c.body.include_conversation === undefined);
     // Source attribution — top-level.

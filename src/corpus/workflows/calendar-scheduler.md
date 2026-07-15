@@ -119,7 +119,7 @@ secrets) before deploying. Don't require it.
 
 ## 9. Deploy (async)
 
-Deploy the folder with `grid_plug`. A **runtime deploy is ASYNC**: the first
+Deploy the folder with `grid_deploy`. A **runtime deploy is ASYNC**: the first
 response is `status: "building"`, NOT a live URL yet.
 - Poll `grid_status` (or the returned poll_url) until the entity is live.
 - Surface a liveness signal while it builds — never a bare silent wait.

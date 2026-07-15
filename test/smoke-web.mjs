@@ -46,7 +46,7 @@ try {
   const names = toolList.map((t) => t.name).sort();
   console.log("web tools:", names.join(", "));
   // New grid_* names (direct-API + Agent Core) on the authed web edition.
-  for (const t of ["grid_claim", "grid_deploy", "grid_plug", "grid_fork", "grid_download", "grid_login", "grid_login_status", "grid_visibility", "grid_list", "grid_start", "grid_fetch", "grid_report"]) {
+  for (const t of ["grid_claim", "grid_deploy", "grid_fork", "grid_download", "grid_login", "grid_login_status", "grid_visibility", "grid_list", "grid_start", "grid_fetch", "grid_report"]) {
     check(`exposes ${t}`, names.includes(t));
   }
   // 0.10.0: the deprecated cloudgrid_* aliases are GONE. No advertised tool name
@@ -58,14 +58,12 @@ try {
   );
   check("does NOT expose CLI-only grid_init", !names.includes("grid_init"));
 
-  // grid_plug is the one deploy/share verb on the web edition (spec v2 — the
+  // grid_deploy is the one deploy/publish verb on the web edition (spec v2 — the
   // unified direct-API create/re-plug verb): the inline `html` single-file path
-  // + `artifact_files`, no local `path`. grid_drop is gone (folded into plug).
+  // + `artifact_files`, no local `path`. grid_drop is gone (folded in); the old
+  // grid_plug name is removed (renamed to grid_deploy).
   check("web does NOT expose grid_drop (folded into grid_deploy)", !names.includes("grid_drop"));
-  check(
-    "grid_plug is a deprecated alias of grid_deploy",
-    (toolList.find((t) => t.name === "grid_plug")?.description ?? "").includes("Deprecated alias"),
-  );
+  check("grid_plug alias removed (migrated to grid_deploy)", !names.includes("grid_plug"));
   const plugTool = toolList.find((t) => t.name === "grid_deploy");
   const plugProps = plugTool?.inputSchema?.properties ?? {};
   check("web deploy does NOT have `path` param", !("path" in plugProps));

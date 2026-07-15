@@ -142,9 +142,8 @@ over the tool trail). Returns immediately; no external call.
 Each calls the CloudGrid API directly, so they work on the hosted web edition too.
 Handlers delegate to a `run*` function and wrap the result in `okResult`.
 
-### `grid_deploy`  (alias: `grid_plug`, deprecated)
+### `grid_deploy`
 ```js
-// The shared config + handler are registered under BOTH names:
 const plugConfig = { description: "Deploy an app, website, game, or single HTML page … (only deploy/publish tool)…",
       inputSchema: plugInputSchema /* html | path | artifact_files, cloudgrid_yaml,
         target_entity_id, grid, slug, hints, anon, owner_token */,
@@ -152,20 +151,16 @@ const plugConfig = { description: "Deploy an app, website, game, or single HTML 
                       owner_token, console_url, current_visibility, visibility_options },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true } };
 const plugHandler = async (input) => { /* grid-picker + manifest-confirm */ okResult(await runPlug(ctx, input)); };
-reg("grid_deploy", plugConfig, plugHandler);                                  // primary
-reg("grid_plug",   { ...plugConfig, description: "Deprecated alias of grid_deploy…" }, plugHandler); // alias
+reg("grid_deploy", plugConfig, plugHandler);
 ```
-`grid_deploy` is the primary create/re-plug verb; **`grid_plug` is a deprecated
-alias** (same handler/schema) kept for one deprecation cycle with a redirect-only,
-keyword-free description so the model never selects it over `grid_deploy`. (The SDK
-has no callable-but-unlisted tool — a disabled tool is also uncallable — so the
-alias is listed, not hidden.) `runPlug` normalizes the source into artifacts (one
-of `html` / `path` / `artifact_files`), selects the auth wire (signed-in vs
-anonymous owner-token), `POST`s a multipart bundle to `/api/v2/plug`, and returns
-the live URL. No `target_entity_id` → CREATE; with it (or `grid`+`slug`) → RE-PLUG
-in place. On a new deploy it also surfaces `current_visibility` +
-`visibility_options` and asks the agent to set visibility. (MCP-tool rename only —
-the CLI verb `grid plug` is unchanged.)
+`grid_deploy` is the create/re-plug verb (renamed from the former `grid_plug`; the
+deprecated alias was removed once the corpus migrated). `runPlug` normalizes the
+source into artifacts (one of `html` / `path` / `artifact_files`), selects the auth
+wire (signed-in vs anonymous owner-token), `POST`s a multipart bundle to
+`/api/v2/plug`, and returns the live URL. No `target_entity_id` → CREATE; with it
+(or `grid`+`slug`) → RE-PLUG in place. On a new deploy it also surfaces
+`current_visibility` + `visibility_options` and asks the agent to set visibility.
+(MCP-tool name only — the CLI verb `grid plug` is unchanged.)
 
 ### `grid_source`
 ```js

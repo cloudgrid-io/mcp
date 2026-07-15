@@ -58,7 +58,7 @@ curl -sS -X POST https://api.cloudgrid.io/api/v2/plug \
   -F "artifact=@/path/to/index.html;type=text/html"
 ```
 
-The MCP `grid_plug` tool does all of this for you: pass the page as its inline
+The MCP `grid_deploy` tool does all of this for you: pass the page as its inline
 `html` param (it materializes one `index.html` and handles anon/claim/re-plug).
 
 ### Re-plug: update the same URL in place

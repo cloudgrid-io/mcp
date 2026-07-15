@@ -4,7 +4,7 @@ when: company website, business site, corporate site, about-us site, small-busin
 needs: none
 deploy: inspiration
 editions: all
-capabilities_note: static — no infrastructure. Publishes as an inspiration (instant, works on hosted) via grid_plug.
+capabilities_note: static — no infrastructure. Publishes as an inspiration (instant, works on hosted) via grid_deploy.
 summary: Fetch the company-website template, fill it with the user's content across hero/about/services/team/contact, deploy it, and return the live share URL.
 ---
 

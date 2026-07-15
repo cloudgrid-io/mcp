@@ -24,7 +24,6 @@ const GRIDCTL = [
   "grid_list",
   "grid_init",
   "grid_deploy",
-  "grid_plug",
   "grid_logs",
   "grid_share",
   "grid_feedback",
@@ -75,13 +74,13 @@ check(
   cloudgridNames.length === 0,
 );
 
-// grid_drop is GONE — folded into grid_plug (the one deploy/share verb).
+// grid_drop is GONE — folded into grid_deploy (the one deploy/publish verb).
 check("grid_drop is no longer advertised", !nameSet.has("grid_drop"));
 
 // grid_deploy is the unified direct-API create/re-plug verb (spec v2 §3) and the
 // single deploy/publish verb — it absorbed the drop single-file publish via the
-// inline `html` param. grid_plug is the deprecated ALIAS (same schema/handler),
-// kept for one deprecation cycle. Local edition: `html` + `path` +
+// inline `html` param. It was renamed from grid_plug; the deprecated grid_plug
+// alias has been removed (corpus migrated). Local edition: `html` + `path` +
 // `artifact_files` + `target_entity_id`; the old CLI-wrap `target` param is gone.
 const plugTool = tools.find((t) => t.name === "grid_deploy");
 const plugProps = plugTool?.inputSchema?.properties ?? {};
@@ -90,10 +89,7 @@ check("deploy has `filename` param", "filename" in plugProps);
 check("local deploy has `path` param", "path" in plugProps);
 check("deploy has `artifact_files` param", "artifact_files" in plugProps);
 check("deploy has `target_entity_id` param", "target_entity_id" in plugProps);
-check(
-  "grid_plug is a deprecated alias of grid_deploy",
-  (tools.find((t) => t.name === "grid_plug")?.description ?? "").includes("Deprecated alias"),
-);
+check("grid_plug alias removed (migrated to grid_deploy)", !nameSet.has("grid_plug"));
 check("plug has `owner_token` param", "owner_token" in plugProps);
 check("plug has `anon` param", "anon" in plugProps);
 check("plug dropped the CLI-wrap `target` param", !("target" in plugProps));

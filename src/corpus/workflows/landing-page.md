@@ -4,7 +4,7 @@ when: landing page, marketing page, product page, hero page, coming-soon, waitli
 needs: none
 deploy: inspiration
 editions: all
-capabilities_note: static — no infrastructure. Publishes as an inspiration (instant, works on hosted) via grid_plug.
+capabilities_note: static — no infrastructure. Publishes as an inspiration (instant, works on hosted) via grid_deploy.
 summary: Fetch the landing-page template, fill it with the user's content, deploy it, and return the live share URL.
 ---
 

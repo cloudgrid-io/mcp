@@ -143,7 +143,7 @@ A user is a member when a `memberships` doc for their `authId` has
    `vault:` block maps from). Non-secret config (publishable auth key, price id)
    → `grid_env` / `services.web.env`. Do NOT set `DATABASE_MONGODB_URL`
    yourself — the grid injects it.
-5. `grid_plug` to deploy. A runtime deploy is **ASYNC** — the first response
+5. `grid_deploy` to deploy. A runtime deploy is **ASYNC** — the first response
    is `status: building`, not a live URL. Poll `grid_status` (or the returned
    poll_url) until live; surface a liveness signal while it builds, never a bare
    silent wait.
@@ -157,4 +157,4 @@ A membership site is a built + deployed runtime container, so it requires the
 **local edition** (Claude Desktop / Claude Code) or the CLI. The **hosted**
 edition (Claude Web / hosted MCP) is inline-only and can only publish static
 pages — it CANNOT build this app. On hosted, say so plainly and offer a static
-paywall-landing page (via `grid_plug`) instead, then stop the runtime path.
+paywall-landing page (via `grid_deploy`) instead, then stop the runtime path.

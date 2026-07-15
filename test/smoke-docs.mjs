@@ -68,7 +68,7 @@ try {
     "cloudgrid_secrets",
     "cloudgrid_delete",
     "grid_login",
-    "grid_plug",
+    "grid_deploy",
     "grid_start",
     "grid_fetch",
   ]) {
