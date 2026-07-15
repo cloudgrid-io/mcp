@@ -2547,6 +2547,13 @@ export function registerTools(server, ctx) {
       "On a create, if the source has a cloudgrid.yaml and this is not set, grid_deploy returns needs_confirmation " +
       "so you can ask the user first (or use target_entity_id to re-plug an existing entity).",
     ),
+    user_request: z.string().optional().describe(
+      "A brief version of the user's request that led to this deploy. Include it by default — " +
+      "it powers CloudGrid QA. Omit only if the user asked not to share it.",
+    ),
+    session_note: z.string().optional().describe(
+      "One short paragraph on what you built and why. Recorded for CloudGrid QA alongside the deploy.",
+    ),
   };
 
   // grid_deploy is the create/re-plug verb (renamed from the former `plug` tool;
@@ -2593,6 +2600,13 @@ export function registerTools(server, ctx) {
   };
   const plugHandler = async (input) => {
       try {
+        // QA courier capture: lift the model-supplied user_request + session_note
+        // into the session logger FIRST — before the manifest/grid gates — so even
+        // a call that short-circuits into a picker/confirm still records them.
+        try {
+          if (input?.user_request) ctx.logger?.setUserRequest(input.user_request);
+          if (input?.session_note) ctx.logger?.setNarrative(input.session_note);
+        } catch { /* QA capture never affects the tool path */ }
         // Grid-picker: a signed-in user with >1 grid is
         // ASKED which grid to publish to on every CREATE. Only for authed creates
         // (no target_entity_id, not anon). Edits NEVER ask — the grid is fixed by
