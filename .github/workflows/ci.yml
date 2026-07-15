@@ -43,6 +43,14 @@ jobs:
       # on authed multi-grid creates (like grid_drop), never on edits/anon,
       # and proceeds on an explicit/single grid. Drives the real tool handlers.
       - run: npm run test:grid-picker
+      # Offline upload-timeout test: the /api/v2/plug POST aborts (not hangs)
+      # when the server stalls, surfacing a "may still be building — check
+      # status" error instead of the "getting stuck" bug.
+      - run: npm run test:plug-timeout
+      # Offline manifest-aware confirm test: a CREATE whose source already
+      # carries a cloudgrid.yaml returns needs_confirmation (does not
+      # auto-create) until grid_plug is re-called with confirm_new_app:true.
+      - run: npm run test:manifest-confirm
       # Offline consent-gated error-reporting test (0.8.1): grid_report posts
       # {app:"mcp", message, context, node_version, platform} to
       # /api/v2/errors/feedback (Bearer authed / trusted-server anon), scrubs

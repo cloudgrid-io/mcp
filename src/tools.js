@@ -105,7 +105,8 @@ Operating rules:
   - Multi-file app or agent (kind is app or agent, or single_html: false): do NOT try to edit it as one inline HTML file. Tell the user it is a multi-file <kind>, give them the entity_id and the source (source_download_url), and explain that rebuilding it needs the local edition (Claude Desktop/Code) or the CLI — the hosted server cannot rebuild a multi-file app.
   - Not yours (capabilities.replug: false, reason not_owner): do NOT attempt a re-plug. Offer to fork it into the user's own grid with grid_fork and edit the copy instead.
 
-Deploy is via grid_plug on every edition: for a single HTML page pass it inline as the html param (works on the hosted MCP too); for a multi-file app write the files and pass a folder path (local MCP / CLI). A single HTML page deploys synchronously as an inspiration, so you get a URL right away.`;
+Deploy is via grid_plug on every edition: for a single HTML page pass it inline as the html param (works on the hosted MCP too); for a multi-file app write the files and pass a folder path (local MCP / CLI). A single HTML page deploys synchronously as an inspiration, so you get a URL right away.
+When you deploy a folder that already has a cloudgrid.yaml, grid_plug returns needs_confirmation on the first create instead of deploying — it's asking whether to create a NEW app. Relay that to the user, and once they say yes re-call grid_plug with confirm_new_app: true. To update an existing app instead, pass its target_entity_id.`;
 
 // The corpus subdirectories that grid_fetch serves, keyed by `kind`. Each
 // lives in its own subtree of src/corpus/ (populated by scripts/snapshot-corpus.mjs
@@ -240,6 +241,12 @@ const CLI_NPX_PKG = "@cloudgrid-io/cli@latest";
 // this, skip the local/global CLI and fall back to `npx @latest`. Keep at (or
 // above) the platform's current required floor.
 const MIN_CLI_VERSION = "0.15.0";
+
+// Upload/create POST budget. The build itself is async (server returns 202 +
+// poll_url); this bounds only the request→response, so a stalled server errors
+// instead of hanging forever (the "getting stuck" bug). Generous by default;
+// override with CLOUDGRID_PLUG_UPLOAD_TIMEOUT_MS.
+const PLUG_UPLOAD_TIMEOUT_MS = Number(process.env.CLOUDGRID_PLUG_UPLOAD_TIMEOUT_MS) || 120_000;
 
 // Verb map for the drift guard: each CLI-wrapping tool's top-level verb(s).
 // The drift-guard test imports this and asserts every verb exists in `cloudgrid --help`.
@@ -931,6 +938,56 @@ export function parseManifestName(yaml) {
   return null;
 }
 
+// Detect whether a CREATE's source already carries a cloudgrid.yaml (i.e. it's
+// a pre-configured runtime app). Returns a light summary { name, services, needs, raw }
+// or null. Pure except the injectable disk read (path source).
+export function detectSourceManifest(input, deps = {}) {
+  const readManifestFile = deps.readManifestFile || ((p) => {
+    try { return existsSync(p) ? readFileSync(p, "utf8") : null; } catch { return null; }
+  });
+  let yaml = null;
+  if (typeof input?.cloudgrid_yaml === "string" && input.cloudgrid_yaml.trim()) {
+    yaml = input.cloudgrid_yaml;
+  } else if (Array.isArray(input?.artifact_files)) {
+    // Only the ROOT cloudgrid.yaml is a runtime manifest — the server builds
+    // from the root. A nested one (services/web/cloudgrid.yaml) is not.
+    const entry = input.artifact_files.find((f) => f?.path === "cloudgrid.yaml");
+    if (entry?.content) yaml = entry.content;
+  } else if (typeof input?.path === "string" && input.path) {
+    yaml = readManifestFile(join(input.path, "cloudgrid.yaml"));
+  }
+  if (!yaml) return null;
+  const name = parseManifestName(yaml);
+  // lightweight surface for the confirm prompt (no full YAML parser needed).
+  // Scope each list to its own top-level block: collect only the immediate
+  // child keys of `services:`/`needs:` — a shared 2-space regex would grab a
+  // `needs:` child (e.g. `database`) as a bogus service.
+  const lines = yaml.split(/\r?\n/);
+  const blockChildren = (blockKey) => {
+    const out = [];
+    let inBlock = false;
+    let childIndent = null;
+    for (const line of lines) {
+      if (/^\S/.test(line)) {
+        // a top-level key: enters the target block, or ends it
+        inBlock = new RegExp(`^${blockKey}:\\s*$`).test(line);
+        childIndent = null;
+        continue;
+      }
+      if (!inBlock || line.trim() === "") continue;
+      const indent = line.match(/^(\s*)/)[1].length;
+      if (childIndent === null) childIndent = indent;
+      if (indent !== childIndent) continue; // deeper nesting (a child's props)
+      const m = line.trim().match(/^([a-z0-9-]+):/i);
+      if (m) out.push(m[1]);
+    }
+    return out;
+  };
+  const services = blockChildren("services");
+  const needs = blockChildren("needs");
+  return { name: name || null, services, needs, raw: yaml };
+}
+
 // The public URL of a `/plug` response: the server-composed `url` verbatim
 // (canonical, flat-arch-aware — the unified plug spec), falling back to client-side composition
 // ONLY when the server left it empty (its composition is best-effort).
@@ -1493,6 +1550,7 @@ export async function plugViaCliFallback(ctx, artifacts, deps = {}) {
  * `artifact_files` (hosted — inline file entries).
  */
 export async function runPlug(ctx, input, deps = {}) {
+  const { fetchImpl = fetch, uploadTimeoutMs = PLUG_UPLOAD_TIMEOUT_MS } = deps;
   const {
     path: srcPath,
     artifact_files,
@@ -1715,8 +1773,20 @@ export async function runPlug(ctx, input, deps = {}) {
 
   let res;
   try {
-    res = await fetch(`${API_BASE}/api/v2/plug`, { method: "POST", headers, body: form });
+    res = await fetchImpl(`${API_BASE}/api/v2/plug`, {
+      method: "POST",
+      headers,
+      body: form,
+      signal: AbortSignal.timeout(uploadTimeoutMs),
+    });
   } catch (err) {
+    if (err?.name === "AbortError" || err?.name === "TimeoutError") {
+      throw new Error(
+        `The deploy request timed out after ${Math.round(uploadTimeoutMs / 1000)}s. ` +
+          `The build may still be running on CloudGrid — check the deploy status ` +
+          `(poll_url / grid_status, or your grid) before deploying again, so you don't create a duplicate.`,
+      );
+    }
     throw new Error(`Could not reach CloudGrid at ${API_BASE}: ${err.message}`);
   }
   const raw = await res.text();
@@ -2451,6 +2521,11 @@ export function registerTools(server, ctx) {
       "The owner token of an anonymously-created drop — authorizes an anonymous re-plug (with " +
       "target_entity_id). Re-minted on every anonymous edit; always persist the newest one from the result.",
     ),
+    confirm_new_app: z.boolean().optional().describe(
+      "Set true to confirm deploying a source that already contains a cloudgrid.yaml as a NEW runtime app. " +
+      "On a create, if the source has a cloudgrid.yaml and this is not set, grid_plug returns needs_confirmation " +
+      "so you can ask the user first (or use target_entity_id to re-plug an existing entity).",
+    ),
   };
 
   reg(
@@ -2509,6 +2584,32 @@ export function registerTools(server, ctx) {
         // proceeds. A single grid proceeds (with a warning if it isn't set up yet).
         const isEdit =
           typeof input?.target_entity_id === "string" && input.target_entity_id.length > 0;
+        // A grid+slug pair is a probable re-plug handle (the replug_handle,
+        // resolved inside runPlug) — treat it like an edit for the confirm gate.
+        const isReplugHandle = Boolean(input?.grid && input?.slug);
+        // Manifest-aware confirm: a CREATE whose source already carries a
+        // cloudgrid.yaml is a pre-configured runtime app. Don't silently
+        // auto-create — ask once. (Skip when re-plugging, or when confirmed.)
+        if (!isEdit && !isReplugHandle && input?.confirm_new_app !== true) {
+          const manifest = detectSourceManifest(input);
+          if (manifest) {
+            const svc = manifest.services?.length
+              ? ` (services: ${manifest.services.join(", ")}${manifest.needs?.length ? `; needs: ${manifest.needs.join(", ")}` : ""})`
+              : "";
+            return okResult({
+              text:
+                `This folder is a CloudGrid runtime app — it already has a cloudgrid.yaml` +
+                (manifest.name ? ` for "${manifest.name}"` : "") + `${svc}. ` +
+                `Deploy it as a NEW app on the grid? If yes, re-call grid_plug with confirm_new_app: true. ` +
+                `To update an existing app instead, pass its target_entity_id.`,
+              structured: {
+                needs_confirmation: true,
+                manifest_detected: true,
+                manifest: { name: manifest.name, services: manifest.services, needs: manifest.needs },
+              },
+            });
+          }
+        }
         if (input?.anon !== true && !isEdit) {
           const token = await ctx.getToken();
           if (token) {
