@@ -21,7 +21,7 @@ const GRIDCTL = [
   "grid_login",
   "grid_login_status",
   "grid_visibility",
-  "grid_orgs",
+  "grid_list",
   "grid_init",
   "grid_plug",
   "grid_logs",
@@ -107,9 +107,9 @@ const fetched = await client.callTool({ name: "grid_fetch", arguments: { kind: "
 const fetchedText = fetched.content?.[0]?.text ?? "";
 check("grid_fetch returns deck template HTML", fetched.isError !== true && /<!doctype html/i.test(fetchedText));
 
-// grid_orgs resolves under its canonical name.
-const orgsStatus = await client.callTool({ name: "grid_orgs", arguments: {} });
-check("grid_orgs resolves (no method-not-found)", orgsStatus !== undefined);
+// grid_list resolves under its canonical name.
+const orgsStatus = await client.callTool({ name: "grid_list", arguments: {} });
+check("grid_list resolves (no method-not-found)", orgsStatus !== undefined);
 
 // The end-to-end CLI call requires a logged-in cloudgrid CLI on $PATH.
 // In CI the CLI is not installed, so skip this part.
