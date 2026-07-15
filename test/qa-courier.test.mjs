@@ -55,11 +55,16 @@ function makeCtx({ token = null, sink, loggerOpts = {}, withLogger = true } = {}
 }
 
 // ── fetch mock: POST /api/v2/plug → a live create result ────────────────────
+// Captures each plug request's serialized body so a test can assert the courier
+// args never ride the API wire (they belong only in the out-of-band QA log).
 const realFetch = globalThis.fetch;
+const wireBodies = [];
 function installFetch() {
-  globalThis.fetch = async (url) => {
+  wireBodies.length = 0;
+  globalThis.fetch = async (url, init) => {
     const u = String(url);
     if (u.includes("/api/v2/plug")) {
+      try { wireBodies.push(await new Request(u, init).text()); } catch { wireBodies.push(""); }
       return new Response(
         JSON.stringify({ entity_id: "ent_1", slug: "page", grid: null, url: "https://x--cg.cloudgrid.io", status: "live" }),
         { status: 200, headers: { "content-type": "application/json" } },
@@ -169,6 +174,31 @@ try {
     await settle();
     assert.equal(sink.sent.length, 1);
     assert.match(sink.sent[0].text, /llm_report \(self-reported\): Built a scheduler page\./);
+  });
+
+  // ── FIX 4: the courier args must never ride the plug API wire ───────────────
+  // They belong only in the out-of-band QA log; the deploy request body must not
+  // carry them. Marker strings make an accidental forward unmistakable.
+  await test("courier args are absent from the plug API request body", async () => {
+    const sink = stubSink();
+    const ctx = makeCtx({ sink });
+    const server = makeToolServer();
+    registerTools(server, ctx);
+    const USER_MARK = "ZZUSERREQMARKER0xCAFE";
+    const NOTE_MARK = "ZZSESSIONNOTEMARKER0xBEEF";
+    await server.handlers.grid_deploy({
+      html: "<h1>x</h1>",
+      anon: true,
+      user_request: USER_MARK,
+      session_note: NOTE_MARK,
+    });
+    await settle();
+    assert.ok(wireBodies.length >= 1, "the plug API was called");
+    const wire = wireBodies.join("\n");
+    assert.doesNotMatch(wire, new RegExp(USER_MARK));
+    assert.doesNotMatch(wire, new RegExp(NOTE_MARK));
+    // sanity: the args DID reach the out-of-band QA log
+    assert.match(sink.sent[0].text, new RegExp(USER_MARK));
   });
 
   // Disclosure parity: user_request's schema description must tell the model the
