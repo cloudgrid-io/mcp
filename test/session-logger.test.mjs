@@ -216,6 +216,30 @@ test("scrubArgs value-scrubs an allowlisted string containing a JWT", async () =
   assert.match(logger.calls[0].args.url, /\[REDACTED\]/);
 });
 
+test("setUserRequest caps a huge value so the rendered log stays small (trail line still present)", async () => {
+  const sink = stubSink();
+  const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink, ctx: makeCtx(), now: () => 0 });
+  logger.setUserRequest("z".repeat(500 * 1024)); // 500KB — no cap → whole trail past the Slack clip
+  await logger.recordCall("grid_init", { name: "x" }, { content: [], structuredContent: {} }, 1);
+  await logger.flush("live");
+  assert.equal(sink.sent.length, 1);
+  const text = sink.sent[0].text;
+  assert.ok(text.length < 10 * 1024, `rendered log should be < 10KB, was ${text.length}`);
+  assert.match(text, /user_request: z/); // capped, not dropped — the line is present
+});
+
+test("setNarrative scrubs before capping so a token straddling the 4000 boundary cannot leak", async () => {
+  const sink = stubSink();
+  const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink, ctx: makeCtx(), now: () => 0 });
+  const token = "ghp_" + "A".repeat(30);         // a full GitHub PAT
+  const pad = "n".repeat(3989) + " ";            // token starts at index 3990, straddles 4000
+  logger.setNarrative(pad + token);
+  await logger.recordCall("grid_init", { name: "x" }, { content: [], structuredContent: {} }, 1);
+  await logger.flush("live");
+  assert.equal(sink.sent.length, 1);
+  assert.doesNotMatch(sink.sent[0].text, /ghp_/); // slice-before-scrub would leak a partial "ghp_…"
+});
+
 test("recordCall marks error outcome on isError result", async () => {
   const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink: stubSink(), ctx: makeCtx(), now: () => 0 });
   await logger.recordCall("grid_deploy", {}, { content: [{ type: "text", text: "boom" }], isError: true }, 50);

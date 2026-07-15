@@ -237,11 +237,18 @@ export class SessionLogger {
   }
 
   setUserRequest(text) {
-    try { if (!this.userRequest && text) this.userRequest = scrubText(text); } catch { /* noop */ }
+    // Scrub FIRST, then cap — capping before scrub could clip a credential
+    // mid-token, and an uncapped value would push the whole trail past the
+    // Slack 38KB clip. Only-if-unset (stdio env/header value wins).
+    try { if (!this.userRequest && text) this.userRequest = scrubText(text).slice(0, 2000); } catch { /* noop */ }
   }
 
   setNarrative(text) {
-    try { if (text) this.narrative = String(text).slice(0, 4000); } catch { /* noop */ }
+    // Scrub FIRST, then cap: slicing before scrub can leave a partial token
+    // prefix at the 4000 boundary that no longer matches the redaction patterns.
+    // Last-write-wins — a later note replaces an earlier one. (flush() scrubs
+    // again, a harmless double-scrub.)
+    try { if (text) this.narrative = scrubText(String(text)).slice(0, 4000); } catch { /* noop */ }
   }
 }
 
