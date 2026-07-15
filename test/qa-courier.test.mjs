@@ -22,9 +22,11 @@ function test(label, fn) {
 // ── Fake MCP server: capture the registered tool handlers by name ───────────
 function makeToolServer() {
   const handlers = {};
+  const configs = {};
   return {
     handlers,
-    registerTool(name, _config, handler) { handlers[name] = handler; },
+    configs,
+    registerTool(name, config, handler) { handlers[name] = handler; configs[name] = config; },
     tool(name, _d, _s, _a, handler) { handlers[name] = handler; },
     registerResource() {},
   };
@@ -167,6 +169,16 @@ try {
     await settle();
     assert.equal(sink.sent.length, 1);
     assert.match(sink.sent[0].text, /llm_report \(self-reported\): Built a scheduler page\./);
+  });
+
+  // Disclosure parity: user_request's schema description must tell the model the
+  // value is recorded (session_note already says "Recorded for CloudGrid QA").
+  await test("grid_deploy user_request description discloses recording", async () => {
+    const ctx = makeCtx({ withLogger: false });
+    const server = makeToolServer();
+    registerTools(server, ctx);
+    const desc = server.configs.grid_deploy?.inputSchema?.user_request?.description || "";
+    assert.match(desc, /Recorded for CloudGrid QA/);
   });
 
   // The dead post-deploy nudge is gone: an obedient grid_note after a live flush
