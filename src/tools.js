@@ -2378,12 +2378,33 @@ export function registerTools(server, ctx) {
     }
   };
 
+  // Every primary tool records its shape here so a deprecated alias can be
+  // registered under an OLD name with the same handler + schema but a
+  // redirect-only, keyword-free description (so the model never mis-selects it).
+  const registered = {};
   const reg = (name, config, handler) => {
+    registered[name] = { kind: "reg", config, handler };
     server.registerTool(name, config, withCapture(name, handler));
   };
 
   const regTool = (name, description, schema, annotations, handler) => {
+    registered[name] = { kind: "tool", description, schema, annotations, handler };
     server.tool(name, description, schema, annotations, withCapture(name, handler));
+  };
+
+  // Register OLD tool names as deprecated aliases of their new (clearer) names.
+  // Same handler/schema; description is redirect-only so it never wins selection.
+  // Skips silently if the primary isn't registered in this edition (e.g. a
+  // CLI-only tool on the web edition).
+  const registerAlias = (oldName, newName) => {
+    const r = registered[newName];
+    if (!r) return;
+    const redirect = `Deprecated alias of ${newName}. Always call ${newName} instead; this name is kept for backward compatibility.`;
+    if (r.kind === "reg") {
+      server.registerTool(oldName, { ...r.config, description: redirect }, withCapture(oldName, r.handler));
+    } else {
+      server.tool(oldName, redirect, r.schema, r.annotations, withCapture(oldName, r.handler));
+    }
   };
 
   // ── Widget resources (web edition, ChatGPT Apps SDK) ──────────────────────
@@ -2417,7 +2438,7 @@ export function registerTools(server, ctx) {
 
   // Claim — both editions.
   reg(
-    "grid_claim",
+    "grid_claim_anonymous_deploy",
     {
       description: "Claim an anonymous drop into the signed-in account, so it becomes owned and stops expiring on the anonymous schedule. Use after the user signs in to keep something they dropped anonymously. The public URL does not change. The claim token IS the drop's owner_token (one bearer capability for both edit and claim — anonymous edits refresh it, so always use the newest). Requires sign-in (grid_login). Calls the API directly.",
       inputSchema: {
@@ -2643,7 +2664,7 @@ export function registerTools(server, ctx) {
 
   // ── grid_fork / grid_download — direct-API verbs (spec v2 §5–6) ──────
   reg(
-    "grid_fork",
+    "grid_copy_app",
     {
       description:
         "Start a NEW entity from an existing runtime (copy-on-write, lineage recorded). Lands in the " +
@@ -2678,7 +2699,7 @@ export function registerTools(server, ctx) {
   );
 
   reg(
-    "grid_download",
+    "grid_download_source",
     {
       description:
         "Fetch the source bundle last deployed for a runtime: one signed, time-limited (15-minute) read URL " +
@@ -2709,7 +2730,7 @@ export function registerTools(server, ctx) {
   // Source — both editions. Fetches a drop's current deployed HTML inline so an
   // agent that lost the content can edit it and re-plug in place.
   reg(
-    "grid_source",
+    "grid_get_app_source",
     {
       description:
         "Retrieve the CURRENT deployed HTML of an inspiration/drop inline as text, so you can edit it and " +
@@ -2836,7 +2857,7 @@ export function registerTools(server, ctx) {
   );
 
   reg(
-    "grid_visibility",
+    "grid_set_sharing",
     {
       description: "Change who can see a CloudGrid inspiration: private, space, authenticated, org, or link (anyone with the URL). Use when the user wants to make a drop private, restrict who sees it, or open it up — including right after a drop, with no target id needed. Defaults to the drop made in this session. Requires sign-in. Calls the API directly.",
       inputSchema: {
@@ -2861,7 +2882,7 @@ export function registerTools(server, ctx) {
 
   // Org listing — both editions.
   reg(
-    "grid_list",
+    "grid_list_grids",
     {
       description: "List the signed-in user's grids, each with slug, name, role, and provisioning status. A grid that is still provisioning (render_ready false) may not serve pages yet — prefer a ready grid, and if the user insists on a not-ready one, warn them that pages may not load. Requires sign-in.",
       inputSchema: {},
@@ -2976,7 +2997,7 @@ export function registerTools(server, ctx) {
   );
 
   reg(
-    "grid_fetch",
+    "grid_get_template",
     {
       description:
         "Load a specific CloudGrid workflow, template, example, rule, or doc by name — deterministic retrieval from the bundled corpus (complements the fuzzy search_cloudgrid_documentation). Use after grid_start to pull the exact recipe/template you need, e.g. grid_fetch({kind:\"workflow\", name:\"presentation\"}) then grid_fetch({kind:\"template\", name:\"deck\"}).",
@@ -3083,12 +3104,22 @@ export function registerTools(server, ctx) {
     },
   );
 
+  // ── Deprecated aliases (tool-name cleanup): OLD direct-API names kept callable
+  //    (both editions) as redirect-only aliases of their new, clearer names.
+  registerAlias("grid_fetch", "grid_get_template");
+  registerAlias("grid_source", "grid_get_app_source");
+  registerAlias("grid_list", "grid_list_grids");
+  registerAlias("grid_fork", "grid_copy_app");
+  registerAlias("grid_download", "grid_download_source");
+  registerAlias("grid_claim", "grid_claim_anonymous_deploy");
+  registerAlias("grid_visibility", "grid_set_sharing");
+
   if (ctx.edition !== "local") return; // web edition stops here — no CLI tools
 
   // ── CLI-wrapping tools (local edition only) ───────────────────────────────
 
   regTool(
-    "grid_init",
+    "grid_create_project",
     "Register a new CloudGrid app or agent, optionally seeding a web service. Wraps `cloudgrid init`.",
     {
       kind: z.enum(["app", "agent"]).describe("Entity kind."),
@@ -3116,7 +3147,7 @@ export function registerTools(server, ctx) {
   // editions, per spec v2 §3.
 
   regTool(
-    "grid_logs",
+    "grid_view_logs",
     "Tail recent logs for an entity. Does not stream; returns a snapshot. Wraps `cloudgrid logs`.",
     {
       name: z.string().optional().describe("Entity name. Omit to use the entity linked to the current directory."),
@@ -3174,7 +3205,7 @@ export function registerTools(server, ctx) {
   );
 
   regTool(
-    "grid_use",
+    "grid_switch_grid",
     "Switch the active org. Wraps `cloudgrid use`.",
     { org: z.string().describe("Org slug to switch to.") },
     { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
@@ -3250,7 +3281,7 @@ export function registerTools(server, ctx) {
   );
 
   regTool(
-    "grid_pickup",
+    "grid_edit_existing_app",
     "Download an entity's source + cloudgrid.yaml and link the folder to it. Overwrites with --force. Wraps `cloudgrid pickup`.",
     {
       name: z.string().describe("Entity slug or id to pick up."),
@@ -3286,7 +3317,7 @@ export function registerTools(server, ctx) {
   );
 
   regTool(
-    "grid_unplug",
+    "grid_take_offline",
     "Take an entity off the grid. Destructive. Wraps `cloudgrid unplug`.",
     {
       name: z.string().describe("Entity slug to take down (required)."),
@@ -3308,7 +3339,7 @@ export function registerTools(server, ctx) {
   );
 
   regTool(
-    "grid_rollback",
+    "grid_rollback_deploy",
     "Rollback an entity to a previous version. Wraps `cloudgrid rollback`.",
     {
       name: z.string().describe("Entity slug."),
@@ -3323,7 +3354,7 @@ export function registerTools(server, ctx) {
   );
 
   regTool(
-    "grid_versions",
+    "grid_list_versions",
     "List published versions for an entity. Wraps `cloudgrid versions`.",
     { name: z.string().optional().describe("Entity name. Omit for the entity linked to the current directory.") },
     { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
@@ -3335,7 +3366,7 @@ export function registerTools(server, ctx) {
   );
 
   regTool(
-    "grid_env",
+    "grid_set_env",
     "Manage environment variables for an entity. Wraps `cloudgrid env`.",
     {
       action: z.enum(["get", "set", "list"]).describe("get, set, or list."),
@@ -3359,7 +3390,7 @@ export function registerTools(server, ctx) {
   );
 
   regTool(
-    "grid_secrets",
+    "grid_set_secret",
     "Set or list secret names for an entity. Never returns secret values. Wraps `cloudgrid secrets`.",
     {
       action: z.enum(["set", "list"]).describe("set or list (names only)."),
@@ -3389,7 +3420,7 @@ export function registerTools(server, ctx) {
   );
 
   regTool(
-    "grid_doctor",
+    "grid_diagnose",
     "Run CloudGrid diagnostics on the local environment. Wraps `cloudgrid doctor`.",
     {},
     { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
@@ -3397,7 +3428,7 @@ export function registerTools(server, ctx) {
   );
 
   regTool(
-    "grid_open",
+    "grid_get_url",
     "Return the public URL for an entity. Does not open a browser. Wraps `cloudgrid open --print`.",
     { name: z.string().optional().describe("Entity name. Omit for the entity linked to the current directory.") },
     { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
@@ -3407,6 +3438,20 @@ export function registerTools(server, ctx) {
       return args;
     }),
   );
+
+  // ── Deprecated aliases (tool-name cleanup): OLD CLI-tool names kept callable
+  //    (local edition) as redirect-only aliases of their new, clearer names.
+  registerAlias("grid_init", "grid_create_project");
+  registerAlias("grid_logs", "grid_view_logs");
+  registerAlias("grid_env", "grid_set_env");
+  registerAlias("grid_secrets", "grid_set_secret");
+  registerAlias("grid_rollback", "grid_rollback_deploy");
+  registerAlias("grid_versions", "grid_list_versions");
+  registerAlias("grid_open", "grid_get_url");
+  registerAlias("grid_doctor", "grid_diagnose");
+  registerAlias("grid_unplug", "grid_take_offline");
+  registerAlias("grid_use", "grid_switch_grid");
+  registerAlias("grid_pickup", "grid_edit_existing_app");
 }
 
 export { decodeJwt };

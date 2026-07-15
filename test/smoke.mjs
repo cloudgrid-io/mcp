@@ -12,40 +12,63 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 // ONLY advertised names — the deprecated cloudgrid_* aliases were removed.
 const GRIDCTL = [
   "grid_start",
-  "grid_fetch",
+  "grid_get_template",
   "grid_report",
-  "grid_claim",
-  "grid_fork",
-  "grid_download",
-  "grid_source",
+  "grid_claim_anonymous_deploy",
+  "grid_copy_app",
+  "grid_download_source",
+  "grid_get_app_source",
   "grid_login",
   "grid_login_status",
-  "grid_visibility",
-  "grid_list",
-  "grid_init",
+  "grid_set_sharing",
+  "grid_list_grids",
+  "grid_create_project",
   "grid_deploy",
-  "grid_logs",
+  "grid_view_logs",
   "grid_share",
   "grid_feedback",
   "grid_whoami",
-  "grid_use",
+  "grid_switch_grid",
   "grid_logout",
   "grid_status",
   "grid_info",
   "grid_get",
   "grid_describe_grid",
-  "grid_pickup",
+  "grid_edit_existing_app",
   "grid_rename",
-  "grid_unplug",
+  "grid_take_offline",
   "grid_delete",
-  "grid_rollback",
-  "grid_versions",
+  "grid_rollback_deploy",
+  "grid_list_versions",
+  "grid_set_env",
+  "grid_set_secret",
+  "grid_scaffold",
+  "grid_diagnose",
+  "grid_get_url",
+  "grid_note",
+];
+
+// Deprecated aliases (tool-name cleanup): the OLD names, kept callable as
+// redirect-only aliases of the new primary names above.
+const ALIASES = [
+  "grid_fetch",
+  "grid_source",
+  "grid_list",
+  "grid_fork",
+  "grid_download",
+  "grid_claim",
+  "grid_visibility",
+  "grid_init",
+  "grid_logs",
   "grid_env",
   "grid_secrets",
-  "grid_scaffold",
-  "grid_doctor",
+  "grid_rollback",
+  "grid_versions",
   "grid_open",
-  "grid_note",
+  "grid_doctor",
+  "grid_unplug",
+  "grid_use",
+  "grid_pickup",
 ];
 
 const transport = new StdioClientTransport({ command: "node", args: ["src/index.js"] });
@@ -63,8 +86,14 @@ const { tools } = await client.listTools();
 const names = tools.map((t) => t.name);
 const nameSet = new Set(names);
 
-check(`lists exactly ${GRIDCTL.length} tools`, names.length === GRIDCTL.length);
+check(`lists exactly ${GRIDCTL.length + ALIASES.length} tools (primaries + deprecated aliases)`,
+  names.length === GRIDCTL.length + ALIASES.length);
 for (const name of GRIDCTL) check(`exposes ${name}`, nameSet.has(name));
+for (const name of ALIASES) {
+  check(`exposes deprecated alias ${name}`, nameSet.has(name));
+  const t = tools.find((x) => x.name === name);
+  check(`${name} description marks it a deprecated alias`, /Deprecated alias of grid_/.test(t?.description ?? ""));
+}
 
 // 0.10.0: the deprecated cloudgrid_* aliases are GONE. No advertised tool name
 // may start with cloudgrid_.
