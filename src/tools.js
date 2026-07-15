@@ -104,7 +104,7 @@ Operating rules:
   - Single-HTML inspiration you can re-plug (single_html: true and capabilities.replug: true): edit the returned HTML and call grid_deploy with target_entity_id (or grid+slug — the replug_handle) to update the SAME URL in place. This works on every edition, including hosted.
   - Multi-file app or agent (kind is app or agent, or single_html: false): do NOT try to edit it as one inline HTML file. Tell the user it is a multi-file <kind>, give them the entity_id and the source (source_download_url), and explain that rebuilding it needs the local edition (Claude Desktop/Code) or the CLI — the hosted server cannot rebuild a multi-file app.
   - Not yours (capabilities.replug: false, reason not_owner): do NOT attempt a re-plug. Offer to fork it into the user's own grid with grid_copy_app and edit the copy instead.
-16. Help CloudGrid QA. When you deploy, fill grid_deploy's user_request with a brief version of the user's ask (include it by default; omit only if the user objects). At the end of a build, call grid_note with one short paragraph on what you built and why. Both are recorded for quality review and never change the deploy.
+16. Help CloudGrid QA. When you deploy, fill BOTH of grid_deploy's user_request (a brief version of the user's ask) AND session_note (one short paragraph on what you built and why) — include both by default; omit only if the user objects. A successful deploy posts the QA log on that same call, so do NOT call grid_note after deploying — session_note is the narrative path. Use grid_note only BEFORE a deploy, or in a session that ends without one. Everything here is recorded for quality review and never changes the deploy.
 
 Deploy is via grid_deploy on every edition: for a single HTML page pass it inline as the html param (works on the hosted MCP too); for a multi-file app write the files and pass a folder path (local MCP / CLI). A single HTML page deploys synchronously as an inspiration, so you get a URL right away.
 When you deploy a folder that already has a cloudgrid.yaml, grid_deploy returns needs_confirmation on the first create instead of deploying — it's asking whether to create a NEW app. Relay that to the user, and once they say yes re-call grid_deploy with confirm_new_app: true. To update an existing app instead, pass its target_entity_id.`;
@@ -2470,11 +2470,18 @@ export function registerTools(server, ctx) {
   // acknowledgement.
   regTool(
     "grid_note",
-    "Optionally leave a one-paragraph summary of what you built this session and why, at the end of a build. Recorded for CloudGrid QA. No side effects.",
+    "Optionally leave a one-paragraph summary of what you built this session and why. Call it BEFORE a deploy, or in a session that ends without one — a successful deploy has already posted the QA log, so pass grid_deploy's session_note instead. Recorded for CloudGrid QA. No side effects.",
     { summary: z.string().describe("A short plain-language summary of what was built and why.") },
     { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     async (input) => {
       try { ctx.logger?.setNarrative(input?.summary); } catch { /* never */ }
+      // Honesty after flush: a successful deploy posts the QA log on that same
+      // call, so a note arriving now records nothing. Say so rather than lie.
+      if (ctx.logger?.flushed === true) {
+        return okResult({
+          text: "This session's QA log has already posted. Pass session_note on your next grid_deploy instead.",
+        });
+      }
       return okResult({ text: "Noted." });
     },
   );
@@ -2671,11 +2678,6 @@ export function registerTools(server, ctx) {
           }
         }
         const res = await runPlug(ctx, input || {});
-        // QA nudge: with an active session logger, ask the agent to leave the
-        // self-report while it still has the session in context.
-        if (ctx.logger) {
-          res.text += "\nFor CloudGrid QA, call grid_note now with one short paragraph on what you built and why.";
-        }
         return okResult(res);
       } catch (err) {
         return fail(err.message);

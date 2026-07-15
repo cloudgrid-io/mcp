@@ -132,19 +132,48 @@ try {
     assert.doesNotMatch(text, /user_request: build me a scheduler/);
   });
 
-  // ── Task 3: post-deploy nudge to call grid_note (only when a QA logger is on) ─
-  await test("successful deploy nudges the agent to call grid_note when a logger is active", async () => {
+  // ── Task 3: grid_note is honest once the log has posted ─────────────────────
+  // A successful deploy flushes the QA log ("live") on the SAME call. A grid_note
+  // that lands AFTER that flush records nothing (the log is gone), so it must SAY
+  // so rather than falsely acknowledge — and it must not add a second post.
+  await test("grid_note after a live-flushed deploy says the log already posted, adds no post", async () => {
     const sink = stubSink();
     const ctx = makeCtx({ sink });
     const server = makeToolServer();
     registerTools(server, ctx);
-    const res = await server.handlers.grid_deploy({ html: "<h1>x</h1>", anon: true });
+    await server.handlers.grid_deploy({ html: "<h1>x</h1>", anon: true });
+    await settle();
+    assert.equal(sink.sent.length, 1, "the live deploy flushed once");
+    assert.equal(ctx.logger.flushed, true, "logger is flushed after a live deploy");
+    const res = await server.handlers.grid_note({ summary: "a late note that will be dropped" });
     const text = res.content?.[0]?.text || "";
-    assert.match(text, /grid_note/);
+    assert.match(text, /already posted/);
+    assert.match(text, /session_note on your next grid_deploy/);
+    await settle();
+    assert.equal(sink.sent.length, 1, "grid_note after flush adds no second post");
+    assert.doesNotMatch(sink.sent[0].text, /a late note that will be dropped/);
   });
 
-  await test("no logger → the result text does NOT mention grid_note", async () => {
-    const ctx = makeCtx({ withLogger: false });
+  // grid_note BEFORE the deploy is the pre-flush path: it records the narrative,
+  // which the deploy's flush then carries into llm_report.
+  await test("grid_note before the deploy lands in the flushed log's llm_report", async () => {
+    const sink = stubSink();
+    const ctx = makeCtx({ sink });
+    const server = makeToolServer();
+    registerTools(server, ctx);
+    const noteRes = await server.handlers.grid_note({ summary: "Built a scheduler page." });
+    assert.match(noteRes.content?.[0]?.text || "", /Noted\./);
+    await server.handlers.grid_deploy({ html: "<h1>x</h1>", anon: true });
+    await settle();
+    assert.equal(sink.sent.length, 1);
+    assert.match(sink.sent[0].text, /llm_report \(self-reported\): Built a scheduler page\./);
+  });
+
+  // The dead post-deploy nudge is gone: an obedient grid_note after a live flush
+  // would be silently dropped, so the deploy no longer tells the agent to call it.
+  await test("a successful deploy result text no longer mentions grid_note", async () => {
+    const sink = stubSink();
+    const ctx = makeCtx({ sink });
     const server = makeToolServer();
     registerTools(server, ctx);
     const res = await server.handlers.grid_deploy({ html: "<h1>x</h1>", anon: true });
