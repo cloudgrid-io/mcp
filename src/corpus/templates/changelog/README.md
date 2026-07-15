@@ -8,7 +8,7 @@ CloudGrid edition, including hosted.
 
 ## Fill it in
 
-Fetch the template with `grid_fetch("template", "changelog")`, then replace the
+Fetch the template with `grid_get_template("template", "changelog")`, then replace the
 placeholders:
 
    - The product name and page intro.

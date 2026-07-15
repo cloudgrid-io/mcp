@@ -5,9 +5,9 @@
 > of that reference — practically complete, not a verbatim dump. **Keep in sync**
 > with the upstream: when the platform reference changes, update this doc.
 >
-> Fetch this doc any time with `grid_fetch("doc", "cloudgrid-yaml")`.
+> Fetch this doc any time with `grid_get_template("doc", "cloudgrid-yaml")`.
 > For matching an intent to a template, see the companion
-> `grid_fetch("doc", "capability-map")`.
+> `grid_get_template("doc", "capability-map")`.
 
 `cloudgrid.yaml` is the manifest at the **root of your project** that defines your
 entity (an app or an agent). It declares the services your entity runs, the
@@ -567,5 +567,5 @@ needs:
 ---
 
 *This doc is the agent-facing distribution of the platform's canonical
-`cloudgrid-yaml-reference.md`. See also `grid_fetch("doc", "capability-map")`
+`cloudgrid-yaml-reference.md`. See also `grid_get_template("doc", "capability-map")`
 for matching a user intent to a template + the `needs:` injection status.*

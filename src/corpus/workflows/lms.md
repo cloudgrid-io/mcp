@@ -44,7 +44,7 @@ edition** (Claude Desktop / Claude Code) or the CLI.
 ## 3. Read the blueprint
 
 Fetch the structure guide and read it before writing anything:
-`grid_fetch("template", "lms")`. `AGENTS.md` is the CloudGrid-specific spec for
+`grid_get_template("template", "lms")`. `AGENTS.md` is the CloudGrid-specific spec for
 this app — the file tree under `services/web/`, the Mongo collections
 (users/courses/modules/lessons/assignments/enrollments/progress/submissions/grades),
 how the grid injects Mongo + the vault auth secret, the instructor/student role
@@ -53,7 +53,7 @@ you build it from the guide.
 
 ## 4. Scaffold
 
-`grid_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
+`grid_create_project` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
 and writes a `cloudgrid.yaml` with an EMPTY `services: {}`. `plug` needs a linked
 directory, so run `init` FIRST. Then (a) write the app under **`services/web/`**
 per the AGENTS.md tree, and (b) fill `cloudgrid.yaml` to the shape below.
@@ -91,9 +91,9 @@ needs:
 
 ## 6. Config
 
-- Secrets → `grid_secrets` (e.g. `grid secrets set auth-provider-key`;
+- Secrets → `grid_set_secret` (e.g. `grid secrets set auth-provider-key`;
   `stripe-live-key`/`stripe-webhook-secret` only for paid courses). Non-secret
-  config → `grid_env` (e.g. the auth publishable key).
+  config → `grid_set_env` (e.g. the auth publishable key).
 - Do **NOT** set the DB connection vars yourself (`DATABASE_MONGODB_URL` or the
   legacy `MONGODB_URL`) — the grid injects them.
 

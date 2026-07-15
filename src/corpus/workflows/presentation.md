@@ -13,9 +13,9 @@ summary: Fetch the deck template, fill it with the user's content, deploy it, an
 Detect the intent ("build me a presentation / deck / slides about X") and follow
 this recipe. Do not ask setup questions first; use sensible defaults and build.
 
-1. **Fetch the template.** Call `grid_fetch("template", "deck")` to load the
+1. **Fetch the template.** Call `grid_get_template("template", "deck")` to load the
    self-contained HTML deck template.
-2. **(Optional) Fetch the example.** Call `grid_fetch("example", "deck")` to
+2. **(Optional) Fetch the example.** Call `grid_get_template("example", "deck")` to
    see a filled deck as a reference for tone and structure.
 3. **Fill the template.** Replace the placeholders with the user's content:
    - The deck title and subtitle.

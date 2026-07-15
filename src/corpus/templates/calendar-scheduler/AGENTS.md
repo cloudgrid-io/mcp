@@ -200,7 +200,7 @@ Runtime app → **local edition** only (Claude Desktop / Claude Code / CLI); the
 hosted edition cannot build a runtime container. Order matters — `plug` needs a
 linked directory, so `init` first.
 
-1. `grid init` (or `grid_init`) an app `<name>` — creates the entity +
+1. `grid init` (or `grid_create_project`) an app `<name>` — creates the entity +
    `.cloudgrid/link.json` and a starter `cloudgrid.yaml` with empty `services:{}`.
 2. Fill: put the app under `services/web/` and set `cloudgrid.yaml` to this
    blueprint's active fields (`services.web` nextjs `/`, `needs:{database:true}`).

@@ -37,7 +37,7 @@ edition** (Claude Desktop / Claude Code) or the CLI.
 
 ## 3. Scaffold
 
-`grid_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
+`grid_create_project` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
 and writes a `cloudgrid.yaml` with an EMPTY `services: {}`. `plug` needs a linked
 directory, so run `init` FIRST. Then (a) write the app under **`services/web/`**,
 and (b) fill `cloudgrid.yaml` to the shape below (`services.web` + `needs:
@@ -65,7 +65,7 @@ and (b) fill `cloudgrid.yaml` to the shape below (`services.web` + `needs:
    `services.web`, and `needs.database` uncommented — so it deploys to exactly
    those active fields.
 2. Fetch the template for the Mongo wiring + CRUD shape:
-   `grid_fetch("template", "ticket-system")`. It is a minimal, real Next.js +
+   `grid_get_template("template", "ticket-system")`. It is a minimal, real Next.js +
    `mongodb`-driver app under `services/web/`: a lazy client in
    `services/web/lib/db.js`, an App-Router GET/POST/PATCH (status)/DELETE route on a `tickets` collection, a
    server-component page, and a client component.
@@ -82,7 +82,7 @@ before deploying. Don't require it.
 
 ## 6. Config
 
-- API keys / secrets → `grid_secrets`. Non-secret config → `grid_env`.
+- API keys / secrets → `grid_set_secret`. Non-secret config → `grid_set_env`.
 - Do **NOT** set the DB connection vars yourself (`DATABASE_MONGODB_URL` or the
   legacy `MONGODB_URL`) — the grid injects them.
 

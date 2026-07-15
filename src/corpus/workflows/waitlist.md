@@ -22,7 +22,7 @@ NOT store signups anywhere on CloudGrid. To actually **store** waitlist signups
 (`needs: { database: true }`) — that is a CRUD app, coming in the crud-app
 archetype (Wave 1b). Do not claim this static page persists data.
 
-1. **Fetch the template.** Call `grid_fetch("template", "waitlist")` to load
+1. **Fetch the template.** Call `grid_get_template("template", "waitlist")` to load
    the self-contained HTML waitlist page (hero, email form, social-proof counter).
 2. **Fill the template.** Replace the placeholders with the user's content:
    - The product name, coming-soon headline, and subheadline.

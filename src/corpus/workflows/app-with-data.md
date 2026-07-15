@@ -43,7 +43,7 @@ Persistent apps are owned entities.
 
 ## 3. Scaffold
 
-`grid_init` an app `<name>` (the default `--type` is fine). `init` creates
+`grid_create_project` an app `<name>` (the default `--type` is fine). `init` creates
 the entity + `.cloudgrid/link.json` and writes a `cloudgrid.yaml` with an EMPTY
 `services: {}`. `plug` needs a linked directory, so run `init` FIRST.
 
@@ -73,7 +73,7 @@ in `cloudgrid.yaml` to the shape below (`services.web` + `needs: { database: tru
    runtime. `requires:` is the deprecated v1 alias; don't author new yaml with it,
    and never set `needs:` and `requires:` together (the validator rejects it).
 2. Fetch the template for the Mongo wiring + CRUD shape:
-   `grid_fetch("template", "app-with-data")`. It is a minimal, real
+   `grid_get_template("template", "app-with-data")`. It is a minimal, real
    Next.js + `mongodb`-driver to-do app under `services/web/`: a lazy client in
    `services/web/lib/db.js`, an App-Router GET/POST/DELETE route on a `todos`
    collection, and a page.
@@ -85,7 +85,7 @@ in `cloudgrid.yaml` to the shape below (`services.web` + `needs: { database: tru
    - **Put the DB connection behind a lazy getter — never read the connection
      string at module top level, or `next build` fails** (the module is imported
      for route analysis before the grid injects the var).
-   - (Optional) fetch `grid_fetch("example", "app-with-data")` for a slightly
+   - (Optional) fetch `grid_get_template("example", "app-with-data")` for a slightly
      richer filled reference to imitate.
 
 ## 5. (Optional) Run locally
@@ -95,8 +95,8 @@ and sanity-check before deploying. Don't require it.
 
 ## 6. Config
 
-- API keys / secrets → `grid_secrets`.
-- Non-secret config → `grid_env`.
+- API keys / secrets → `grid_set_secret`.
+- Non-secret config → `grid_set_env`.
 - Do **NOT** set the DB/cache connection vars yourself (`DATABASE_MONGODB_URL`,
   `CACHE_REDIS_URL`, or their legacy `MONGODB_URL` / `REDIS_URL` aliases) — the
   grid injects them.

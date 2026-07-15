@@ -14,7 +14,7 @@ Detect the intent ("build me a docs site / documentation for X") and follow this
 recipe. For a REST API endpoint reference specifically, use `api-docs`. Do not
 ask setup questions first; use sensible defaults and build.
 
-1. **Fetch the template.** Call `grid_fetch("template", "docs-site")` to load
+1. **Fetch the template.** Call `grid_get_template("template", "docs-site")` to load
    the self-contained HTML docs layout (sidebar nav, content column, code blocks,
    client-side search box).
 2. **Fill the template.** Replace the placeholders with the user's content:

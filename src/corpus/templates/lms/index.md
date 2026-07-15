@@ -8,7 +8,7 @@ Next.js + Mongo app with role-based (instructor/student) auth.
 **This is a blueprint, not app code.** It ships the correct `cloudgrid.yaml` and
 an `AGENTS.md` structure guide. Read `AGENTS.md`, then build the app under
 `services/web/` following it. Fetch the guide with
-`grid_fetch("template", "lms")`.
+`grid_get_template("template", "lms")`.
 
 **Key rules:**
 

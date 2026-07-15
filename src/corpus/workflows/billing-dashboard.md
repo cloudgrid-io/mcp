@@ -43,7 +43,7 @@ A persistent billing dashboard is a built + deployed container. It requires the
 
 ## 3. Scaffold
 
-`grid_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
+`grid_create_project` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
 and writes a `cloudgrid.yaml` with an EMPTY `services: {}`. `plug` needs a linked
 directory, so run `init` FIRST.
 
@@ -51,7 +51,7 @@ directory, so run `init` FIRST.
 
 This is a blueprint — the structure guide is the deliverable, not copy-paste code.
 
-1. `grid_fetch("template", "billing-dashboard")`.
+1. `grid_get_template("template", "billing-dashboard")`.
 2. **Read `AGENTS.md`** in the fetched template. It has: the file tree (app under
    `services/web/`), the Mongo collections (`customers`, `invoices`, `charges`,
    `usage_events`) and their fields, how the grid injects Mongo
@@ -94,9 +94,9 @@ This is a blueprint — the structure guide is the deliverable, not copy-paste c
 
 ## 6. Config
 
-- Stripe secrets → the vault: `grid_secrets` to set `stripe-live-key` (and a
+- Stripe secrets → the vault: `grid_set_secret` to set `stripe-live-key` (and a
   `stripe-webhook-secret` if you map one). The `vault:` block turns them into env
-  vars. Non-secret config → `grid_env`.
+  vars. Non-secret config → `grid_set_env`.
 - Do **NOT** set the DB connection vars yourself (`DATABASE_MONGODB_URL` /
   `MONGODB_URL`) — the grid injects them.
 

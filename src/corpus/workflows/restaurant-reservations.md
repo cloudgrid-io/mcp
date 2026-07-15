@@ -43,7 +43,7 @@ edition** (Claude Desktop / Claude Code) or the CLI.
 
 ## 3. Fetch the blueprint and READ AGENTS.md
 
-`grid_fetch("template", "restaurant-reservations")`. This is a **blueprint**,
+`grid_get_template("template", "restaurant-reservations")`. This is a **blueprint**,
 so the deliverable is `cloudgrid.yaml` + `AGENTS.md`, not app code.
 
 **Read `AGENTS.md` before building.** It defines:
@@ -56,7 +56,7 @@ so the deliverable is `cloudgrid.yaml` + `AGENTS.md`, not app code.
 
 ## 4. Scaffold + fill
 
-1. `grid_init` an app `<name>` — creates the entity + `.cloudgrid/link.json`
+1. `grid_create_project` an app `<name>` — creates the entity + `.cloudgrid/link.json`
    and a `cloudgrid.yaml` with an EMPTY `services: {}`. Run `init` FIRST (plug
    needs a linked directory).
 2. Write the app under **`services/web/`** (`path:` is the URL mount, NOT the
@@ -85,9 +85,9 @@ so the deliverable is `cloudgrid.yaml` + `AGENTS.md`, not app code.
 
 ## 5. Config / secrets
 
-- Secret values (Stripe, SendGrid, auth) → `grid_secrets` (the `vault:` block
+- Secret values (Stripe, SendGrid, auth) → `grid_set_secret` (the `vault:` block
   maps them to env vars). Non-secret config (publishable keys, flags) →
-  `grid_env`.
+  `grid_set_env`.
 - Do **NOT** set the DB vars yourself (`DATABASE_MONGODB_URL` / `MONGODB_URL`) —
   the grid injects them.
 

@@ -80,7 +80,7 @@ needs:
 
 ## Build it
 
-Fetch `grid_fetch("template", "billing-dashboard")` and read **`AGENTS.md`** — it
+Fetch `grid_get_template("template", "billing-dashboard")` and read **`AGENTS.md`** — it
 has the checkout + webhook + usage wiring, the vault/secret setup, and the deploy
 steps (`grid init` → write under `services/web/` → `grid secrets set` → `grid plug`,
 async → poll to a live URL → register the webhook endpoint in Stripe). Adapt the

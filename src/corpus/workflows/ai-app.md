@@ -41,7 +41,7 @@ Persistent apps are owned entities.
 
 ## 3. Scaffold
 
-`grid_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
+`grid_create_project` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
 and writes a `cloudgrid.yaml` with an EMPTY `services: {}`. `plug` needs a linked
 directory, so run `init` FIRST.
 
@@ -75,7 +75,7 @@ ai: true, database: true }`).
    yaml with it, and never set `needs:` and `requires:` together (the validator
    rejects it).
 2. Fetch the template for the chat wiring:
-   `grid_fetch("template", "ai-app")`. It is a minimal Next.js App Router chat
+   `grid_get_template("template", "ai-app")`. It is a minimal Next.js App Router chat
    app under `services/web/`: a chat page, an API route
    (`app/api/chat/route.js`, `export const dynamic = "force-dynamic"`) that reads
    the user message, calls the AI gateway, persists the exchange to Mongo, and
@@ -95,7 +95,7 @@ ai: true, database: true }`).
    imported for route analysis before the grid injects the var). Store the user
    message and the assistant reply so the conversation survives refresh. Never
    hardcode a connection string; never commit a secret.
-   - (Optional) fetch `grid_fetch("example", "ai-app")` for a richer filled
+   - (Optional) fetch `grid_get_template("example", "ai-app")` for a richer filled
      reference (a themed assistant) to imitate.
 
 ## 5. (Optional) Run locally
@@ -105,8 +105,8 @@ are wired in dev too — and send a test message before deploying. Don't require
 
 ## 6. Config
 
-- Extra API keys / secrets (only if the app needs its own) → `grid_secrets`.
-- Non-secret config → `grid_env`.
+- Extra API keys / secrets (only if the app needs its own) → `grid_set_secret`.
+- Non-secret config → `grid_set_env`.
 - Do **NOT** set the DB connection var yourself (`DATABASE_MONGODB_URL` / legacy
   `MONGODB_URL`) and do **NOT** set an AI key — the grid injects the DB var and
   the AI SDK auto-detects the in-grid identity.

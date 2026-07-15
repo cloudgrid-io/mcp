@@ -33,7 +33,7 @@ behalf: scaffold, deploy, tail logs, share, read feedback. Everything here is fr
    ```
 
    One install wires up everything: the skills, the SessionStart orientation
-   hook, and the CloudGrid MCP server (`grid_start`, `grid_fetch`, and the
+   hook, and the CloudGrid MCP server (`grid_start`, `grid_get_template`, and the
    CLI-wrapping tools). The MCP auto-starts when the plugin is enabled — no
    separate `claude mcp add` needed.
 

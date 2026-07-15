@@ -40,7 +40,7 @@ requires the **local edition** (Claude Desktop / Claude Code) or the CLI.
 
 ## 3. Fetch the blueprint and READ AGENTS.md
 
-`grid_fetch("template", "marketplace")`. The deliverable is the **`AGENTS.md`
+`grid_get_template("template", "marketplace")`. The deliverable is the **`AGENTS.md`
 structure guide** — read it before writing anything. It defines:
 - the `services/web/` file tree (pages, API routes, `lib/`),
 - the Mongo collections (`vendors`, `listings`, `orders`) + fields,
@@ -54,7 +54,7 @@ There is no app code to copy — you generate it from the guide.
 
 ## 4. Scaffold + fill cloudgrid.yaml
 
-`grid_init` an app `<name>` FIRST (creates the entity + `.cloudgrid/link.json`
+`grid_create_project` an app `<name>` FIRST (creates the entity + `.cloudgrid/link.json`
 and a starter `cloudgrid.yaml` with empty `services:{}`; `plug` needs a linked
 directory). Then put the app under **`services/web/`** and set `cloudgrid.yaml` to
 the blueprint's active fields:
@@ -97,7 +97,7 @@ Generate the files under `services/web/` per the guide:
 - Map secrets in the `vault:` block (done above), then **store the values**:
   `grid secrets set stripe-live-key sk_live_…`,
   `grid secrets set stripe-webhook-secret whsec_…`,
-  `grid secrets set auth-provider-key …`. Non-secret public config → `grid_env`.
+  `grid secrets set auth-provider-key …`. Non-secret public config → `grid_set_env`.
 - Do **NOT** set the DB connection vars yourself (`DATABASE_MONGODB_URL` / legacy
   `MONGODB_URL`) — the grid injects them.
 

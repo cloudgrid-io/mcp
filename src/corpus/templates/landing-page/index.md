@@ -11,7 +11,7 @@ directory (`type: static`) is ONLY for plugging the page as an OWNED static
 runtime (async, local edition only); the fast path is `grid_deploy`.
 
 The fillable HTML is the real template — fetch it with
-`grid_fetch("template", "landing-page")` and fill in the user's content.
+`grid_get_template("template", "landing-page")` and fill in the user's content.
 
 ## cloudgrid.yaml (reference only)
 

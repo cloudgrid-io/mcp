@@ -37,7 +37,7 @@ edition** (Claude Desktop / Claude Code) or the CLI.
 
 ## 3. Scaffold
 
-`grid_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
+`grid_create_project` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
 and writes a `cloudgrid.yaml` with an EMPTY `services: {}`. `plug` needs a linked
 directory, so run `init` FIRST. Then (a) write the app under **`services/web/`**,
 and (b) fill `cloudgrid.yaml` to the shape below (`services.web` + `needs:
@@ -62,7 +62,7 @@ and (b) fill `cloudgrid.yaml` to the shape below (`services.web` + `needs:
    author new yaml with it, and never set `needs:` and `requires:` together (the
    validator rejects it).
 2. Fetch the template for the Mongo wiring + CRUD shape:
-   `grid_fetch("template", "kanban")`. It is a minimal, real Next.js +
+   `grid_get_template("template", "kanban")`. It is a minimal, real Next.js +
    `mongodb`-driver board under `services/web/`: a lazy client in
    `services/web/lib/db.js`, an App-Router GET/POST/PATCH/DELETE route on a
    `cards` collection (PATCH moves a card between columns), a server-component
@@ -73,7 +73,7 @@ and (b) fill `cloudgrid.yaml` to the shape below (`services.web` + `needs:
    runtime.
    - **Put the DB connection behind a lazy getter — never read the connection
      string at module top level, or `next build` fails.**
-   - (Optional) fetch `grid_fetch("example", "kanban")` for a richer filled
+   - (Optional) fetch `grid_get_template("example", "kanban")` for a richer filled
      reference to imitate.
 
 ## 5. (Optional) Run locally
@@ -83,7 +83,7 @@ before deploying. Don't require it.
 
 ## 6. Config
 
-- API keys / secrets → `grid_secrets`. Non-secret config → `grid_env`.
+- API keys / secrets → `grid_set_secret`. Non-secret config → `grid_set_env`.
 - Do **NOT** set the DB connection vars yourself (`DATABASE_MONGODB_URL` or the
   legacy `MONGODB_URL`) — the grid injects them.
 

@@ -28,7 +28,7 @@ Runtime app → **local edition only**, async deploy (poll to a live URL).
 
 ## Fetch bundle
 
-Fetch this blueprint with `grid_fetch("template", "hr-portal")`. It returns
+Fetch this blueprint with `grid_get_template("template", "hr-portal")`. It returns
 `cloudgrid.yaml`, `AGENTS.md` (the structure guide), and this README — no app
 code. Follow `AGENTS.md` to build, then `grid init → fill → grid plug → poll`.
 

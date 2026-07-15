@@ -20,7 +20,7 @@ app under `services/web/` following it — the proven `app-with-data` shape with
    `MONGODB_URL` fallback — the grid injects it; never hardcode, never commit.
 3. **Third-party secrets go through the `vault:` block** (Stripe `STRIPE_KEY`,
    email `SENDGRID_API_KEY`, optional `AUTH_PROVIDER_KEY`) → injected env vars;
-   store values with `grid_secrets`.
+   store values with `grid_set_secret`.
 4. **Declare `needs: { database: true }`** (canonical) — never mix `needs:` and
    `requires:`.
 5. **Cron reminder service is documented but NOT deployable yet** (platform issue
@@ -29,7 +29,7 @@ app under `services/web/` following it — the proven `app-with-data` shape with
 ## Fetch bundle
 
 ```
-grid_fetch("template", "restaurant-reservations")   # cloudgrid.yaml + AGENTS.md + README
+grid_get_template("template", "restaurant-reservations")   # cloudgrid.yaml + AGENTS.md + README
 ```
 
 Then read `AGENTS.md` (file tree, `menu`/`reservations`/`tables` collections,

@@ -15,7 +15,7 @@ recipe. This is a display-only static page — the status is baked into the mark
 there is no live polling. Do not ask setup questions first; use sensible defaults
 and build.
 
-1. **Fetch the template.** Call `grid_fetch("template", "status-page")` to load
+1. **Fetch the template.** Call `grid_get_template("template", "status-page")` to load
    the self-contained HTML status page (overall banner, component list with
    up/degraded/down pills, per-component uptime bars, incident history).
 2. **Fill the template.** Replace the placeholders with the user's content:

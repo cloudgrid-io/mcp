@@ -50,7 +50,7 @@ CLI.
 
 ## 3. Fetch the blueprint and READ AGENTS.md
 
-`grid_fetch("template", "ai-knowledge-base")`. The deliverable is the
+`grid_get_template("template", "ai-knowledge-base")`. The deliverable is the
 **`AGENTS.md` structure guide** — read it before writing anything. It defines:
 - the `services/web/` file tree (pages, `api/documents` + `api/ask` routes, `lib/`),
 - the Mongo collections (`documents`, `chunks`) + fields,
@@ -64,7 +64,7 @@ There is no app code to copy — you generate it from the guide.
 
 ## 4. Scaffold + fill cloudgrid.yaml
 
-`grid_init` an app `<name>` FIRST (creates the entity + `.cloudgrid/link.json`
+`grid_create_project` an app `<name>` FIRST (creates the entity + `.cloudgrid/link.json`
 and a starter `cloudgrid.yaml` with empty `services:{}`; `plug` needs a linked
 directory). Then put the app under **`services/web/`** and set `cloudgrid.yaml` to
 the blueprint's active fields:
@@ -112,7 +112,7 @@ Generate the files under `services/web/` per the guide:
   yourself; the grid injects them.
 - Only if you add auth/payments: map the secret in the `vault:` block
   (`AUTH_PROVIDER_KEY` and/or `STRIPE_KEY`) and store the value with
-  `grid secrets set <vault-item-key> …`. Non-secret public config → `grid_env`.
+  `grid secrets set <vault-item-key> …`. Non-secret public config → `grid_set_env`.
 
 ## 7. (Optional) Run locally
 

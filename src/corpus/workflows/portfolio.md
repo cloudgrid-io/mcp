@@ -15,7 +15,7 @@ follow this recipe. Reach for this over `landing-page` when the request is about
 showcasing projects with an about, skills, and contact. Do not ask setup
 questions first; use sensible defaults and build.
 
-1. **Fetch the template.** Call `grid_fetch("template", "portfolio")` to load
+1. **Fetch the template.** Call `grid_get_template("template", "portfolio")` to load
    the self-contained HTML portfolio (hero, about, skills, projects grid,
    contact).
 2. **Fill the template.** Replace the placeholders with the user's content:

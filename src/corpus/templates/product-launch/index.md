@@ -14,7 +14,7 @@ directory (`type: static`) is ONLY for plugging the page as an OWNED static
 runtime (async, local edition only); the fast path is `grid_deploy`.
 
 The fillable HTML is the real template — fetch it with
-`grid_fetch("template", "product-launch")` and fill in the user's content
+`grid_get_template("template", "product-launch")` and fill in the user's content
 (product name, hero copy, countdown target, features, offer, quotes). Keep it a
 single self-contained file: inline SVG / `data:` URIs only, no external scripts,
 stylesheets, fonts, or CDNs.
