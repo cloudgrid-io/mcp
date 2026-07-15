@@ -1,0 +1,22 @@
+---
+title: My Project
+description: Documentation for My Project. Replace this with a one-line summary.
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Welcome to the documentation for **My Project**. Replace this page with your own
+introduction: what the project is, who it is for, and where to start.
+
+<CardGrid>
+	<LinkCard title="Getting started" href="/guides/getting-started/" description="Install and run My Project in a few minutes." />
+	<LinkCard title="Reference" href="/reference/overview/" description="Full reference for the API and configuration." />
+</CardGrid>
+
+## What is here
+
+- **Guides** — task-oriented walkthroughs.
+- **Reference** — the complete, look-it-up documentation.
+
+The sidebar and search box are generated automatically. Add pages under
+`src/content/docs/` and list them in `astro.config.mjs`.

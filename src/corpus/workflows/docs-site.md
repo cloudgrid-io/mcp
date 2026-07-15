@@ -1,6 +1,6 @@
 ---
 name: docs-site
-when: documentation site, docs, developer docs, guide, manual, knowledge base, help center (static, content baked in). For an interactive API endpoint reference, use api-docs instead.
+when: single-page docs, a quick guide/manual/README-as-a-page, small knowledge base (static, content baked into ONE HTML file). For a MULTI-PAGE site you'll keep editing (sidebar + full-text search + llms.txt, built with Starlight), use docs-app instead. For an interactive API endpoint reference, use api-docs instead.
 needs: none
 deploy: inspiration
 editions: all

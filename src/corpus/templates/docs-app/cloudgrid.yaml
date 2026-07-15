@@ -1,0 +1,24 @@
+# docs-app — a multi-page documentation SITE (Astro Starlight): sidebar,
+# client-side search, and agent-readable llms.txt / llms-full.txt.
+#
+# It is a static site WITH a build step, served at the entity ROOT. Multi-file +
+# build → deploy is async (like a runtime app) and needs the LOCAL edition
+# (Claude Desktop/Code or the CLI); the hosted MCP cannot build it. Deploy with
+# `grid plug` on the linked folder. `llms.txt` and `llms-full.txt` are generated
+# automatically at the site root.
+#
+# For a quick single-page doc with no build, use the `docs-site` archetype instead.
+name: docs-app
+services:
+  site:
+    type: static
+    path: /
+    node_version: "22"
+    # source.path: . tells the platform the project is at the folder ROOT (not
+    # under services/site/). Required for a single root-level build like this;
+    # without it the build looks for services/<name>/ and fails.
+    source:
+      path: .
+    build:
+      command: "npm run build"
+      output: "dist"
