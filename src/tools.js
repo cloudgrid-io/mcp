@@ -105,7 +105,8 @@ Operating rules:
   - Multi-file app or agent (kind is app or agent, or single_html: false): do NOT try to edit it as one inline HTML file. Tell the user it is a multi-file <kind>, give them the entity_id and the source (source_download_url), and explain that rebuilding it needs the local edition (Claude Desktop/Code) or the CLI — the hosted server cannot rebuild a multi-file app.
   - Not yours (capabilities.replug: false, reason not_owner): do NOT attempt a re-plug. Offer to fork it into the user's own grid with grid_fork and edit the copy instead.
 
-Deploy is via grid_plug on every edition: for a single HTML page pass it inline as the html param (works on the hosted MCP too); for a multi-file app write the files and pass a folder path (local MCP / CLI). A single HTML page deploys synchronously as an inspiration, so you get a URL right away.`;
+Deploy is via grid_plug on every edition: for a single HTML page pass it inline as the html param (works on the hosted MCP too); for a multi-file app write the files and pass a folder path (local MCP / CLI). A single HTML page deploys synchronously as an inspiration, so you get a URL right away.
+When you deploy a folder that already has a cloudgrid.yaml, grid_plug returns needs_confirmation on the first create instead of deploying — it's asking whether to create a NEW app. Relay that to the user, and once they say yes re-call grid_plug with confirm_new_app: true. To update an existing app instead, pass its target_entity_id.`;
 
 // The corpus subdirectories that grid_fetch serves, keyed by `kind`. Each
 // lives in its own subtree of src/corpus/ (populated by scripts/snapshot-corpus.mjs
