@@ -439,20 +439,20 @@ try {
   const startText = start?.content?.[0]?.text ?? "";
   check(
     "grid_start playbook contains the source-first rule",
-    startText.includes("call grid_source to fetch the current HTML") ||
-      /grid_source[\s\S]*target_entity_id[\s\S]*Do not ask the user to paste/.test(startText),
+    startText.includes("call grid_get_app_source to fetch the current HTML") ||
+      /grid_get_app_source[\s\S]*target_entity_id[\s\S]*Do not ask the user to paste/.test(startText),
   );
 
   // grid_deploy (primary) description carries the source-first clause.
   check(
-    "grid_deploy description mentions grid_source",
-    /call grid_source first, then deploy with target_entity_id/.test(server.descriptions.grid_deploy),
+    "grid_deploy description mentions grid_get_app_source",
+    /call grid_get_app_source first, then deploy with target_entity_id/.test(server.descriptions.grid_deploy),
   );
 
   // ── Edition-aware edit flow (spec §6): the playbook carries EACH branch ──────
   check(
-    "playbook: edit-from-URL branch — grid_source resolves entity_id + single_html",
-    /grid_source/.test(startText) && /entity_id/.test(startText) && /single_html/.test(startText),
+    "playbook: edit-from-URL branch — grid_get_app_source resolves entity_id + single_html",
+    /grid_get_app_source/.test(startText) && /entity_id/.test(startText) && /single_html/.test(startText),
   );
   check(
     "playbook: edit-in-place branch — single-HTML + capabilities.replug via target_entity_id / grid+slug",
@@ -463,8 +463,8 @@ try {
     /multi-file/.test(startText) && /source_download_url/.test(startText) && /local edition/.test(startText) && /CLI/.test(startText),
   );
   check(
-    "playbook: not-owner fork branch — replug:false / not_owner → grid_fork",
-    /not_owner/.test(startText) && /grid_fork/.test(startText),
+    "playbook: not-owner fork branch — replug:false / not_owner → grid_copy_app",
+    /not_owner/.test(startText) && /grid_copy_app/.test(startText),
   );
 
   // grid_deploy description advertises grid+slug as an alternative re-plug handle.

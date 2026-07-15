@@ -104,7 +104,7 @@ dev` and runtime.
   injects that vault item as `process.env.ENV_VAR`. This blueprint maps
   `AUTH_PROVIDER_SECRET_KEY` and `AUTH_PROVIDER_PUBLISHABLE_KEY`. Rename the env
   keys to whatever the provider SDK expects (see §4) and set the vault items with
-  `grid_secrets` / the org vault — do not commit keys.
+  `grid_set_secret` / the org vault — do not commit keys.
 - **AI (optional)** — if you add `needs: { ai: true }` (e.g. auto-moderation or
   summarize-thread), the grid injects **`AI_GATEWAY_URL`**; call it via
   `@cloudgrid-io/ai`. Not required for the base forum.
@@ -169,13 +169,13 @@ A forum is a runtime (built + deployed container) app — **local edition**
 
 1. `grid_login_status` → `grid_login` if needed. Respect the grid picker
    (ask which grid if the user has more than one).
-2. `grid_init` an app `<name>` — creates the entity + `.cloudgrid/link.json`
+2. `grid_create_project` an app `<name>` — creates the entity + `.cloudgrid/link.json`
    and a `cloudgrid.yaml` with empty `services: {}`. Run `init` FIRST (`plug`
    needs a linked dir).
 3. Write the app under `services/web/` per §1, then fill `cloudgrid.yaml` to the
    active shape: `name`, `services.web { type: nextjs, path: / }`, `needs:
    { database: true }`, and the `vault:` mappings for the auth keys.
-4. Set the auth secrets: `grid_secrets` (or the org vault) for the provider
+4. Set the auth secrets: `grid_set_secret` (or the org vault) for the provider
    keys. Do NOT set `DATABASE_MONGODB_URL` — the grid injects it.
 5. (Optional) `grid dev` to run locally against injected Mongo before shipping.
 6. `grid_deploy` to deploy. A runtime deploy is **ASYNC** — the first response

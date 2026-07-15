@@ -14,10 +14,10 @@ Detect the intent ("build a launch page / announcement for our new product X")
 and follow this recipe. Do not ask setup questions first; use sensible defaults
 and build.
 
-1. **Fetch the template.** Call `grid_fetch("template", "product-launch")` to
+1. **Fetch the template.** Call `grid_get_template("template", "product-launch")` to
    load the self-contained HTML launch-page template (hero + product image,
    countdown, features, launch offer, social proof).
-2. **(Optional) Fetch the example.** Call `grid_fetch("example", "product-launch")`
+2. **(Optional) Fetch the example.** Call `grid_get_template("example", "product-launch")`
    to see a filled launch page as a reference for tone and structure.
 3. **Fill the template.** Replace the placeholders with the user's content:
    - Product name, hero headline, subhead, launch badge, and CTA label/target.

@@ -7,7 +7,7 @@ moderation, on Next.js + grid-shared MongoDB, auth via a hosted provider
 under `services/web/` following it. The shape mirrors the proven `app-with-data`
 template (lazy Mongo getter, App-Router routes, `needs: { database: true }`).
 
-**Fetch the bundle:** `grid_fetch("template", "forum")` returns this
+**Fetch the bundle:** `grid_get_template("template", "forum")` returns this
 directory — `cloudgrid.yaml`, `AGENTS.md` (the structure guide), and this file.
 
 **Key rules:**

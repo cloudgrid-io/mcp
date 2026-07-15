@@ -41,7 +41,7 @@ edition** (Claude Desktop / Claude Code) or the CLI.
 
 ## 3. Read the blueprint
 
-Fetch the structure guide: `grid_fetch("template", "course-platform")`. It
+Fetch the structure guide: `grid_get_template("template", "course-platform")`. It
 contains AGENTS.md — the CloudGrid-specific spec you must follow:
 
 - the file tree under `services/web/` (catalog page, course detail, gated lesson
@@ -57,7 +57,7 @@ contains AGENTS.md — the CloudGrid-specific spec you must follow:
 
 ## 4. Scaffold + fill cloudgrid.yaml
 
-`grid_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
+`grid_create_project` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
 and writes a `cloudgrid.yaml` with an EMPTY `services: {}`. Run `init` FIRST —
 `plug` needs a linked directory. Then set `cloudgrid.yaml` to the shape below and
 write the app under **`services/web/`** (`path: /` is the URL mount, NOT the
@@ -101,11 +101,11 @@ rules:
 
 ## 6. Config (secrets + env)
 
-- Secrets → `grid_secrets`: `grid secrets set stripe-live-key`,
+- Secrets → `grid_set_secret`: `grid secrets set stripe-live-key`,
   `grid secrets set stripe-webhook-secret`, `grid secrets set auth-provider-key`.
   The `vault:` block injects them as `STRIPE_KEY`, `STRIPE_WEBHOOK_SECRET`,
   `AUTH_PROVIDER_KEY`.
-- Non-secret config (e.g. the auth **publishable** key) → `grid_env`.
+- Non-secret config (e.g. the auth **publishable** key) → `grid_set_env`.
 - Do **NOT** set the DB vars yourself (`DATABASE_MONGODB_URL` / legacy
   `MONGODB_URL`) — the grid injects them.
 

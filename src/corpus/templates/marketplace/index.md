@@ -10,7 +10,7 @@ code** — read the structure guide, then build the app following it.
 `AGENTS.md`. Fetch the bundle, read `AGENTS.md`, then generate the files under
 `services/web/` and deploy.
 
-- **Structure guide:** `grid_fetch("template", "marketplace")` → read
+- **Structure guide:** `grid_get_template("template", "marketplace")` → read
   **`AGENTS.md`** (file tree, Mongo collections, CloudGrid injection table, auth +
   Stripe Connect wiring, deploy steps, edition note).
 

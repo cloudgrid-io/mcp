@@ -44,18 +44,18 @@ A persistent approval app is a built + deployed container. It requires the
 ## 3. Read the blueprint
 
 Fetch the blueprint and read it before building:
-`grid_fetch("template", "approval-workflow")`. Its **`AGENTS.md`** is the
+`grid_get_template("template", "approval-workflow")`. Its **`AGENTS.md`** is the
 structure guide — the file tree (under `services/web/`), the Mongo collections
 (`users`, `requests`, `steps`, `audit`), the **state machine** (how a request
 advances / is decided across its ordered steps), how CloudGrid injects the DB
 and secrets, how to wire auth roles (and optional payments), and the deploy
 steps. Also fetch the concrete CRUD shape to adapt from:
-`grid_fetch("template", "app-with-data")` (lazy `lib/db.js`, App Router
+`grid_get_template("template", "app-with-data")` (lazy `lib/db.js`, App Router
 route, server page).
 
 ## 4. Scaffold
 
-`grid_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
+`grid_create_project` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
 and writes a `cloudgrid.yaml` with an EMPTY `services: {}`. `plug` needs a linked
 directory, so run `init` FIRST. Then (a) write the app under **`services/web/`**
 following `AGENTS.md`, and (b) fill `cloudgrid.yaml` to the shape below.

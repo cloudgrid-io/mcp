@@ -13,9 +13,9 @@ summary: Fetch the landing-page template, fill it with the user's content, deplo
 Detect the intent ("build me a landing page / marketing page for X") and follow
 this recipe. Do not ask setup questions first; use sensible defaults and build.
 
-1. **Fetch the template.** Call `grid_fetch("template", "landing-page")` to
+1. **Fetch the template.** Call `grid_get_template("template", "landing-page")` to
    load the self-contained HTML landing-page template.
-2. **(Optional) Fetch the example.** Call `grid_fetch("example", "landing-page")`
+2. **(Optional) Fetch the example.** Call `grid_get_template("example", "landing-page")`
    to see a filled landing page as a reference for tone and structure.
 3. **Fill the template.** Replace the placeholders with the user's content:
    - The product name, hero headline, and subheadline.

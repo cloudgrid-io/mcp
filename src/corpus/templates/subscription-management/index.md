@@ -15,8 +15,8 @@ flow, use the `membership-site` blueprint — the two share the same Stripe + Mo
 wiring.
 
 **Fetch the bundle:**
-- `grid_fetch("template", "subscription-management")` — this blueprint (`cloudgrid.yaml` + `AGENTS.md`).
-- `grid_fetch("template", "app-with-data")` — the proven Next.js + Mongo shape to extend (lazy db client, App-Router API).
+- `grid_get_template("template", "subscription-management")` — this blueprint (`cloudgrid.yaml` + `AGENTS.md`).
+- `grid_get_template("template", "app-with-data")` — the proven Next.js + Mongo shape to extend (lazy db client, App-Router API).
 
 **Key rules:**
 
@@ -30,7 +30,7 @@ wiring.
    `DATABASE_MONGODB_URL` (legacy `MONGODB_URL` fallback). Read it LAZILY inside
    the getter, never at module top level (top-level read fails `next build`).
 4. **Secrets via the `vault:` block** → env vars. `STRIPE_KEY` and
-   `STRIPE_WEBHOOK_SECRET` map to vault items; set them with `grid_secrets`,
+   `STRIPE_WEBHOOK_SECRET` map to vault items; set them with `grid_set_secret`,
    and the deployer injects them at runtime. Read lazily; do not commit keys or
    put secrets in `services.web.env` (publishable key + price ids go there).
 5. **The webhook is the source of truth.** Change-plan / cancel APIs call Stripe;
@@ -66,8 +66,8 @@ vault:
 
 ## Deploy (async, local edition)
 
-`grid_init` first (creates the entity + link.json), write the app under
-`services/web/`, set the vault secrets with `grid_secrets`, `grid_deploy`
+`grid_create_project` first (creates the entity + link.json), write the app under
+`services/web/`, set the vault secrets with `grid_set_secret`, `grid_deploy`
 (async — poll `grid_status` to a live URL), then register the `/api/webhook`
 URL in Stripe, configure the Billing Portal, and re-plug. Re-plug the same entity
 to update the same URL.

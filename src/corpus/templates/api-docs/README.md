@@ -8,7 +8,7 @@ CloudGrid edition, including hosted.
 
 ## Fill it in
 
-Fetch the template with `grid_fetch("template", "api-docs")`, then replace the
+Fetch the template with `grid_get_template("template", "api-docs")`, then replace the
 placeholders:
 
    - The API name, base URL, and auth note.

@@ -13,7 +13,7 @@ summary: Fetch the changelog template, fill it with the user's release entries, 
 Detect the intent ("build me a changelog / release notes page for X") and follow
 this recipe. Do not ask setup questions first; use sensible defaults and build.
 
-1. **Fetch the template.** Call `grid_fetch("template", "changelog")` to load
+1. **Fetch the template.** Call `grid_get_template("template", "changelog")` to load
    the self-contained HTML changelog (reverse-chronological versioned entries with
    tagged change items).
 2. **Fill the template.** Replace the placeholders with the user's content:

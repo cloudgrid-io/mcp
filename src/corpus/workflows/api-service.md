@@ -42,7 +42,7 @@ Persistent services are owned entities.
 
 ## 3. Scaffold
 
-`grid_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
+`grid_create_project` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
 and writes a `cloudgrid.yaml` with an EMPTY `services: {}`. `plug` needs a linked
 directory, so run `init` FIRST.
 
@@ -72,7 +72,7 @@ fill in `cloudgrid.yaml` to the shape below (`services.api` type `node` + `needs
    runtime. `requires:` is the deprecated v1 alias; don't author new yaml with
    it, and never set `needs:` and `requires:` together (the validator rejects it).
 2. Fetch the template for the server + Mongo shape:
-   `grid_fetch("template", "api-service")`. It is a minimal Node `http`
+   `grid_get_template("template", "api-service")`. It is a minimal Node `http`
    server under `services/api/`: it listens on `process.env.PORT || 8080` and
    serves a small REST resource (`/items` GET list / POST create / DELETE by id)
    backed by Mongo.
@@ -85,7 +85,7 @@ fill in `cloudgrid.yaml` to the shape below (`services.api` type `node` + `needs
      never at module top level, or node startup crashes** before the grid has
      injected the var.
    - Return clear JSON errors (`{ "error": "…" }`) with the right status codes.
-   - (Optional) fetch `grid_fetch("example", "api-service")` for a slightly
+   - (Optional) fetch `grid_get_template("example", "api-service")` for a slightly
      richer filled reference to imitate.
 
 ## 5. (Optional) Run locally
@@ -95,8 +95,8 @@ and hit the endpoints before deploying. Don't require it.
 
 ## 6. Config
 
-- API keys / secrets → `grid_secrets`.
-- Non-secret config → `grid_env`.
+- API keys / secrets → `grid_set_secret`.
+- Non-secret config → `grid_set_env`.
 - Do **NOT** set the DB connection vars yourself (`DATABASE_MONGODB_URL`, or the
   legacy `MONGODB_URL` alias) — the grid injects them.
 

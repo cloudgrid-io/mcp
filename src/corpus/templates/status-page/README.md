@@ -8,7 +8,7 @@ CloudGrid edition, including hosted.
 
 ## Fill it in
 
-Fetch the template with `grid_fetch("template", "status-page")`, then replace the
+Fetch the template with `grid_get_template("template", "status-page")`, then replace the
 placeholders:
 
    - The overall status banner text and state class (`ok` / `degraded` / `down`).

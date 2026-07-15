@@ -42,4 +42,4 @@ plugging the page as an OWNED static runtime (async, local edition only); the
 fast path is `grid_deploy`.
 
 The fillable HTML is the real template — fetch it with
-`grid_fetch("template", "product-launch")` and fill in the user's content.
+`grid_get_template("template", "product-launch")` and fill in the user's content.

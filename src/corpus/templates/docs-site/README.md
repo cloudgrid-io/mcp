@@ -8,7 +8,7 @@ CloudGrid edition, including hosted.
 
 ## Fill it in
 
-Fetch the template with `grid_fetch("template", "docs-site")`, then replace the
+Fetch the template with `grid_get_template("template", "docs-site")`, then replace the
 placeholders:
 
    - The project/doc name and the sidebar section links.

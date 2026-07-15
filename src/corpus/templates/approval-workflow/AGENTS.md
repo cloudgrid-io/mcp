@@ -9,7 +9,7 @@ then build the Next.js + Mongo app on the grid following the shape below.
 The proven base shape is `app-with-data` (Next.js + Mongo, App Router, lazy DB
 getter). This blueprint extends it with a state machine, roles, and
 notifications. Fetch that template for the concrete Mongo/CRUD wiring:
-`grid_fetch("template", "app-with-data")`, then adapt it to the collections
+`grid_get_template("template", "app-with-data")`, then adapt it to the collections
 here.
 
 ## 1. File tree
@@ -146,7 +146,7 @@ routes and the UI agree on what is legal.
 
 ## 6. Deploy steps
 
-1. `grid_init` an app `<name>` — creates the entity, `.cloudgrid/link.json`,
+1. `grid_create_project` an app `<name>` — creates the entity, `.cloudgrid/link.json`,
    and a `cloudgrid.yaml` with an empty `services: {}`. Run `init` FIRST because
    `plug` needs a linked directory.
 2. Fill `cloudgrid.yaml` to this blueprint's shape (copy this template's file):

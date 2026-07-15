@@ -45,7 +45,7 @@ A persistent, auth-gated app is a built + deployed container. It requires the
 
 ## 3. Fetch the blueprint + read AGENTS.md
 
-`grid_fetch("template", "internal-tools-portal")`. It returns `cloudgrid.yaml`,
+`grid_get_template("template", "internal-tools-portal")`. It returns `cloudgrid.yaml`,
 `AGENTS.md` (the structure guide), and the README — **no app code**. Read
 `AGENTS.md` end to end before writing anything: it defines the `services/web/`
 file tree, the Mongo collections + fields, the tool registry, how CloudGrid injects
@@ -54,7 +54,7 @@ deploy steps.
 
 ## 4. Scaffold
 
-`grid_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
+`grid_create_project` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
 and writes a `cloudgrid.yaml` with an EMPTY `services: {}`. `plug` needs a linked
 directory, so run `init` FIRST. Then (a) build the app under **`services/web/`**
 following `AGENTS.md`, and (b) fill `cloudgrid.yaml` to the shape below.
@@ -99,9 +99,9 @@ following `AGENTS.md`, and (b) fill `cloudgrid.yaml` to the shape below.
 ## 6. Config
 
 - Create the vault items the `vault:` block references (the auth provider's
-  secret + publishable keys, plus any per-tool API secrets) — `grid_secrets` /
+  secret + publishable keys, plus any per-tool API secrets) — `grid_set_secret` /
   vault UI. Never commit them.
-- Non-secret config → `grid_env`.
+- Non-secret config → `grid_set_env`.
 - Do **NOT** set the DB connection vars yourself (`DATABASE_MONGODB_URL` or the
   legacy `MONGODB_URL`) — the grid injects them.
 

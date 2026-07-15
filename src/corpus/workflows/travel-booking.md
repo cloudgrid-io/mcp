@@ -46,12 +46,12 @@ edition** (Claude Desktop / Claude Code) or the CLI.
 
 ## 3. Read the blueprint, then scaffold
 
-1. Fetch the blueprint: `grid_fetch("template", "travel-booking")`. **Read its
+1. Fetch the blueprint: `grid_get_template("template", "travel-booking")`. **Read its
    `AGENTS.md`** — it is the structure guide (file tree under `services/web/`, the
    `flights` / `hotels` / `bookings` / `trips` collections + the overbooking
    guard, how CloudGrid injects the DB and vault secrets, how to wire Stripe +
    auth, and the trip-reminder-cron design).
-2. `grid_init` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
+2. `grid_create_project` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
    and writes a `cloudgrid.yaml` with an EMPTY `services: {}`. `plug` needs a
    linked directory, so run `init` FIRST.
 
@@ -88,9 +88,9 @@ edition** (Claude Desktop / Claude Code) or the CLI.
 
 ## 5. Config (secrets)
 
-- Payment/auth secrets → add the vault items with `grid_secrets` (e.g.
+- Payment/auth secrets → add the vault items with `grid_set_secret` (e.g.
   `stripe-live-key`, `stripe-webhook-secret`, `auth-provider-key`) BEFORE plug so
-  the `vault:` mappings resolve. Non-secret config → `grid_env`.
+  the `vault:` mappings resolve. Non-secret config → `grid_set_env`.
 - Do **NOT** set the DB connection vars yourself (`DATABASE_MONGODB_URL` / legacy
   `MONGODB_URL`) — the grid injects them.
 

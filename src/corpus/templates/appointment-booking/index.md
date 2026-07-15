@@ -10,8 +10,8 @@ the providers/services/slot rules, then deploy (async — poll to a live URL).
 Local edition only.
 
 **Fetch the bundle:**
-- `grid_fetch("template", "appointment-booking")` — this blueprint (`cloudgrid.yaml` + `AGENTS.md`).
-- `grid_fetch("template", "app-with-data")` — the proven Next.js + Mongo shape to extend (lazy db client, App-Router API).
+- `grid_get_template("template", "appointment-booking")` — this blueprint (`cloudgrid.yaml` + `AGENTS.md`).
+- `grid_get_template("template", "app-with-data")` — the proven Next.js + Mongo shape to extend (lazy db client, App-Router API).
 
 **Key rules:**
 
@@ -26,7 +26,7 @@ Local edition only.
    the getter, never at module top level (top-level read fails `next build`).
 4. **Secrets via the `vault:` block** → env vars. `AUTH_PROVIDER_KEY` (and, for
    deposits, `STRIPE_KEY` / `STRIPE_WEBHOOK_SECRET`) map to vault items; set them
-   with `grid_secrets`, and the deployer injects them at runtime. Read lazily;
+   with `grid_set_secret`, and the deployer injects them at runtime. Read lazily;
    do not commit keys or put secrets in `services.web.env`.
 5. **No double-booking.** `appointments` is the source of truth for "taken";
    compute open slots as availability minus booked, re-check at write time, and
@@ -65,8 +65,8 @@ vault:
 
 ## Deploy (async, local edition)
 
-`grid_init` first (creates the entity + link.json), write the app under
-`services/web/`, set the vault secrets with `grid_secrets`, `grid_deploy`
+`grid_create_project` first (creates the entity + link.json), write the app under
+`services/web/`, set the vault secrets with `grid_set_secret`, `grid_deploy`
 (async — poll `grid_status` to a live URL). If taking deposits, register the
 `/api/webhook` URL in Stripe and re-plug. Re-plug the same entity to update the
 same URL.

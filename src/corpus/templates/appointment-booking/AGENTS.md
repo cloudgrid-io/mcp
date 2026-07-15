@@ -12,7 +12,7 @@ what make it deploy.
 The proven persistent shape is `app-with-data` (Next.js + Mongo). This blueprint
 extends it with auth, availability/slot logic, and optional Stripe deposits.
 Fetch that template for the Mongo lazy-client and App-Router API pattern:
-`grid_fetch("template", "app-with-data")`.
+`grid_get_template("template", "app-with-data")`.
 
 ## 1. File tree
 
@@ -102,7 +102,7 @@ clients racing for the same slot cannot both win.
     STRIPE_KEY: stripe-live-key                  # only if you take deposits
     STRIPE_WEBHOOK_SECRET: stripe-webhook-secret # only if you take deposits
   ```
-  Set the vault items ONCE with `grid_secrets` (or `grid secrets set`), then
+  Set the vault items ONCE with `grid_set_secret` (or `grid secrets set`), then
   the deployer injects each as the named env var (`process.env.AUTH_PROVIDER_KEY`,
   `process.env.STRIPE_KEY`, …) at runtime and under `grid dev`. Do NOT commit
   keys; do NOT set secrets in `services.web.env` (that block is for non-secret
@@ -163,16 +163,16 @@ you want client accounts.
 
 1. `grid_login_status` → `grid_login` if needed. Respect the grid picker
    (ask which grid if the user has more than one).
-2. `grid_init` an app `<name>` FIRST — it creates the entity, writes
+2. `grid_create_project` an app `<name>` FIRST — it creates the entity, writes
    `.cloudgrid/link.json`, and a `cloudgrid.yaml` with empty `services: {}`.
    `plug` needs a linked directory.
 3. Write the app under `services/web/` and set `cloudgrid.yaml` to the active
    shape: `name` + `services.web{type: nextjs, path: /}` + `needs:{database:true}`
    + the `vault:` block. (Leave the `reminders` cron service COMMENTED — see §7.)
-4. Set the secrets: `grid_secrets` for `auth-provider-key` (and, if taking
+4. Set the secrets: `grid_set_secret` for `auth-provider-key` (and, if taking
    deposits, `stripe-live-key`, `stripe-webhook-secret` — the vault item keys the
    `vault:` block maps from). Non-secret config (auth publishable key, price ids)
-   → `grid_env` / `services.web.env`. Do NOT set `DATABASE_MONGODB_URL`
+   → `grid_set_env` / `services.web.env`. Do NOT set `DATABASE_MONGODB_URL`
    yourself — the grid injects it.
 5. `grid_deploy` to deploy. A runtime deploy is **ASYNC** — the first response
    is `status: building`, not a live URL. Poll `grid_status` (or the returned

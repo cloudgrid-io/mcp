@@ -15,7 +15,7 @@ this recipe. For prose guides or a general docs site, use `docs-site`; use this
 one when the content is an endpoint reference. Do not ask setup questions first;
 use sensible defaults and build.
 
-1. **Fetch the template.** Call `grid_fetch("template", "api-docs")` to load
+1. **Fetch the template.** Call `grid_get_template("template", "api-docs")` to load
    the self-contained HTML API reference (sidebar endpoint list, method badges,
    params tables, request/response code blocks, client-side filter).
 2. **Fill the template.** Replace the placeholders with the user's content:

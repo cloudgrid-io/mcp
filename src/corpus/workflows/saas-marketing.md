@@ -16,7 +16,7 @@ it when the request calls for pricing tiers, testimonials, and an FAQ, not just 
 hero. For a plain single-section landing page, use `landing-page`. Do not ask
 setup questions first; use sensible defaults and build.
 
-1. **Fetch the template.** Call `grid_fetch("template", "saas-marketing")` to
+1. **Fetch the template.** Call `grid_get_template("template", "saas-marketing")` to
    load the self-contained HTML marketing site.
 2. **Fill the template.** Replace the placeholders with the user's content:
    - The product name, tagline, and hero eyebrow/headline/subheadline.

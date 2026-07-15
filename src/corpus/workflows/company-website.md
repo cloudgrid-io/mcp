@@ -14,9 +14,9 @@ Detect the intent ("build me a company website / business site / about-us page
 for X") and follow this recipe. Do not ask setup questions first; use sensible
 defaults from what the user tells you and build.
 
-1. **Fetch the template.** Call `grid_fetch("template", "company-website")` to
+1. **Fetch the template.** Call `grid_get_template("template", "company-website")` to
    load the self-contained multi-section HTML company site.
-2. **(Optional) Fetch the example.** Call `grid_fetch("example", "company-website")`
+2. **(Optional) Fetch the example.** Call `grid_get_template("example", "company-website")`
    to see a filled site as a reference for tone and structure.
 3. **Fill the template.** Replace the `{{PLACEHOLDER}}` tokens with the user's
    content, section by section:

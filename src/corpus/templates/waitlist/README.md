@@ -8,7 +8,7 @@ CloudGrid edition, including hosted.
 
 ## Fill it in
 
-Fetch the template with `grid_fetch("template", "waitlist")`, then replace the
+Fetch the template with `grid_get_template("template", "waitlist")`, then replace the
 placeholders:
 
    - The product name, coming-soon headline, and subheadline.
