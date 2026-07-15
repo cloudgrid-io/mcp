@@ -949,7 +949,9 @@ export function detectSourceManifest(input, deps = {}) {
   if (typeof input?.cloudgrid_yaml === "string" && input.cloudgrid_yaml.trim()) {
     yaml = input.cloudgrid_yaml;
   } else if (Array.isArray(input?.artifact_files)) {
-    const entry = input.artifact_files.find((f) => f?.path === "cloudgrid.yaml" || f?.path?.endsWith("/cloudgrid.yaml"));
+    // Only the ROOT cloudgrid.yaml is a runtime manifest — the server builds
+    // from the root. A nested one (services/web/cloudgrid.yaml) is not.
+    const entry = input.artifact_files.find((f) => f?.path === "cloudgrid.yaml");
     if (entry?.content) yaml = entry.content;
   } else if (typeof input?.path === "string" && input.path) {
     yaml = readManifestFile(join(input.path, "cloudgrid.yaml"));
