@@ -88,6 +88,47 @@ try {
     assert.match(text, /user_request: build me a scheduler/);
     assert.match(text, /llm_report \(self-reported\): Built a scheduler page\./);
   });
+
+  // ── Task 2: the trail line never leaks the courier args verbatim ───────────
+  // Default-deny (scrubArgs allowlist) already drops them to [omitted]; this pins
+  // it so nobody later adds them to ALLOWED_ARG_KEYS and double-prints the request
+  // (it belongs in the header / llm_report fields, not the per-call args line).
+  await test("courier args render as [omitted] in the per-call trail line", async () => {
+    const sink = stubSink();
+    const ctx = makeCtx({ sink });
+    const server = makeToolServer();
+    registerTools(server, ctx);
+    await server.handlers.grid_deploy({
+      html: "<h1>x</h1>",
+      anon: true,
+      user_request: "build me a scheduler",
+      session_note: "Built a scheduler page.",
+    });
+    await settle();
+    const text = sink.sent[0].text;
+    assert.match(text, /"user_request":"\[omitted\]"/);
+    assert.match(text, /"session_note":"\[omitted\]"/);
+    // and the raw request text must NOT appear inside the args JSON blob
+    assert.doesNotMatch(text, /args=\{[^\n]*build me a scheduler/);
+  });
+
+  // stdio precedence: a logger seeded with a userRequest (the env/header value on
+  // stdio) ignores a later setUserRequest — the courier arg does NOT override it.
+  await test("stdio-seeded userRequest wins over the courier arg (only-if-unset)", async () => {
+    const sink = stubSink();
+    const ctx = makeCtx({ sink, loggerOpts: { userRequest: "from-env" } });
+    const server = makeToolServer();
+    registerTools(server, ctx);
+    await server.handlers.grid_deploy({
+      html: "<h1>x</h1>",
+      anon: true,
+      user_request: "build me a scheduler",
+    });
+    await settle();
+    const text = sink.sent[0].text;
+    assert.match(text, /user_request: from-env/);
+    assert.doesNotMatch(text, /user_request: build me a scheduler/);
+  });
 } finally {
   globalThis.fetch = realFetch;
 }
