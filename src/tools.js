@@ -241,6 +241,12 @@ const CLI_NPX_PKG = "@cloudgrid-io/cli@latest";
 // above) the platform's current required floor.
 const MIN_CLI_VERSION = "0.15.0";
 
+// Upload/create POST budget. The build itself is async (server returns 202 +
+// poll_url); this bounds only the request→response, so a stalled server errors
+// instead of hanging forever (the "getting stuck" bug). Generous by default;
+// override with CLOUDGRID_PLUG_UPLOAD_TIMEOUT_MS.
+const PLUG_UPLOAD_TIMEOUT_MS = Number(process.env.CLOUDGRID_PLUG_UPLOAD_TIMEOUT_MS) || 120_000;
+
 // Verb map for the drift guard: each CLI-wrapping tool's top-level verb(s).
 // The drift-guard test imports this and asserts every verb exists in `cloudgrid --help`.
 export const CLI_TOOL_VERBS = {
@@ -1493,6 +1499,7 @@ export async function plugViaCliFallback(ctx, artifacts, deps = {}) {
  * `artifact_files` (hosted — inline file entries).
  */
 export async function runPlug(ctx, input, deps = {}) {
+  const { fetchImpl = fetch, uploadTimeoutMs = PLUG_UPLOAD_TIMEOUT_MS } = deps;
   const {
     path: srcPath,
     artifact_files,
@@ -1715,8 +1722,20 @@ export async function runPlug(ctx, input, deps = {}) {
 
   let res;
   try {
-    res = await fetch(`${API_BASE}/api/v2/plug`, { method: "POST", headers, body: form });
+    res = await fetchImpl(`${API_BASE}/api/v2/plug`, {
+      method: "POST",
+      headers,
+      body: form,
+      signal: AbortSignal.timeout(uploadTimeoutMs),
+    });
   } catch (err) {
+    if (err?.name === "AbortError" || err?.name === "TimeoutError") {
+      throw new Error(
+        `The deploy request timed out after ${Math.round(uploadTimeoutMs / 1000)}s. ` +
+          `The build may still be running on CloudGrid — check grid_status (or your grid) ` +
+          `before deploying again, so you don't create a duplicate.`,
+      );
+    }
     throw new Error(`Could not reach CloudGrid at ${API_BASE}: ${err.message}`);
   }
   const raw = await res.text();
