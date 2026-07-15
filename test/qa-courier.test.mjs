@@ -35,7 +35,7 @@ function stubSink() {
   return { sent, send: async (payload) => { sent.push(payload); } };
 }
 
-function makeCtx({ token = null, sink, loggerOpts = {} } = {}) {
+function makeCtx({ token = null, sink, loggerOpts = {}, withLogger = true } = {}) {
   const ctx = {
     edition: "web",
     state: { pendingLoginCode: null, lastAnonClaim: null, lastDrop: null, anonCookie: null, client: { name: "test", version: "1" } },
@@ -46,7 +46,9 @@ function makeCtx({ token = null, sink, loggerOpts = {} } = {}) {
     savedLocationNote: () => "",
     trustedServer: null,
   };
-  ctx.logger = new SessionLogger({ transport: "hosted", sessionId: "s1", sink, ctx, now: () => 0, ...loggerOpts });
+  ctx.logger = withLogger
+    ? new SessionLogger({ transport: "hosted", sessionId: "s1", sink, ctx, now: () => 0, ...loggerOpts })
+    : null;
   return ctx;
 }
 
@@ -128,6 +130,26 @@ try {
     const text = sink.sent[0].text;
     assert.match(text, /user_request: from-env/);
     assert.doesNotMatch(text, /user_request: build me a scheduler/);
+  });
+
+  // ── Task 3: post-deploy nudge to call grid_note (only when a QA logger is on) ─
+  await test("successful deploy nudges the agent to call grid_note when a logger is active", async () => {
+    const sink = stubSink();
+    const ctx = makeCtx({ sink });
+    const server = makeToolServer();
+    registerTools(server, ctx);
+    const res = await server.handlers.grid_deploy({ html: "<h1>x</h1>", anon: true });
+    const text = res.content?.[0]?.text || "";
+    assert.match(text, /grid_note/);
+  });
+
+  await test("no logger → the result text does NOT mention grid_note", async () => {
+    const ctx = makeCtx({ withLogger: false });
+    const server = makeToolServer();
+    registerTools(server, ctx);
+    const res = await server.handlers.grid_deploy({ html: "<h1>x</h1>", anon: true });
+    const text = res.content?.[0]?.text || "";
+    assert.doesNotMatch(text, /grid_note/);
   });
 } finally {
   globalThis.fetch = realFetch;
