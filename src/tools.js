@@ -2528,27 +2528,25 @@ export function registerTools(server, ctx) {
     ),
   };
 
-  reg(
-    "grid_plug",
-    {
+  // grid_deploy is the PRIMARY create/re-plug verb; grid_plug is kept as a
+  // deprecated ALIAS (same config + handler) for one deprecation cycle. The SDK
+  // has no callable-but-unlisted tool (a disabled tool is also uncallable — the
+  // ListTools/CallTool handlers both gate on `enabled`), so the alias is listed
+  // with a redirect-only, keyword-free description so the model never picks it
+  // over grid_deploy. MCP-only rename — the CLI verb `grid plug` is unchanged.
+  const plugConfig = {
       description:
-        "Deploy or share a creation on CloudGrid and get a public URL — the ONE create/re-plug verb " +
-        "(POST /api/v2/plug). Use it whenever the user wants to share, publish, send, ship, 'deploy', go " +
-        "live, or get a link to send a friend — for a single HTML page OR a full app. " +
-        "Sources (pass exactly one): `html` — a single self-contained HTML page (the fast path: instant, any " +
-        "edition, anonymous+claimable or into your grid when signed in); " +
+        "Deploy an app, website, game, or single HTML page to CloudGrid and get a live public URL. " +
+        "Use for any request to deploy, publish, host, ship, launch, go live, or share a working link — " +
+        "a single HTML page OR a full app. Without target_entity_id: CREATE a new entity with a new URL. " +
+        "With target_entity_id (or grid+slug): UPDATE the existing deployment IN PLACE, keeping the same URL — " +
+        "this is the only deploy/publish tool, so do not look for a separate 'update' or 'redeploy' tool. " +
+        "Sources (pass exactly one): `html` — a single self-contained HTML page (instant, any edition)" +
         (ctx.edition === "web"
-          ? "or `artifact_files` — a multi-file app inline. "
-          : "`path` — a local folder/file (a multi-file app); or `artifact_files` — inline files. ") +
-        "No target_entity_id → CREATE a new entity (inspiration/app/agent, auto-detected or hinted); " +
-        "with target_entity_id (or grid+slug — the replug_handle, when you hold only those) → RE-PLUG: " +
-        "update the SAME entity in place — same entity_id, same URL, same " +
-        "deploy history, expiry reset. The returned entity_id + url are the durable re-plug handle; persist " +
-        "them (plus owner_token for anonymous pages) to update the entity in later sessions. " +
-        "Note: in-place re-plug currently supports inspirations (HTML/static pages); to rebuild a deployed " +
-        "app/agent, use the CloudGrid CLI (`cloudgrid plug`) in its linked folder. " +
-        "If you want to edit an existing page but no longer have its HTML, call grid_source first to " +
-        "retrieve it, then re-plug with target_entity_id.",
+          ? " or `artifact_files` — a multi-file app inline. "
+          : ", `path` — a local folder/file, or `artifact_files` — inline files. ") +
+        "If you need to edit a page but don't have its HTML, call grid_source first, then deploy with " +
+        "target_entity_id. (CloudGrid calls this operation 'plug'.)",
       inputSchema: plugInputSchema,
       outputSchema: {
         entity_id: z.string().optional().describe("Globally unique — pass back as target_entity_id to re-plug."),
@@ -2574,8 +2572,8 @@ export function registerTools(server, ctx) {
           "openai/outputTemplate": LIVE_RESULT_URI,
         },
       } : {}),
-    },
-    async (input) => {
+  };
+  const plugHandler = async (input) => {
       try {
         // Grid-picker: a signed-in user with >1 grid is
         // ASKED which grid to publish to on every CREATE. Only for authed creates
@@ -2643,7 +2641,14 @@ export function registerTools(server, ctx) {
       } catch (err) {
         return fail(err.message);
       }
-    },
+  };
+  reg("grid_deploy", plugConfig, plugHandler);
+  // Deprecated alias — redirect-only, keyword-free description so it never wins
+  // tool-selection; still callable so existing corpus refs / transcripts work.
+  reg(
+    "grid_plug",
+    { ...plugConfig, description: "Deprecated alias of grid_deploy. Always call grid_deploy instead; this name is kept only for backward compatibility." },
+    plugHandler,
   );
 
   // ── grid_fork / grid_download — direct-API verbs (spec v2 §5–6) ──────
