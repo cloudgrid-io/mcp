@@ -472,10 +472,15 @@ try {
     "grid_deploy description mentions grid+slug re-plug handle",
     /grid\s*\+\s*slug/.test(server.descriptions.grid_deploy),
   );
-  // grid_source description advertises URL→entity_id resolution + edition metadata.
+  // grid_get_app_source (renamed from grid_source) description advertises
+  // URL→entity_id resolution + edition metadata. grid_source stays a deprecated alias.
   check(
-    "grid_source description mentions resolving entity_id from a URL + capabilities",
-    /entity_id/.test(server.descriptions.grid_source) && /capabilities/.test(server.descriptions.grid_source),
+    "grid_get_app_source description mentions resolving entity_id from a URL + capabilities",
+    /entity_id/.test(server.descriptions.grid_get_app_source) && /capabilities/.test(server.descriptions.grid_get_app_source),
+  );
+  check(
+    "grid_source is a deprecated alias of grid_get_app_source",
+    /Deprecated alias of grid_get_app_source/.test(server.descriptions.grid_source ?? ""),
   );
 } finally {
   globalThis.fetch = realFetch;
