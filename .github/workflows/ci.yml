@@ -51,6 +51,12 @@ jobs:
       # carries a cloudgrid.yaml returns needs_confirmation (does not
       # auto-create) until grid_plug is re-called with confirm_new_app:true.
       - run: npm run test:manifest-confirm
+      # Offline QA courier test (0.20.5): grid_deploy's user_request + session_note
+      # args reach the flushed QA session log, stay [omitted] in the per-call trail
+      # (default-deny allowlist), respect stdio env precedence, and a successful
+      # deploy nudges grid_note only when a QA logger is active. Drives the real
+      # tool handlers with a mocked plug API + stub sink.
+      - run: npm run test:qa-courier
       # Offline consent-gated error-reporting test (0.8.1): grid_report posts
       # {app:"mcp", message, context, node_version, platform} to
       # /api/v2/errors/feedback (Bearer authed / trusted-server anon), scrubs

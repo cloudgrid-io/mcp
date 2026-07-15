@@ -29,6 +29,7 @@
     "test:grid-picker": "node test/grid-picker.test.mjs",
     "test:plug-timeout": "node test/plug-timeout.test.mjs",
     "test:manifest-confirm": "node test/manifest-confirm.test.mjs",
+    "test:qa-courier": "node test/qa-courier.test.mjs",
     "test:drift-guard": "node test/drift-guard.mjs",
     "smoke:drop": "node test/smoke-drop.mjs",
     "smoke:login": "node test/smoke-login.mjs",
