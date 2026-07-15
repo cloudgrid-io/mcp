@@ -4,7 +4,7 @@
 // proceeds only once confirm_new_app:true is passed.
 // Run: node test/manifest-confirm.test.mjs
 import assert from "node:assert/strict";
-import { detectSourceManifest } from "../src/tools.js";
+import { detectSourceManifest, registerTools } from "../src/tools.js";
 
 let failures = 0;
 async function test(l, f) {
@@ -32,5 +32,73 @@ await test("detects a cloudgrid.yaml on disk for a path source", () => {
   const m = detectSourceManifest({ path: "/tmp/app" }, { readManifestFile: (p) => p.endsWith("cloudgrid.yaml") ? YAML : null });
   assert.equal(m.name, "vaad-budget");
 });
+
+// ── B2: confirm gate in the grid_plug create branch ─────────────────────────
+// Fake MCP server: capture registered handlers by name (mirrors grid-picker test).
+function makeServer() {
+  const handlers = {};
+  return {
+    handlers,
+    registerTool(name, _config, handler) { handlers[name] = handler; },
+    tool(name, _desc, _schema, _annotations, handler) { handlers[name] = handler; },
+    registerResource() {},
+  };
+}
+function makeCtx({ token = null, activeOrg = null, edition = "web" } = {}) {
+  return {
+    edition,
+    state: { pendingLoginCode: null, lastAnonClaim: null, lastDrop: null, anonCookie: null },
+    canOpenBrowser: false,
+    getToken: async () => token,
+    getActiveGrid: async () => activeOrg,
+    saveToken: async () => ({}),
+    savedLocationNote: () => "",
+    trustedServer: null,
+  };
+}
+
+const realFetch = globalThis.fetch;
+const orgsReply = { orgs: [{ slug: "atomic", name: "Atomic", role: "owner", render_ready: true }] };
+const calls = [];
+globalThis.fetch = async (url, opts = {}) => {
+  const u = String(url);
+  calls.push({ url: u, method: opts.method || "GET" });
+  if (u.includes("/api/v2/orgs")) {
+    return new Response(JSON.stringify(orgsReply), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  if (u.includes("/api/v2/plug")) {
+    return new Response(
+      JSON.stringify({ entity_id: "ent_1", slug: "vaad-budget", grid: "atomic", url: "https://atomic.cloudgrid.io/vaad-budget", status: "building" }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }
+  return new Response(JSON.stringify({}), { status: 200, headers: { "content-type": "application/json" } });
+};
+
+try {
+  await test("create with a cloudgrid.yaml + no confirm returns needs_confirmation, does NOT publish", async () => {
+    calls.length = 0;
+    const server = makeServer();
+    registerTools(server, makeCtx({ token: "jwt", activeOrg: "atomic", edition: "web" }));
+    const res = await server.handlers.grid_plug({ artifact_files: [{ path: "cloudgrid.yaml", content: YAML }, { path: "app/page.js", content: "x" }] });
+    assert.equal(res.structuredContent?.needs_confirmation, true);
+    assert.equal(res.structuredContent?.manifest_detected, true);
+    assert.match(res.content[0].text, /vaad-budget|new .*app|confirm_new_app/i);
+    assert.ok(!calls.some((c) => c.url.includes("/api/v2/plug")), "must not publish before confirmation");
+  });
+
+  await test("create with confirm_new_app: true proceeds past the gate", async () => {
+    // with confirm_new_app true, the manifest gate must NOT short-circuit — it
+    // proceeds to the publish path. Single grid → no grid-picker either.
+    calls.length = 0;
+    const server = makeServer();
+    registerTools(server, makeCtx({ token: "jwt", activeOrg: "atomic", edition: "web" }));
+    const res = await server.handlers.grid_plug({ confirm_new_app: true, grid: "atomic", artifact_files: [{ path: "cloudgrid.yaml", content: YAML }] });
+    assert.notEqual(res.structuredContent?.needs_confirmation, true);
+    assert.ok(calls.some((c) => c.url.includes("/api/v2/plug")), "should publish once confirmed");
+  });
+} finally {
+  globalThis.fetch = realFetch;
+}
 
 process.on("exit", () => { if (failures) process.exit(1); });

@@ -2494,6 +2494,11 @@ export function registerTools(server, ctx) {
       "The owner token of an anonymously-created drop — authorizes an anonymous re-plug (with " +
       "target_entity_id). Re-minted on every anonymous edit; always persist the newest one from the result.",
     ),
+    confirm_new_app: z.boolean().optional().describe(
+      "Set true to confirm deploying a source that already contains a cloudgrid.yaml as a NEW runtime app. " +
+      "On a create, if the source has a cloudgrid.yaml and this is not set, grid_plug returns needs_confirmation " +
+      "so you can ask the user first (or use target_entity_id to re-plug an existing entity).",
+    ),
   };
 
   reg(
@@ -2552,6 +2557,29 @@ export function registerTools(server, ctx) {
         // proceeds. A single grid proceeds (with a warning if it isn't set up yet).
         const isEdit =
           typeof input?.target_entity_id === "string" && input.target_entity_id.length > 0;
+        // Manifest-aware confirm: a CREATE whose source already carries a
+        // cloudgrid.yaml is a pre-configured runtime app. Don't silently
+        // auto-create — ask once. (Skip when re-plugging, or when confirmed.)
+        if (!isEdit && input?.confirm_new_app !== true) {
+          const manifest = detectSourceManifest(input);
+          if (manifest) {
+            const svc = manifest.services?.length
+              ? ` (services: ${manifest.services.join(", ")}${manifest.needs?.length ? `; needs: ${manifest.needs.join(", ")}` : ""})`
+              : "";
+            return okResult({
+              text:
+                `This folder is a CloudGrid runtime app — it already has a cloudgrid.yaml` +
+                (manifest.name ? ` for "${manifest.name}"` : "") + `${svc}. ` +
+                `Deploy it as a NEW app on the grid? If yes, re-call grid_plug with confirm_new_app: true. ` +
+                `To update an existing app instead, pass its target_entity_id.`,
+              structured: {
+                needs_confirmation: true,
+                manifest_detected: true,
+                manifest: { name: manifest.name, services: manifest.services, needs: manifest.needs },
+              },
+            });
+          }
+        }
         if (input?.anon !== true && !isEdit) {
           const token = await ctx.getToken();
           if (token) {
