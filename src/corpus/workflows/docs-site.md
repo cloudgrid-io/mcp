@@ -4,7 +4,7 @@ when: single-page docs, a quick guide/manual/README-as-a-page, small knowledge b
 needs: none
 deploy: inspiration
 editions: all
-capabilities_note: static — no infrastructure, content baked into the page. Publishes as an inspiration (instant, works on hosted) via grid_plug.
+capabilities_note: static — no infrastructure, content baked into the page. Publishes as an inspiration (instant, works on hosted) via grid_deploy.
 summary: Fetch the docs-site template, fill it with the user's documentation, deploy it, and return the live share URL.
 ---
 

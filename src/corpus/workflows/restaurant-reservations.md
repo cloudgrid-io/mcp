@@ -98,7 +98,7 @@ against dev Mongo. Seed the `menu` collection, test a booking. Don't require it.
 
 ## 7. Deploy (async)
 
-Deploy `services/web/` with `grid_plug`. A **runtime deploy is ASYNC**: the
+Deploy `services/web/` with `grid_deploy`. A **runtime deploy is ASYNC**: the
 first response is `status: building`, NOT a live URL.
 - Poll `grid_status` (or the returned poll URL) until live.
 - Surface a liveness signal while it builds — never a bare silent wait.

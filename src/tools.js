@@ -94,19 +94,19 @@ Operating rules:
 6. If a signed-in publish fails with a server error, do not fall back to anonymous publishing (it burns the anonymous quota and downgrades ownership); surface the error, use the CLI fallback if offered, or ask the user.
 7. When signed in and the user has more than one grid, do not assume a target — the publish tools will ask; relay the choice to the user and pass the chosen grid.
 8. When a build/deploy fails unexpectedly, offer to report it to the CloudGrid team — only with the user's explicit consent (ask first). Send just the error + the failed request by default (call grid_report), and never send the whole conversation unless the user agrees (include_conversation). Respect privacy.
-9. To modify an existing page when you don't already have its HTML in context, first call grid_source to fetch the current HTML, apply your change, then call grid_plug with target_entity_id (the entity_id) to update the SAME URL in place. Do not ask the user to paste the HTML back.
-10. Publishing a single HTML page: pass it inline as grid_plug's html parameter (a full self-contained document). For a heavy or image-heavy page in the local edition, pass the path parameter instead so it is read from disk (no inline size limit); never base64-encode HTML and never pass a file path (or an @-prefixed path) as html. If a page looks empty, use grid_source to check what was actually published, then re-plug with the real HTML/path and target_entity_id.
+9. To modify an existing page when you don't already have its HTML in context, first call grid_source to fetch the current HTML, apply your change, then call grid_deploy with target_entity_id (the entity_id) to update the SAME URL in place. Do not ask the user to paste the HTML back.
+10. Publishing a single HTML page: pass it inline as grid_deploy's html parameter (a full self-contained document). For a heavy or image-heavy page in the local edition, pass the path parameter instead so it is read from disk (no inline size limit); never base64-encode HTML and never pass a file path (or an @-prefixed path) as html. If a page looks empty, use grid_source to check what was actually published, then re-plug with the real HTML/path and target_entity_id.
 11. Persistence check: if the user needs to SAVE data, share state across users/sessions, log in, or store submissions, that's a runtime app-with-data (Mongo-backed), NOT a static page — static templates keep state only in memory and lose it on refresh. Use the app-with-data workflow. This requires the LOCAL edition (Claude Desktop/Code or the CLI); on the hosted edition, tell the user persistence isn't available there and offer a static version.
-12. To choose what to build: match the request against the workflow when: triggers and the capability-map (grid_fetch({kind:"doc", name:"capability-map"})). Pick the template whose needs: matches what the app requires (persistence → database; scheduled → cron; etc.). Classify the ARTIFACT to pick the deploy: ONE self-contained HTML page (a single file — CSS+JS inline, images/fonts as data: URIs; that is the normal hosted output) → an inspiration — instant, ANY edition, deploy via grid_plug with the inline html param. Only genuinely SEPARATE files/folders (a real assets/ dir, separate .css/.js files, multiple pages, a SPA build) — OR anything needing needs: (data/server/LLM/cron) → a runtime app — grid_plug on a linked folder with a cloudgrid.yaml, local edition only, async build.
+12. To choose what to build: match the request against the workflow when: triggers and the capability-map (grid_fetch({kind:"doc", name:"capability-map"})). Pick the template whose needs: matches what the app requires (persistence → database; scheduled → cron; etc.). Classify the ARTIFACT to pick the deploy: ONE self-contained HTML page (a single file — CSS+JS inline, images/fonts as data: URIs; that is the normal hosted output) → an inspiration — instant, ANY edition, deploy via grid_deploy with the inline html param. Only genuinely SEPARATE files/folders (a real assets/ dir, separate .css/.js files, multiple pages, a SPA build) — OR anything needing needs: (data/server/LLM/cron) → a runtime app — grid_deploy on a linked folder with a cloudgrid.yaml, local edition only, async build.
 13. Before writing a cloudgrid.yaml, fetch the reference: grid_fetch({kind:"doc", name:"cloudgrid-yaml"}) — it has the full schema and the needs: vocabulary. Declare infrastructure with needs: (the deployer injects from it): needs: { database: true } → Mongo (DATABASE_MONGODB_URL); needs: { cache: true } → Redis; scheduled work → a service of type: cron (Python or Node). Use needs: OR requires:, never both — declaring both is rejected.
 14. Databases — CloudGrid supports both, so never tell the user to self-host. Managed: needs: { database: true } provisions Mongo and injects DATABASE_MONGODB_URL. Bring-your-own (they already run Postgres / MySQL / MongoDB / Supabase / Neon / PlanetScale / etc.): needs: { database: { tier: external, secret: MY_DB } } plus grid secrets set MY_DB=<connection-string> — the connection string lives in env SECRETS, never committed. If asked "what databases does CloudGrid support?": all of them — the managed CloudGrid database out of the box, or bring your own via keys — ask which they want.
 15. Editing an existing thing from just its URL (a fresh chat, no prior context — e.g. "change the background to green here <url>"): call grid_source(url) first. It resolves the entity_id and returns the current HTML plus its kind, single_html, capabilities, and replug_handle — read those to pick the branch:
-  - Single-HTML inspiration you can re-plug (single_html: true and capabilities.replug: true): edit the returned HTML and call grid_plug with target_entity_id (or grid+slug — the replug_handle) to update the SAME URL in place. This works on every edition, including hosted.
+  - Single-HTML inspiration you can re-plug (single_html: true and capabilities.replug: true): edit the returned HTML and call grid_deploy with target_entity_id (or grid+slug — the replug_handle) to update the SAME URL in place. This works on every edition, including hosted.
   - Multi-file app or agent (kind is app or agent, or single_html: false): do NOT try to edit it as one inline HTML file. Tell the user it is a multi-file <kind>, give them the entity_id and the source (source_download_url), and explain that rebuilding it needs the local edition (Claude Desktop/Code) or the CLI — the hosted server cannot rebuild a multi-file app.
   - Not yours (capabilities.replug: false, reason not_owner): do NOT attempt a re-plug. Offer to fork it into the user's own grid with grid_fork and edit the copy instead.
 
-Deploy is via grid_plug on every edition: for a single HTML page pass it inline as the html param (works on the hosted MCP too); for a multi-file app write the files and pass a folder path (local MCP / CLI). A single HTML page deploys synchronously as an inspiration, so you get a URL right away.
-When you deploy a folder that already has a cloudgrid.yaml, grid_plug returns needs_confirmation on the first create instead of deploying — it's asking whether to create a NEW app. Relay that to the user, and once they say yes re-call grid_plug with confirm_new_app: true. To update an existing app instead, pass its target_entity_id.`;
+Deploy is via grid_deploy on every edition: for a single HTML page pass it inline as the html param (works on the hosted MCP too); for a multi-file app write the files and pass a folder path (local MCP / CLI). A single HTML page deploys synchronously as an inspiration, so you get a URL right away.
+When you deploy a folder that already has a cloudgrid.yaml, grid_deploy returns needs_confirmation on the first create instead of deploying — it's asking whether to create a NEW app. Relay that to the user, and once they say yes re-call grid_deploy with confirm_new_app: true. To update an existing app instead, pass its target_entity_id.`;
 
 // The corpus subdirectories that grid_fetch serves, keyed by `kind`. Each
 // lives in its own subtree of src/corpus/ (populated by scripts/snapshot-corpus.mjs
@@ -252,7 +252,7 @@ const PLUG_UPLOAD_TIMEOUT_MS = Number(process.env.CLOUDGRID_PLUG_UPLOAD_TIMEOUT_
 // The drift-guard test imports this and asserts every verb exists in `cloudgrid --help`.
 export const CLI_TOOL_VERBS = {
   grid_init:     ["init"],
-  // grid_plug is NOT here: grid_plug is now a direct-API tool
+  // grid_deploy is NOT here: grid_deploy is now a direct-API tool
   // (POST /api/v2/plug, spec v2 §3), not a CLI wrapper.
   grid_logs:     ["logs"],
   grid_share:    ["visibility"],
@@ -724,7 +724,7 @@ async function fetchUserOrgs(token) {
   }
 }
 
-// ── Shared grid disambiguation (grid_plug) ──────────────────
+// ── Shared grid disambiguation (grid_deploy) ──────────────────
 // The stateless "which grid?" ask on an authed create. Given the caller's token
 // and a supplied grid, it decides:
 //   - supplied grid matches a membership  → { proceed: true, grid }
@@ -835,7 +835,7 @@ function looksLikePath(s) {
   return /^(~|\.{0,2}\/|[A-Za-z]:[\\/]|\/)/.test(t) || /\.[A-Za-z0-9]{1,8}$/.test(t);
 }
 
-// Normalize an inline `html` string — grid_plug's ergonomic single-file publish
+// Normalize an inline `html` string — grid_deploy's ergonomic single-file publish
 // path — into ONE index.html artifact, reusing the same hardening the old drop
 // verb used (decodeIfBase64Html, the @-path/file-path rejection, the base64
 // guard, and the small-fragment wrap). Returns { path, buffer, type }. Throws on
@@ -1294,7 +1294,7 @@ async function runClaim(ctx, { claim_token, claim_url, entity_id }) {
 }
 
 
-// ── grid_plug — the unified create/re-plug verb (spec v2 §3) ──────────────
+// ── grid_deploy — the unified create/re-plug verb (spec v2 §3) ──────────────
 
 // Total upload budget mirrors the server's multipart cap (100 MB).
 const PLUG_MAX_TOTAL_BYTES = 100 * 1024 * 1024;
@@ -2457,9 +2457,9 @@ export function registerTools(server, ctx) {
     },
   );
 
-  // ── grid_plug — the unified create/re-plug verb (spec v2 §3) ────────────
+  // ── grid_deploy — the unified create/re-plug verb (spec v2 §3) ────────────
   // Direct-API on BOTH editions (POST /api/v2/plug). Replaces the former
-  // CLI-wrapping grid_plug: create and re-plug are one verb, keyed by
+  // CLI-wrapping grid_deploy: create and re-plug are one verb, keyed by
   // target_entity_id, and work identically on the hosted transport.
   const plugInputSchema = {
     html: z.string().optional().describe(
@@ -2523,17 +2523,14 @@ export function registerTools(server, ctx) {
     ),
     confirm_new_app: z.boolean().optional().describe(
       "Set true to confirm deploying a source that already contains a cloudgrid.yaml as a NEW runtime app. " +
-      "On a create, if the source has a cloudgrid.yaml and this is not set, grid_plug returns needs_confirmation " +
+      "On a create, if the source has a cloudgrid.yaml and this is not set, grid_deploy returns needs_confirmation " +
       "so you can ask the user first (or use target_entity_id to re-plug an existing entity).",
     ),
   };
 
-  // grid_deploy is the PRIMARY create/re-plug verb; grid_plug is kept as a
-  // deprecated ALIAS (same config + handler) for one deprecation cycle. The SDK
-  // has no callable-but-unlisted tool (a disabled tool is also uncallable — the
-  // ListTools/CallTool handlers both gate on `enabled`), so the alias is listed
-  // with a redirect-only, keyword-free description so the model never picks it
-  // over grid_deploy. MCP-only rename — the CLI verb `grid plug` is unchanged.
+  // grid_deploy is the create/re-plug verb (renamed from the former `plug` tool;
+  // the deprecated alias was removed once the corpus migrated to grid_deploy).
+  // MCP-tool name only — the CLI verb `grid plug` is unchanged.
   const plugConfig = {
       description:
         "Deploy an app, website, game, or single HTML page to CloudGrid and get a live public URL. " +
@@ -2598,7 +2595,7 @@ export function registerTools(server, ctx) {
               text:
                 `This folder is a CloudGrid runtime app — it already has a cloudgrid.yaml` +
                 (manifest.name ? ` for "${manifest.name}"` : "") + `${svc}. ` +
-                `Deploy it as a NEW app on the grid? If yes, re-call grid_plug with confirm_new_app: true. ` +
+                `Deploy it as a NEW app on the grid? If yes, re-call grid_deploy with confirm_new_app: true. ` +
                 `To update an existing app instead, pass its target_entity_id.`,
               structured: {
                 needs_confirmation: true,
@@ -2643,13 +2640,6 @@ export function registerTools(server, ctx) {
       }
   };
   reg("grid_deploy", plugConfig, plugHandler);
-  // Deprecated alias — redirect-only, keyword-free description so it never wins
-  // tool-selection; still callable so existing corpus refs / transcripts work.
-  reg(
-    "grid_plug",
-    { ...plugConfig, description: "Deprecated alias of grid_deploy. Always call grid_deploy instead; this name is kept only for backward compatibility." },
-    plugHandler,
-  );
 
   // ── grid_fork / grid_download — direct-API verbs (spec v2 §5–6) ──────
   reg(
@@ -2752,7 +2742,7 @@ export function registerTools(server, ctx) {
           reason: z.string().optional().describe("Why an action is unavailable, e.g. not_owner."),
         }).optional().describe("Resolved via the pickup contract: what the caller may do with this entity."),
         replug_handle: z.object({
-          target_entity_id: z.string().optional().describe("Pass as grid_plug's target_entity_id to re-plug in place."),
+          target_entity_id: z.string().optional().describe("Pass as grid_deploy's target_entity_id to re-plug in place."),
           grid: z.string().optional().describe("The entity's home grid slug."),
           slug: z.string().optional().describe("The entity's grid-scoped slug."),
         }).optional().describe("Resolved via the pickup contract: the durable re-plug handle."),
@@ -3034,7 +3024,7 @@ export function registerTools(server, ctx) {
           .describe("Short summary of what failed (required). Do not paste the whole conversation here."),
         context: z
           .object({
-            tool: z.string().optional().describe("The CloudGrid tool that failed, e.g. grid_plug."),
+            tool: z.string().optional().describe("The CloudGrid tool that failed, e.g. grid_deploy."),
             inputs: z.any().optional().describe("The failing inputs (e.g. the HTML/args). Keep it minimal; secrets are scrubbed."),
             grid: z.string().optional().describe("The grid/org slug involved, if any."),
             original_request: z.string().optional().describe("What the user asked for, in one line."),
@@ -3121,7 +3111,7 @@ export function registerTools(server, ctx) {
     }, { cwdParam: true }),
   );
 
-  // NOTE: grid_plug is no longer CLI-wrapping — the unified direct-API verb
+  // NOTE: grid_deploy is no longer CLI-wrapping — the unified direct-API verb
   // (create + re-plug via POST /api/v2/plug) is registered above for BOTH
   // editions, per spec v2 §3.
 

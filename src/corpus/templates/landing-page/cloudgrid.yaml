@@ -16,7 +16,7 @@
 # THIS TEMPLATE (landing-page): a single self-contained static page. The active fields
 # are exactly name + services.web{type: static, path: /}; there are no needs.
 # This cloudgrid.yaml is the reference for plugging it as an OWNED static
-# runtime; the fast path is to deploy it as an INSPIRATION via grid_plug
+# runtime; the fast path is to deploy it as an INSPIRATION via grid_deploy
 # (instant, and works on the hosted edition too).
 # ============================================================================
 

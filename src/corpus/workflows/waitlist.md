@@ -4,7 +4,7 @@ when: waitlist, coming soon, early access, join the list, launch page, sign-up t
 needs: none
 deploy: inspiration
 editions: all
-capabilities_note: static — no infrastructure. The email form posts to a configurable mailto/external endpoint; it does NOT store signups. Publishes as an inspiration (instant, works on hosted) via grid_plug.
+capabilities_note: static — no infrastructure. The email form posts to a configurable mailto/external endpoint; it does NOT store signups. Publishes as an inspiration (instant, works on hosted) via grid_deploy.
 summary: Fetch the waitlist template, fill it with the user's launch copy, wire the form to a mailto or external endpoint, deploy it, and return the live share URL.
 ---
 

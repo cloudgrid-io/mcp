@@ -66,7 +66,7 @@ vault:
 ## Deploy (async, local edition)
 
 `grid_init` first (creates the entity + link.json), write the app under
-`services/web/`, set the vault secrets with `grid_secrets`, `grid_plug`
+`services/web/`, set the vault secrets with `grid_secrets`, `grid_deploy`
 (async — poll `grid_status` to a live URL). If taking deposits, register the
 `/api/webhook` URL in Stripe and re-plug. Re-plug the same entity to update the
 same URL.

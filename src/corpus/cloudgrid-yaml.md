@@ -28,7 +28,7 @@ These are the shapes verified against live deploys. Copy one and adapt it.
 ### Single HTML page → deploys as an inspiration (instant)
 
 One self-contained HTML page (CSS+JS inline, images/fonts as data: URIs). No
-`needs:`. Publishes instantly via `grid_plug` with the inline `html` param,
+`needs:`. Publishes instantly via `grid_deploy` with the inline `html` param,
 works on any edition (hosted or local).
 
 ```yaml
@@ -541,7 +541,7 @@ Bake these into any yaml you author:
   it**; use `needs:` instead.
 - **`needs:` and `requires:` together are HARD-REJECTED** by the validator ("use
   one or the other"). So author **`needs:`-only** — never set both.
-- **A single self-contained HTML page deploys as an inspiration** via `grid_plug`
+- **A single self-contained HTML page deploys as an inspiration** via `grid_deploy`
   with the inline `html` param — instant, synchronous, works on the hosted edition
   and any client.
 - **A `cloudgrid.yaml` with `services:` makes it a runtime** — async build,

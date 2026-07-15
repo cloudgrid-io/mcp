@@ -1,8 +1,8 @@
 // Smoke test: cwd/path threading and non-interactive tools (0.7.0).
 //
-// grid_plug no longer wraps the CLI (it is the unified direct-API verb), so
+// grid_deploy no longer wraps the CLI (it is the unified direct-API verb), so
 // the old "plug with cwd" flow is replaced by:
-//  1. grid_plug with `path` — the direct-API create reads the folder passed,
+//  1. grid_deploy with `path` — the direct-API create reads the folder passed,
 //     not the server's own CWD. (Skips gracefully on the platform-side
 //     SCOPE_INVALID authed-create bug — see the note below — or a 429 cap.)
 //  2. grid_init with `cwd` — proves cwd threading for the CLI-wrapping
@@ -51,10 +51,10 @@ let createdSlug = null;
 let initSlug = null;
 
 try {
-  // 1. grid_plug with `path` — direct-API create from the passed folder.
-  console.log(`\n--- grid_plug path=${TEST_DIR} ---`);
+  // 1. grid_deploy with `path` — direct-API create from the passed folder.
+  console.log(`\n--- grid_deploy path=${TEST_DIR} ---`);
   const plugRes = await client.callTool(
-    { name: "grid_plug", arguments: { path: TEST_DIR, grid: ORG } },
+    { name: "grid_deploy", arguments: { path: TEST_DIR, grid: ORG } },
     undefined,
     { timeout: DEPLOY_TIMEOUT },
   );
