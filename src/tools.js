@@ -937,6 +937,30 @@ export function parseManifestName(yaml) {
   return null;
 }
 
+// Detect whether a CREATE's source already carries a cloudgrid.yaml (i.e. it's
+// a pre-configured runtime app). Returns a light summary { name, services, needs, raw }
+// or null. Pure except the injectable disk read (path source).
+export function detectSourceManifest(input, deps = {}) {
+  const readManifestFile = deps.readManifestFile || ((p) => {
+    try { return existsSync(p) ? readFileSync(p, "utf8") : null; } catch { return null; }
+  });
+  let yaml = null;
+  if (typeof input?.cloudgrid_yaml === "string" && input.cloudgrid_yaml.trim()) {
+    yaml = input.cloudgrid_yaml;
+  } else if (Array.isArray(input?.artifact_files)) {
+    const entry = input.artifact_files.find((f) => f?.path === "cloudgrid.yaml" || f?.path?.endsWith("/cloudgrid.yaml"));
+    if (entry?.content) yaml = entry.content;
+  } else if (typeof input?.path === "string" && input.path) {
+    yaml = readManifestFile(join(input.path, "cloudgrid.yaml"));
+  }
+  if (!yaml) return null;
+  const name = parseManifestName(yaml);
+  // lightweight surface for the confirm prompt (no full YAML parser needed)
+  const services = (yaml.match(/^\s{2}([a-z0-9-]+):/gim) || []).map((s) => s.trim().replace(/:$/, ""));
+  const needs = /(^|\n)needs:/.test(yaml) ? (yaml.match(/^\s{2}([a-z]+):\s*true/gim) || []).map((s) => s.trim().replace(/:.*/, "")) : [];
+  return { name: name || null, services, needs, raw: yaml };
+}
+
 // The public URL of a `/plug` response: the server-composed `url` verbatim
 // (canonical, flat-arch-aware — the unified plug spec), falling back to client-side composition
 // ONLY when the server left it empty (its composition is best-effort).
