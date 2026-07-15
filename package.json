@@ -1,7 +1,7 @@
 {
   "name": "@cloudgrid-io/mcp",
   "version": "0.20.4",
-  "description": "MCP server for CloudGrid. Three editions: a local stdio server (full toolset), a hosted web server (light, CLI-free toolset), and a public docs server (search_cloudgrid_documentation) over MCP Streamable HTTP.",
+  "description": "Use CloudGrid via MCP to brainstorm, build, deploy, and improve apps, games, websites, dashboards, and tools and get a live URL - templates, recipes, managed databases and AI, instant single-page publish, and full-app deploys, for developers and non-technical users. Three editions: local stdio (full toolset), hosted web (light, CLI-free), and a public docs-search server, over MCP.",
   "type": "module",
   "bin": {
     "cloudgrid-mcp": "src/index.js"
