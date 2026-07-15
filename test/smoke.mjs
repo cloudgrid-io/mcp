@@ -23,6 +23,7 @@ const GRIDCTL = [
   "grid_visibility",
   "grid_list",
   "grid_init",
+  "grid_deploy",
   "grid_plug",
   "grid_logs",
   "grid_share",
@@ -77,17 +78,22 @@ check(
 // grid_drop is GONE — folded into grid_plug (the one deploy/share verb).
 check("grid_drop is no longer advertised", !nameSet.has("grid_drop"));
 
-// grid_plug is the unified direct-API create/re-plug verb (spec v2 §3) and now
-// the single deploy/share verb — it absorbed the drop single-file publish via
-// the inline `html` param. Local edition: `html` + `path` + `artifact_files` +
-// `target_entity_id`; the old CLI-wrap `target` param is gone.
-const plugTool = tools.find((t) => t.name === "grid_plug");
+// grid_deploy is the unified direct-API create/re-plug verb (spec v2 §3) and the
+// single deploy/publish verb — it absorbed the drop single-file publish via the
+// inline `html` param. grid_plug is the deprecated ALIAS (same schema/handler),
+// kept for one deprecation cycle. Local edition: `html` + `path` +
+// `artifact_files` + `target_entity_id`; the old CLI-wrap `target` param is gone.
+const plugTool = tools.find((t) => t.name === "grid_deploy");
 const plugProps = plugTool?.inputSchema?.properties ?? {};
-check("plug has `html` single-file param (absorbed from drop)", "html" in plugProps);
-check("plug has `filename` param", "filename" in plugProps);
-check("local plug has `path` param", "path" in plugProps);
-check("plug has `artifact_files` param", "artifact_files" in plugProps);
-check("plug has `target_entity_id` param", "target_entity_id" in plugProps);
+check("deploy has `html` single-file param (absorbed from drop)", "html" in plugProps);
+check("deploy has `filename` param", "filename" in plugProps);
+check("local deploy has `path` param", "path" in plugProps);
+check("deploy has `artifact_files` param", "artifact_files" in plugProps);
+check("deploy has `target_entity_id` param", "target_entity_id" in plugProps);
+check(
+  "grid_plug is a deprecated alias of grid_deploy",
+  (tools.find((t) => t.name === "grid_plug")?.description ?? "").includes("Deprecated alias"),
+);
 check("plug has `owner_token` param", "owner_token" in plugProps);
 check("plug has `anon` param", "anon" in plugProps);
 check("plug dropped the CLI-wrap `target` param", !("target" in plugProps));
