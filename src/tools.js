@@ -958,9 +958,33 @@ export function detectSourceManifest(input, deps = {}) {
   }
   if (!yaml) return null;
   const name = parseManifestName(yaml);
-  // lightweight surface for the confirm prompt (no full YAML parser needed)
-  const services = (yaml.match(/^\s{2}([a-z0-9-]+):/gim) || []).map((s) => s.trim().replace(/:$/, ""));
-  const needs = /(^|\n)needs:/.test(yaml) ? (yaml.match(/^\s{2}([a-z]+):\s*true/gim) || []).map((s) => s.trim().replace(/:.*/, "")) : [];
+  // lightweight surface for the confirm prompt (no full YAML parser needed).
+  // Scope each list to its own top-level block: collect only the immediate
+  // child keys of `services:`/`needs:` — a shared 2-space regex would grab a
+  // `needs:` child (e.g. `database`) as a bogus service.
+  const lines = yaml.split(/\r?\n/);
+  const blockChildren = (blockKey) => {
+    const out = [];
+    let inBlock = false;
+    let childIndent = null;
+    for (const line of lines) {
+      if (/^\S/.test(line)) {
+        // a top-level key: enters the target block, or ends it
+        inBlock = new RegExp(`^${blockKey}:\\s*$`).test(line);
+        childIndent = null;
+        continue;
+      }
+      if (!inBlock || line.trim() === "") continue;
+      const indent = line.match(/^(\s*)/)[1].length;
+      if (childIndent === null) childIndent = indent;
+      if (indent !== childIndent) continue; // deeper nesting (a child's props)
+      const m = line.trim().match(/^([a-z0-9-]+):/i);
+      if (m) out.push(m[1]);
+    }
+    return out;
+  };
+  const services = blockChildren("services");
+  const needs = blockChildren("needs");
   return { name: name || null, services, needs, raw: yaml };
 }
 

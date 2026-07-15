@@ -23,6 +23,11 @@ await test("detects a cloudgrid.yaml entry in artifact_files", () => {
   const m = detectSourceManifest({ artifact_files: [{ path: "cloudgrid.yaml", content: YAML }, { path: "app/page.js", content: "x" }] });
   assert.equal(m.name, "vaad-budget");
 });
+await test("scopes services/needs to their own blocks (needs children are not services)", () => {
+  const m = detectSourceManifest({ cloudgrid_yaml: YAML });
+  assert.deepEqual(m.services, ["web"]);
+  assert.deepEqual(m.needs, ["database"]);
+});
 await test("ignores a NESTED cloudgrid.yaml (only a ROOT entry is a runtime manifest)", () => {
   // The server builds from the ROOT cloudgrid.yaml; a nested one (e.g. under a
   // service dir) is not a root runtime manifest, so it must not trigger confirm.
