@@ -2558,10 +2558,13 @@ export function registerTools(server, ctx) {
         // proceeds. A single grid proceeds (with a warning if it isn't set up yet).
         const isEdit =
           typeof input?.target_entity_id === "string" && input.target_entity_id.length > 0;
+        // A grid+slug pair is a probable re-plug handle (the replug_handle,
+        // resolved inside runPlug) — treat it like an edit for the confirm gate.
+        const isReplugHandle = Boolean(input?.grid && input?.slug);
         // Manifest-aware confirm: a CREATE whose source already carries a
         // cloudgrid.yaml is a pre-configured runtime app. Don't silently
         // auto-create — ask once. (Skip when re-plugging, or when confirmed.)
-        if (!isEdit && input?.confirm_new_app !== true) {
+        if (!isEdit && !isReplugHandle && input?.confirm_new_app !== true) {
           const manifest = detectSourceManifest(input);
           if (manifest) {
             const svc = manifest.services?.length

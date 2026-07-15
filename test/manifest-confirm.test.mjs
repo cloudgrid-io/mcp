@@ -87,6 +87,18 @@ try {
     assert.ok(!calls.some((c) => c.url.includes("/api/v2/plug")), "must not publish before confirmation");
   });
 
+  await test("grid+slug re-plug handle does NOT trigger the new-app confirm", async () => {
+    // grid_plug also re-plugs via the grid+slug handle (replug_handle), resolved
+    // inside runPlug. A create-shaped call carrying both must be treated like an
+    // edit — the manifest gate must NOT short-circuit even with a cloudgrid.yaml.
+    calls.length = 0;
+    const server = makeServer();
+    registerTools(server, makeCtx({ token: "jwt", activeOrg: "atomic", edition: "web" }));
+    const res = await server.handlers.grid_plug({ grid: "atomic", slug: "vaad-budget", artifact_files: [{ path: "cloudgrid.yaml", content: YAML }] });
+    assert.notEqual(res.structuredContent?.needs_confirmation, true);
+    assert.ok(calls.some((c) => c.url.includes("/api/v2/plug")), "should publish (re-plug), not gate");
+  });
+
   await test("create with confirm_new_app: true proceeds past the gate", async () => {
     // with confirm_new_app true, the manifest gate must NOT short-circuit — it
     // proceeds to the publish path. Single grid → no grid-picker either.
