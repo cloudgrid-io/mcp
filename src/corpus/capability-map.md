@@ -18,13 +18,14 @@ cloudgrid.yaml schema (every field, the `needs:` injection table, the
 requires-vs-needs caveat, validation rules), fetch the companion reference:
 `grid_fetch("doc", "cloudgrid-yaml")`.
 
-## The 59 templates
+## The 60 templates
 
 | Intent (match on `when:`) | Template | `needs:` | Deploy | Edition |
 |---|---|---|---|---|
 | landing page, marketing/product/hero page, coming-soon, link-in-bio, event page — a single-section page | `landing-page` | none | inspiration (instant) | all |
 | SaaS marketing site, product marketing page, features + pricing page — multi-section with pricing tiers, testimonials, FAQ | `saas-marketing` | none | inspiration (instant) | all |
-| documentation site, docs, developer docs, guide, manual, knowledge base — prose docs with sidebar + search | `docs-site` | none | inspiration (instant) | all |
+| single-page docs, a quick guide/manual/README-as-a-page, small knowledge base — prose with sidebar + search baked into ONE HTML file (instant, works on hosted). For a multi-page site you'll keep editing, use `docs-app` | `docs-site` | none | inspiration (instant) | all |
+| multi-page documentation site you'll keep editing, developer docs portal, knowledge base, help center — sidebar + full-text search + agent-readable llms.txt, built with Astro Starlight (separate content files, not one page). For a quick single page, use `docs-site` | `docs-app` | none | static build | local |
 | API documentation, API reference, endpoint docs, REST API docs — method badges, params tables, request/response examples | `api-docs` | none | inspiration (instant) | all |
 | status page, service status, uptime page, incident history, is-it-down page — display-only, status baked in | `status-page` | none | inspiration (instant) | all |
 | changelog, release notes, what's new, product updates, version history | `changelog` | none | inspiration (instant) | all |
