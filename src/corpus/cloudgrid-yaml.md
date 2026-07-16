@@ -152,8 +152,8 @@ needs:
   kv: true                          # Redis, no eviction. Injects KV_REDIS_URL.
   queue: true                       # Redis for BullMQ etc. Injects QUEUE_REDIS_URL.
   pubsub: true                      # Redis pub/sub. Injects PUBSUB_REDIS_URL.
-  vector: pgvector                  # pgvector. Injects VECTOR_PGVECTOR_URL.
-  object_storage: true              # GCS bucket. Injects OBJECT_STORAGE_GCS_BUCKET.
+  vector: pgvector                  # GATED (platform #1545) - deploy stalls; store embeddings in Mongo for now.
+  object_storage: true              # GATED (platform #1678) - rejected at plug-time; use disk: or a BYO bucket via secret.
   disk: true                        # Persistent filesystem at /data. Injects DISK_PATH.
   ai: true                          # AI Gateway access. Injects AI_GATEWAY_URL.
 
@@ -403,8 +403,8 @@ service type.**
 | `kv` | Key-value store, no eviction | `KV_REDIS_URL` | Redis |
 | `queue` | Durable job queue substrate | `QUEUE_REDIS_URL` | Redis |
 | `pubsub` | Broadcast pub/sub | `PUBSUB_REDIS_URL` | Redis |
-| `vector` | Vector embeddings DB | `VECTOR_PGVECTOR_URL` (+legacy `PGVECTOR_URL`) | pgvector (Postgres) |
-| `object_storage` | Object/blob bucket | `OBJECT_STORAGE_GCS_BUCKET`, `OBJECT_STORAGE_GCS_REGION` | GCS |
+| `vector` | Vector embeddings DB - **GATED (#1545)**: deploy stalls, store embeddings in Mongo for now | `VECTOR_PGVECTOR_URL` (+legacy `PGVECTOR_URL`) | pgvector (Postgres) |
+| `object_storage` | Object/blob bucket - **GATED (#1678)**: rejected at plug-time, use `disk` or a BYO bucket via secret | `OBJECT_STORAGE_GCS_BUCKET`, `OBJECT_STORAGE_GCS_REGION` | GCS |
 | `disk` | Persistent filesystem mount | `DISK_PATH` | PVC |
 | `ai` | AI Gateway access | `AI_GATEWAY_URL` | CloudGrid AI Gateway |
 
@@ -424,10 +424,12 @@ needs:
   cache: true                                   # Platform Redis
   cache: { engine: external, secret: MY_REDIS } # Bring your own (same forms for kv/queue/pubsub)
 
+  # vector - GATED (#1545), not deployable yet; store embeddings in Mongo for now:
   vector: true                                  # Platform default engine
   vector: pgvector                              # pgvector explicitly
   vector: { engine: pgvector, dim: 1536 }       # With dimension hint
 
+  # object_storage - GATED (#1678), rejected at plug-time; use disk: or a BYO bucket:
   object_storage: true                          # Default size (100MB)
   object_storage: { size: 10Gi }                # Custom size
 
