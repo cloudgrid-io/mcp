@@ -18,7 +18,7 @@ cloudgrid.yaml schema (every field, the `needs:` injection table, the
 requires-vs-needs caveat, validation rules), fetch the companion reference:
 `grid_get_template("doc", "cloudgrid-yaml")`.
 
-## The 60 templates
+## The 61 templates
 
 | Intent (match on `when:`) | Template | `needs:` | Deploy | Edition |
 |---|---|---|---|---|
@@ -63,7 +63,8 @@ requires-vs-needs caveat, validation rules), fetch the companion reference:
 | revenue dashboard, sales dashboard, MRR/revenue view | `revenue-dashboard` | `database: true` | runtime (async, poll) | local |
 | property listings, real estate site, rentals/homes listings | `property-listings` | `database: true` | runtime (async, poll) | local |
 | project management, projects and tasks tracker, team project board | `project-management` | `database: true` | runtime (async, poll) | local |
-| search over my documents / PDFs / notes / knowledge base, semantic search, document search, find across my files, searchable archive | `semantic-search` | `database: true` (template uses Mongo embeddings; `vector: pgvector` now available, #1545 shipped; active daily refresh cron) | runtime (async, poll) | local |
+| semantic search over a document / article / text, search-by-meaning box, question-answering search over content, embeddings / vector / similarity search — ONE document or small text set, one service | `simple-semantic-search` | `vector: pgvector, ai: true` (native pgvector, verified live 2026-07-16) | runtime (async, poll) | local |
+| search over my documents / PDFs / notes / knowledge base with upload UI and scheduled refresh, document search portfolio, searchable archive (multi-service) | `semantic-search` | `database: true` (template uses Mongo embeddings; `vector: pgvector` now available, #1545 shipped; active daily refresh cron) | runtime (async, poll) | local |
 
 **Rule of thumb:** if the app must SAVE/remember data, share state across
 users/sessions, log in, or store submissions → it is persistent → runtime, local

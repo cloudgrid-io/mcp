@@ -1,0 +1,15 @@
+{
+  "name": "simple-semantic-search-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Semantic search over a bundled document on the CloudGrid vector substrate (pgvector).",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@cloudgrid-io/runtime": "^1.0.3",
+    "express": "^4.21.2",
+    "pg": "^8.13.0"
+  }
+}
