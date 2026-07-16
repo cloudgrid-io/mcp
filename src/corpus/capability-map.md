@@ -63,7 +63,7 @@ requires-vs-needs caveat, validation rules), fetch the companion reference:
 | revenue dashboard, sales dashboard, MRR/revenue view | `revenue-dashboard` | `database: true` | runtime (async, poll) | local |
 | property listings, real estate site, rentals/homes listings | `property-listings` | `database: true` | runtime (async, poll) | local |
 | project management, projects and tasks tracker, team project board | `project-management` | `database: true` | runtime (async, poll) | local |
-| search over my documents / PDFs / notes / knowledge base, semantic search, document search, find across my files, searchable archive | `semantic-search` | `database: true` (NO `vector` #1545; active daily refresh cron) | runtime (async, poll) | local |
+| search over my documents / PDFs / notes / knowledge base, semantic search, document search, find across my files, searchable archive | `semantic-search` | `database: true` (template uses Mongo embeddings; `vector: pgvector` now available, #1545 shipped; active daily refresh cron) | runtime (async, poll) | local |
 
 **Rule of thumb:** if the app must SAVE/remember data, share state across
 users/sessions, log in, or store submissions → it is persistent → runtime, local
@@ -86,8 +86,10 @@ real runnable code in a different shape from the Next.js family: a React (Vite)
 **static** frontend at `/` plus a **Python FastAPI** backend at `/backend`, on the
 same grid-shared Mongo (`needs: { database: true }`). Hybrid search = Mongo
 `$text` + in-app NumPy cosine over embedding arrays + metadata filters. It stores
-embeddings in the Mongo `chunks` collection (NO `needs: vector` — pgvector is
-blocked on **#1545**) and refreshes via a manager endpoint (NO active cron — a
+embeddings in the Mongo `chunks` collection (the template does not declare
+`needs: vector`; `vector: pgvector` is now available — **#1545** shipped, verified
+live 2026-07-16 — but the template code still ranks in-app) and refreshes via a
+manager endpoint (NO active cron — a
 Python `type: cron` is blocked on **#1585**). Read its `AGENTS.md` for the source
 adapter (dropbox/local/url) + embeddings wiring and the health-without-secrets /
 startup-index patterns.
@@ -97,7 +99,7 @@ startup-index patterns.
 | Intent | Would need | Status |
 |---|---|---|
 | scheduled task, cron job, "run every day/hour", periodic worker | a `type: cron` service (`schedule`, `timezone`) | **SUPPORTED** on CLI 0.14.0 — Python and Node `type: cron` services validate, deploy, and fire (platform #1585 fixed). See the semantic-search `refresh` cron for a working Python-job example. |
-| RAG chatbot, "answer over my own docs", semantic search, retrieval-augmented Q&A | `ai-app` + `needs: { vector: pgvector }` | **HELD** — platform issue #1545 (pgvector crashes the deploy). Ship the plain `ai-app` (no vector) for now. |
+| RAG chatbot, "answer over my own docs", semantic search, retrieval-augmented Q&A | `ai-app` + `needs: { vector: pgvector }` | AVAILABLE — #1545 shipped (verified live 2026-07-16). `vector: pgvector` deploys and injects `VECTOR_PGVECTOR_URL`; the shipped template still stores embeddings in Mongo until updated. |
 
 ## Blueprints (structure + cloudgrid.yaml; adapt the app — some pending platform support)
 
@@ -129,14 +131,15 @@ runtime, async build, **local edition only**. Auth/payment secrets map through a
 | appointment booking, clinic/salon booking, appointment scheduler | `appointment-booking` | `database: true` (+ auth/Stripe via `vault:`); reminder cron supported (Python/Node `type: cron`, 0.14.0) | runtime (async, poll) | local |
 | restaurant website with reservations, table booking, restaurant site | `restaurant-reservations` | `database: true` (+ Stripe/email via `vault:`); reminder cron supported (Python/Node `type: cron`, 0.14.0) | runtime (async, poll) | local |
 | travel booking portal, trip booking, flights/hotels booking, travel reservations | `travel-booking` | `database: true` (+ Stripe/auth via `vault:`); reminder cron supported (Python/Node `type: cron`, 0.14.0) | runtime (async, poll) | local |
-| RAG, ask my docs, knowledge base chatbot, retrieval-augmented search over documents | `ai-knowledge-base` | `ai: true, database: true`; ideal `vector: pgvector` **pending #1545** (store embeddings in Mongo + cosine-rank until it lands) | runtime (async, poll) | local |
+| RAG, ask my docs, knowledge base chatbot, retrieval-augmented search over documents | `ai-knowledge-base` | `ai: true, database: true`; ideal `vector: pgvector` now AVAILABLE (#1545 shipped; the shipped blueprint still uses Mongo embeddings until updated) | runtime (async, poll) | local |
 
 The booking family (`booking-system`, `calendar-scheduler`, `appointment-booking`,
 `restaurant-reservations`, `travel-booking`) is fully buildable today, **including**
 the reminder cron — Python and Node `type: cron` services work on CLI 0.14.0
 (platform #1585 fixed). `ai-knowledge-base` builds today on the AI Gateway + Mongo; its
-ideal `needs: { vector: pgvector }` embedding store is HELD on **#1545**, so store
-chunks in Mongo and cosine-rank in-app until it lands.
+ideal `needs: { vector: pgvector }` embedding store is now AVAILABLE (**#1545**
+shipped, verified live 2026-07-16) — the shipped blueprint still stores chunks in
+Mongo and cosine-ranks in-app until it is updated to pgvector.
 
 ## The full `needs:` vocabulary (the whole menu)
 
@@ -152,7 +155,7 @@ engine hint. Cron is NOT a need — it is a **service type** (`type: cron` with
 | `kv: true` | Redis, no eviction | `KV_REDIS_URL` | Injects via `needs:` |
 | `queue: true` | Redis durable job queue | `QUEUE_REDIS_URL` | Injects via `needs:` |
 | `pubsub: true` | Redis pub/sub broadcast | `PUBSUB_REDIS_URL` | Injects via `needs:` |
-| `vector: pgvector` | pgvector embeddings DB | `VECTOR_PGVECTOR_URL` (+legacy `PGVECTOR_URL`) | **GATED (#1545)** - deploy stalls; store embeddings in Mongo for now |
+| `vector: pgvector` | pgvector embeddings DB | `VECTOR_PGVECTOR_URL` (+legacy `PGVECTOR_URL`) | **Injects via `needs:`** (#1545 shipped, verified live 2026-07-16) |
 | `object_storage: true` | GCS bucket | `OBJECT_STORAGE_GCS_BUCKET`, `OBJECT_STORAGE_GCS_REGION` | **GATED (#1678)** - rejected at plug-time; use `disk` or a BYO bucket via secret |
 | `disk: true` | Persistent filesystem at `/data` | `DISK_PATH` | Injects via `needs:` |
 | `ai: true` | AI Gateway access | `AI_GATEWAY_URL` | Injects via `needs:` |
@@ -164,9 +167,9 @@ engine hint. Cron is NOT a need — it is a **service type** (`type: cron` with
   → `DATABASE_MONGODB_URL` (+legacy `MONGODB_URL`); `needs: { cache: true }` →
   `CACHE_REDIS_URL` (+legacy `REDIS_URL`); `needs: { queue: true }` →
   `QUEUE_REDIS_URL`; and so on across the durable needs. Author `needs:`.
-  (**GATED, do NOT author yet:** `vector: pgvector` #1545 - deploy stalls,
-  store embeddings in Mongo instead; `object_storage` #1678 - rejected at
-  plug-time, use `disk` or a BYO bucket via secret.)
+  `vector: pgvector` → `VECTOR_PGVECTOR_URL` is now AVAILABLE (#1545 shipped,
+  verified live 2026-07-16). (**GATED, do NOT author yet:** `object_storage`
+  #1678 - rejected at plug-time, use `disk` or a BYO bucket via secret.)
   (*Historical note: the deployer once did not inject from `needs:` — platform
   bug #1527, now fixed and verified live.*)
 - **`requires:` is the deprecated v1 alias.** Don't author new yaml with it.
@@ -181,7 +184,8 @@ engine hint. Cron is NOT a need — it is a **service type** (`type: cron` with
 2. Adopt that template's `needs:`. Persistence → `database` (`app-with-data` or
    `api-service`); talks to an LLM → `ai: true` + `database` (`ai-app`); scheduled
    work → a `type: cron` service (Python/Node, supported on 0.14.0). (Held for now:
-   RAG's ideal `vector: pgvector`, #1545 — store embeddings in Mongo until it lands.)
+   RAG's ideal `vector: pgvector` now works - #1545 shipped; the shipped
+   templates still store embeddings in Mongo until they are updated.)
 3. One self-contained HTML page (`needs: none`, assets inlined) → publish as an
    inspiration with `grid_deploy` and the inline `html` param (instant, any
    edition). Separate files/folders/assets, or anything with a `needs:` →

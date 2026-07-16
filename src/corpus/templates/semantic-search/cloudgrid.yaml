@@ -89,9 +89,9 @@ name: semantic-search
 #   pubsub: true
 #   # vector — pgvector on Postgres. Injects VECTOR_PGVECTOR_URL (+ PGVECTOR_URL).
 #   #   true | pgvector | { engine: pgvector, dim: 1536 }
-#   #   NOT USED HERE — pgvector runtime role-grant is blocked (platform #1545).
-#   #   This template stores embeddings in the Mongo `chunks` collection and
-#   #   cosine-ranks in-app instead. Swap to `vector: pgvector` once #1545 lands.
+#   #   NOT USED HERE — available now (#1545 shipped). This template stores
+#   #   embeddings in the Mongo `chunks` collection and cosine-ranks in-app.
+#   #   Uncomment `vector: pgvector` only if you also switch the code to pgvector.
 #   vector: pgvector
 #   # object_storage — GCS bucket. Injects OBJECT_STORAGE_GCS_BUCKET, _GCS_REGION.
 #   #   true | { size: 10Gi }
@@ -204,8 +204,9 @@ services:
     timezone: UTC
     run: job                    # batch job — runs services/refresh/src/main.py once
 # CloudGrid managed Mongo → injects DATABASE_MONGODB_URL (+ legacy MONGODB_URL).
-# NO `needs: vector` — pgvector runtime role-grant is still blocked (#1545);
-# embeddings live in the Mongo `chunks` collection and are cosine-ranked in-app.
+# NO `needs: vector` — available now (#1545 shipped), but this template stores
+# embeddings in the Mongo `chunks` collection and cosine-ranks in-app;
+# uncomment `vector: pgvector` only if you also switch the code to pgvector.
 needs:
   database: true
 

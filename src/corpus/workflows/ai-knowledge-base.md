@@ -5,8 +5,8 @@ needs: ai+database
 deploy: runtime
 editions: local
 kind: blueprint
-capabilities_note: "persistent RAG — needs ai + database. Runtime app, async build, local edition only. Declare needs:{ai:true, database:true}; the deployer injects AI_GATEWAY_URL (AI Gateway via @cloudgrid-io/ai — works today) and DATABASE_MONGODB_URL (+legacy MONGODB_URL). The ideal embedding store needs:{vector:pgvector} (VECTOR_PGVECTOR_URL) is PENDING platform issue #1545 — until it lands, store embeddings in a Mongo `chunks` collection and cosine-rank in-app."
-summary: "A BLUEPRINT for a retrieval-augmented 'ask my docs' knowledge base — ingest documents, chunk + embed them, retrieve the nearest chunks per question, and answer grounded with citations, on persistent Next.js + Mongo + the CloudGrid AI Gateway. This is not fill-in-the-blanks app code; it ships structure + cloudgrid.yaml. Fetch the template, read AGENTS.md for the file tree / collections / RAG loop / CloudGrid wiring (needs ai+database, the pgvector #1545 note), then BUILD the app under services/web/ following it, and deploy async to a live URL (local edition only)."
+capabilities_note: "persistent RAG — needs ai + database. Runtime app, async build, local edition only. Declare needs:{ai:true, database:true}; the deployer injects AI_GATEWAY_URL (AI Gateway via @cloudgrid-io/ai — works today) and DATABASE_MONGODB_URL (+legacy MONGODB_URL). The ideal embedding store needs:{vector:pgvector} (VECTOR_PGVECTOR_URL) is now AVAILABLE — #1545 shipped (verified live 2026-07-16) — but this blueprint still stores embeddings in a Mongo `chunks` collection and cosine-ranks in-app; declare vector:pgvector only if you also build the retrieval on pgvector."
+summary: "A BLUEPRINT for a retrieval-augmented 'ask my docs' knowledge base — ingest documents, chunk + embed them, retrieve the nearest chunks per question, and answer grounded with citations, on persistent Next.js + Mongo + the CloudGrid AI Gateway. This is not fill-in-the-blanks app code; it ships structure + cloudgrid.yaml. Fetch the template, read AGENTS.md for the file tree / collections / RAG loop / CloudGrid wiring (needs ai+database, the pgvector note — #1545 shipped), then BUILD the app under services/web/ following it, and deploy async to a live URL (local edition only)."
 ---
 
 # Workflow: ai-knowledge-base
@@ -26,10 +26,11 @@ app code. The recipe is: fetch it, **read `AGENTS.md`**, then **build** the app
 following it. Be honest that a runtime deploy is async and needs the local edition.
 
 > **Vector-store status:** the ideal embedding store is `needs: { vector: pgvector }`
-> (injects `VECTOR_PGVECTOR_URL`), but it is **PENDING platform issue #1545**. The
-> **`ai` part works today.** Until #1545 ships, store embeddings in a Mongo
-> `chunks` collection and cosine-rank in the app — the blueprint declares
-> `needs: { ai: true, database: true }` and keeps `vector: pgvector` commented.
+> (injects `VECTOR_PGVECTOR_URL`), and it is **now available** — #1545 shipped. The
+> **blueprint still stores embeddings in a Mongo `chunks` collection** and
+> cosine-ranks in the app; it declares `needs: { ai: true, database: true }` and
+> keeps `vector: pgvector` commented. Uncomment it only if you also build the
+> retrieval on pgvector.
 
 ## 1. Edition check FIRST (hard gate)
 
@@ -54,11 +55,11 @@ CLI.
 **`AGENTS.md` structure guide** — read it before writing anything. It defines:
 - the `services/web/` file tree (pages, `api/documents` + `api/ask` routes, `lib/`),
 - the Mongo collections (`documents`, `chunks`) + fields,
-- the CloudGrid injection table (needs ai+database + the pgvector #1545 note),
+- the CloudGrid injection table (needs ai+database + the pgvector note),
 - the ingest → retrieve → answer RAG loop, with lazy `lib/db.js` / `lib/ai.js` /
-  `lib/retrieve.js` (cosine top-k over Mongo embeddings until #1545),
+  `lib/retrieve.js` (cosine top-k over Mongo embeddings as shipped),
 - optional auth/payments wiring via `vault:`,
-- the deploy flow and the pgvector swap-in once #1545 lands.
+- the deploy flow and the pgvector swap-in (now available — #1545 shipped).
 
 There is no app code to copy — you generate it from the guide.
 
@@ -86,7 +87,9 @@ the filesystem path. **Declare `needs: { ai: true, database: true }`** (canonica
 key) and provisions Mongo, injecting `DATABASE_MONGODB_URL` (+ legacy
 `MONGODB_URL`). `requires:` is the deprecated v1 alias; never author it and never
 set `needs:` and `requires:` together (the validator rejects the combination).
-Leave `vector: pgvector` **commented** — it is PENDING #1545.
+Leave `vector: pgvector` **commented** unless you build the retrieval on pgvector
+— the need is available (#1545 shipped), but this blueprint's code uses Mongo
+embeddings.
 
 ## 5. Build the app following AGENTS.md
 
@@ -100,7 +103,7 @@ Generate the files under `services/web/` per the guide:
   `embedding` array, mark the `documents` doc `ready`.
 - **Retrieve** (`lib/retrieve.js`): embed the question, cosine-rank the Mongo
   `chunks`, return top-k `{ text, documentId, score }` — a pure function that swaps
-  cleanly to a pgvector query once #1545 lands.
+  cleanly to a pgvector query (now available — #1545 shipped).
 - **Answer** (`POST /api/ask`): retrieve top-k, prompt the model to answer ONLY
   from the provided context and to cite the chunks, `chat()` via the AI Gateway,
   return the answer plus source chunks so the UI shows **citations**.
@@ -132,6 +135,6 @@ response is `status: "building"`, NOT a live URL yet.
 Give the user the live app URL — the deliverable. To iterate, re-plug the SAME
 entity so it updates the same URL. Keep it honest: this is a blueprint you built
 from, the build is async, it is local-edition only, credentials are injected by the
-grid (AI Gateway + Mongo via `needs`), and the pgvector store is PENDING #1545 (so
-embeddings currently live in Mongo). Swap to pgvector when #1545 ships per
-`AGENTS.md` §7.
+grid (AI Gateway + Mongo via `needs`), and the blueprint stores embeddings in
+Mongo (the pgvector store is available — #1545 shipped — but the shipped code
+does not use it). To swap to pgvector, follow `AGENTS.md` §7.

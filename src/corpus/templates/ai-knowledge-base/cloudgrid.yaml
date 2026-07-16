@@ -89,10 +89,11 @@ needs:
 #   pubsub: true
 #   # vector — pgvector on Postgres. Injects VECTOR_PGVECTOR_URL (+ PGVECTOR_URL).
 #   #   true | pgvector | { engine: pgvector, dim: 1536 }
-#   # NOTE: `needs: vector` (pgvector) is the intended store for RAG embeddings but
-#   # is PENDING platform issue #1545 — not yet provisioned. Until it ships, store
-#   # embeddings in Mongo (a `chunks` collection with an `embedding: number[]` field)
-#   # and do cosine similarity in the app. Flip this on once #1545 lands.
+#   # NOTE: `needs: vector` (pgvector) is the intended store for RAG embeddings and
+#   # is available now (#1545 shipped). This template still stores embeddings in
+#   # Mongo (a `chunks` collection with an `embedding: number[]` field) and does
+#   # cosine similarity in the app — uncomment `vector: pgvector` only if you also
+#   # switch the retrieval code to pgvector.
 #   vector: pgvector
 #   # object_storage — GCS bucket. Injects OBJECT_STORAGE_GCS_BUCKET, _GCS_REGION.
 #   #   true | { size: 10Gi }

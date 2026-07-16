@@ -253,9 +253,9 @@ export default function Chat({ initialHistory }) {
 - Change the `messages` collection / fields; add users, sessions, titles.
 - Run `grid dev` to test locally, `grid plug` to deploy (async — poll to live).
 
-## RAG / retrieval (not yet)
+## RAG / retrieval (not included)
 
 To answer over **your own documents** (retrieval-augmented generation) you need a
-vector store — `needs: { vector: pgvector }`. That path is **not yet available**
-(platform issue #1545). Ship the plain chatbot now; add retrieval once the vector
-need is unblocked.
+vector store — `needs: { vector: pgvector }`. That need is **now available** —
+#1545 shipped (verified live 2026-07-16) — but this template is a plain chatbot:
+declare the need and build the retrieval code on top if you want RAG.
