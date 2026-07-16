@@ -4,7 +4,7 @@ when: chatbot, AI assistant, Q&A bot, conversational app, support bot, ask-me-an
 needs: ai, database
 deploy: runtime
 editions: local
-capabilities_note: AI chatbot — needs ai (the grid AI gateway) + a database (Mongo) for chat history. Next.js App Router app. Uses @cloudgrid-io/ai createClient().chat() with zero-config in-grid identity auth (no API key). Runtime app, async build, local edition only. Declare `needs: { ai: true, database: true }`. (RAG over your own docs needs `needs: { vector: pgvector }` — not yet available, platform issue #1545.)
+capabilities_note: AI chatbot — needs ai (the grid AI gateway) + a database (Mongo) for chat history. Next.js App Router app. Uses @cloudgrid-io/ai createClient().chat() with zero-config in-grid identity auth (no API key). Runtime app, async build, local edition only. Declare `needs: { ai: true, database: true }`. (RAG over your own docs needs `needs: { vector: pgvector }` — now available, #1545 shipped (verified live 2026-07-16); this template ships the plain chatbot without it.)
 summary: Build an AI chatbot on the grid — a Next.js app that calls @cloudgrid-io/ai createClient().chat({messages}) (zero-config in-grid auth, no key) and persists the conversation to grid-shared Mongo. Edition-gate first, scaffold, put the app under services/web/, declare needs:{ai:true,database:true}, read DATABASE_MONGODB_URL lazily, deploy async, poll to a live URL.
 ---
 
@@ -66,7 +66,7 @@ ai: true, database: true }`).
      ai: true
      database: true
    # For retrieval-augmented (RAG) over your own docs, add `needs: { vector:
-   # pgvector }` once platform issue #1545 ships — not yet available.
+   # pgvector }` — available now (#1545 shipped); this template does not use it.
    ```
    **Declare `needs: { ai: true, database: true }`** — the canonical shape. The
    deployer wires the AI gateway (in-grid identity) and provisions Mongo,
@@ -129,8 +129,9 @@ the SAME entity (`target_entity_id`) so it updates the same URL.
 
 If the user wants the bot to answer over **their own documents** (retrieval-
 augmented generation), that needs a vector store (`needs: { vector: pgvector }`).
-That path is **not yet available** — platform issue #1545. Ship the plain
-chatbot now; add retrieval once the vector need is unblocked.
+That path is **now available** — #1545 shipped. The template itself is a plain
+chatbot; declaring `vector: pgvector` injects `VECTOR_PGVECTOR_URL`, and you
+build the retrieval code on top of it.
 
 Keep it honest: async build, local-edition only, AI auth and DB credentials
 provided by the grid.

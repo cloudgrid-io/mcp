@@ -77,12 +77,12 @@ os.environ.get("MONGODB_URL")` inside `get_client()`, never at module top level.
 `requires:` together (the validator rejects the combination).
 
 **No `needs: vector`.** The ideal embedding store is pgvector
-(`needs: { vector: pgvector }` → `VECTOR_PGVECTOR_URL`), but the runtime
-role-grant is **blocked on platform issue #1545**. Until it lands, embeddings live
-in the Mongo `chunks.embedding` float array and are cosine-ranked in-app
-(`search.py::_cosine`). When #1545 ships, move the vectors to pgvector and replace
-the in-app cosine block with an `ORDER BY embedding <=> $q LIMIT k` query — the
-rest of the pipeline is unchanged.
+(`needs: { vector: pgvector }` → `VECTOR_PGVECTOR_URL`), and it is **now
+available** — #1545 shipped (verified live 2026-07-16). This template still keeps
+embeddings in the Mongo `chunks.embedding` float array and cosine-ranks in-app
+(`search.py::_cosine`). To swap, move the vectors to pgvector and replace the
+in-app cosine block with an `ORDER BY embedding <=> $q LIMIT k` query — the rest
+of the pipeline is unchanged.
 
 ---
 
@@ -155,9 +155,9 @@ to store the same way. Non-secret public config can also go via `grid env`.
    source or embeddings are unconfigured. `GET /backend/status` reports capability
    **booleans** (`source_configured`, `embeddings_configured`, …), never secret
    values.
-4. **No `needs: vector`.** `needs:` is `database` only — pgvector's runtime
-   role-grant is still blocked (#1545). (The scheduled cron refresh IS active — see
-   §8.)
+4. **No `needs: vector`.** `needs:` is `database` only — the pgvector need is
+   available (#1545 shipped), but this template's code uses Mongo embeddings (§3
+   for the swap). (The scheduled cron refresh IS active — see §8.)
 
 ---
 

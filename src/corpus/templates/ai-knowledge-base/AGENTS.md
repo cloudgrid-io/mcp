@@ -13,13 +13,13 @@ them (with citations). Both the embedding and the answer step run through
 CloudGrid's **AI Gateway** (`@cloudgrid-io/ai`, injected via `needs: { ai: true }`).
 
 > **Vector-store status (read this first):** the ideal store for embeddings is
-> `needs: vector` (pgvector on Postgres, injecting `VECTOR_PGVECTOR_URL`), but it
-> is **PENDING platform issue #1545** and not yet provisioned. The **`ai` part
-> works today.** Until #1545 ships, store embeddings in **Mongo** (a `chunks`
-> collection with an `embedding: number[]` field) and compute cosine similarity in
-> the app. This blueprint's `cloudgrid.yaml` therefore declares
-> `needs: { ai: true, database: true }` and keeps `vector: pgvector` commented.
-> Section 7 describes the drop-in swap once #1545 lands.
+> `needs: vector` (pgvector on Postgres, injecting `VECTOR_PGVECTOR_URL`), and it
+> is **now available** — #1545 shipped (verified live 2026-07-16). This blueprint
+> still stores embeddings in **Mongo** (a `chunks` collection with an
+> `embedding: number[]` field) and computes cosine similarity in the app; its
+> `cloudgrid.yaml` declares `needs: { ai: true, database: true }` and keeps
+> `vector: pgvector` commented. Uncomment it only if you also build the retrieval
+> on pgvector — Section 7 describes the drop-in swap.
 
 ---
 
@@ -72,9 +72,9 @@ collections (`_id` is the Mongo ObjectId on every doc):
 - `embedding` (number[] — the embedding vector; e.g. length 1536)
 - `createdAt` (Date)
 
-Until issue #1545 lands, `chunks.embedding` lives in Mongo and you rank in the
-app (Section 3). When pgvector ships, the vectors move to Postgres and `chunks`
-keeps only the text + a foreign key (Section 7).
+As shipped, `chunks.embedding` lives in Mongo and you rank in the app
+(Section 3). If you swap to pgvector (available — #1545 shipped), the vectors
+move to Postgres and `chunks` keeps only the text + a foreign key (Section 7).
 
 ---
 
@@ -87,7 +87,7 @@ injected as env vars at `grid dev` (local) and at runtime (after `grid plug`):
 |------|----------------------------|---------------------|--------------|
 | MongoDB | `needs: { database: true }` | `DATABASE_MONGODB_URL` (+ legacy `MONGODB_URL`) | `lib/db.js` |
 | AI Gateway | `needs: { ai: true }` | `AI_GATEWAY_URL` | `lib/ai.js` (via `@cloudgrid-io/ai`) |
-| Vector store (PENDING #1545) | `needs: { vector: pgvector }` | `VECTOR_PGVECTOR_URL` (+ legacy `PGVECTOR_URL`) | `lib/retrieve.js` — not yet available |
+| Vector store (available — #1545 shipped) | `needs: { vector: pgvector }` | `VECTOR_PGVECTOR_URL` (+ legacy `PGVECTOR_URL`) | `lib/retrieve.js` — not used by this blueprint (Section 7 for the swap) |
 | Auth key (optional) | `vault: { AUTH_PROVIDER_KEY: auth-provider-key }` | `AUTH_PROVIDER_KEY` | `lib/auth.js` |
 | Stripe key (optional) | `vault: { STRIPE_KEY: stripe-live-key }` | `STRIPE_KEY` | `lib/stripe.js` |
 
@@ -149,12 +149,12 @@ export async function chat(messages) {
 
 ### Retrieve (`lib/retrieve.js`)
 1. `embed(question)` -> query vector.
-2. Until pgvector (#1545): load candidate `chunks`, compute cosine similarity in
-   the app, keep the top-k (e.g. k=5). Keep it a pure, testable ranking function
-   so it swaps cleanly to a pgvector query later.
+2. As shipped (Mongo embeddings): load candidate `chunks`, compute cosine
+   similarity in the app, keep the top-k (e.g. k=5). Keep it a pure, testable
+   ranking function so it swaps cleanly to a pgvector query later.
 
 ```js
-// lib/retrieve.js — cosine top-k over Mongo-stored embeddings (pre-#1545)
+// lib/retrieve.js — cosine top-k over Mongo-stored embeddings (as shipped)
 import { getDb } from "./db.js";
 import { embed } from "./ai.js";
 const dot = (a, b) => a.reduce((s, x, i) => s + x * b[i], 0);
@@ -224,9 +224,9 @@ linked directory, so `init` first.
 
 ---
 
-## 7. When pgvector (#1545) lands — the swap
+## 7. The swap to pgvector (now available — #1545 shipped)
 
-Once `needs: vector` is available, migrate off the in-app cosine ranking:
+`needs: vector` is available; to migrate off the in-app cosine ranking:
 
 1. Uncomment `vector: pgvector` in `cloudgrid.yaml`'s `needs:` block (dim 1536 to
    match your embedding model). The grid then injects `VECTOR_PGVECTOR_URL` (+

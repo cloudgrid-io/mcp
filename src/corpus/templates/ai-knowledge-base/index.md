@@ -13,7 +13,7 @@ the app following it.
 
 - **Structure guide:** `grid_get_template("template", "ai-knowledge-base")` → read
   **`AGENTS.md`** (file tree, Mongo collections, CloudGrid injection table, the
-  RAG loop, the pgvector #1545 note, optional auth/payments, deploy steps).
+  RAG loop, the pgvector note, optional auth/payments, deploy steps).
 
 **Key rules (same runtime discipline as `app-with-data`):**
 
@@ -29,10 +29,11 @@ the app following it.
    model's parametric memory alone. Keep chunking/retrieval as pure functions.
 
 **Vector store:** `needs: vector` (pgvector, injecting `VECTOR_PGVECTOR_URL`) is
-the intended embedding store but is **PENDING platform issue #1545**. The `ai`
-part works today — until #1545 ships, store embeddings in a Mongo `chunks`
-collection and rank by cosine similarity in the app; swap to a pgvector
-ORDER-BY-distance query when it lands (see `AGENTS.md` §7).
+the intended embedding store and is **now available** — #1545 shipped (verified
+live 2026-07-16). This blueprint still stores embeddings in a Mongo `chunks`
+collection and ranks by cosine similarity in the app; to use pgvector instead,
+uncomment the need and swap to a pgvector ORDER-BY-distance query (see
+`AGENTS.md` §7).
 
 Runtime app → **local edition** only (async build, poll to a live URL).
 
@@ -42,7 +43,8 @@ Runtime app → **local edition** only (async build, poll to a live URL).
 # On disk this file is the full-annotated reference (templates/_cloudgrid.yaml.reference) with EVERY
 # field present as a comment; only the fields below are uncommented, so it
 # deploys to exactly these active fields. `vector: pgvector` is present but kept
-# COMMENTED (PENDING #1545).
+# COMMENTED (available now — #1545 shipped — but this blueprint uses Mongo
+# embeddings; uncomment only if you also build the retrieval on pgvector).
 name: my-knowledge-base
 services:
   web:
@@ -56,15 +58,16 @@ needs:
 > **Capability:** `needs: { database: true }` → the deployer provisions Mongo and
 > injects `DATABASE_MONGODB_URL` (plus legacy `MONGODB_URL`). `needs: { ai: true }`
 > → injects `AI_GATEWAY_URL`; `@cloudgrid-io/ai` routes embeddings + chat through
-> it with no API key to manage. `needs: { vector: pgvector }` (would inject
-> `VECTOR_PGVECTOR_URL`) is PENDING #1545. See the capability-map for the full
+> it with no API key to manage. `needs: { vector: pgvector }` (injects
+> `VECTOR_PGVECTOR_URL`) is available (#1545 shipped) but not declared here —
+> this blueprint uses Mongo embeddings. See the capability-map for the full
 > injection table.
 
 ## Structure guide
 
 The real content of this blueprint is **`AGENTS.md`** — fetch the template bundle
 and read it. It covers the `services/web/` file tree, the `documents` / `chunks`
-collections, the CloudGrid injection table (needs + AI Gateway + the #1545 note),
+collections, the CloudGrid injection table (needs + AI Gateway + the pgvector note),
 the ingest → retrieve → answer RAG loop with lazy `lib/db.js` / `lib/ai.js` /
 `lib/retrieve.js`, optional auth/payments via `vault:`, and the
 `grid init → fill → grid plug → poll` deploy flow.
@@ -75,7 +78,8 @@ the ingest → retrieve → answer RAG loop with lazy `lib/db.js` / `lib/ai.js` 
   `lib/ai.js`; tune retrieval `k`.
 - Add auth (uncomment `vault: { AUTH_PROVIDER_KEY }`) to gate the KB, or payments
   (`vault: { STRIPE_KEY }`) to charge for access.
-- When pgvector #1545 lands, uncomment `needs: { vector: pgvector }` and swap
-  `lib/retrieve.js` to an ORDER-BY-distance query (`AGENTS.md` §7).
+- To move to pgvector (now available — #1545 shipped), uncomment
+  `needs: { vector: pgvector }` and swap `lib/retrieve.js` to an
+  ORDER-BY-distance query (`AGENTS.md` §7).
 - Build under `services/web/`, then `grid dev` (local) / `grid plug` (async — poll
   to a live URL).

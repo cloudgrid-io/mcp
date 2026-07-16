@@ -17,9 +17,10 @@ aggregated to the document level with a best-passage highlight.
 | `backend` | `python` (FastAPI) | `/backend` | `services/backend/src/main.py` |
 
 `needs: { database: true }` → CloudGrid injects `DATABASE_MONGODB_URL` (fallback
-`MONGODB_URL`). **No `needs: vector`** — pgvector runtime role-grant is blocked
-(platform #1545), so embeddings live in the Mongo `chunks` collection and are
-cosine-ranked in-app. Refresh runs two ways: the manager "Refresh now" endpoint
+`MONGODB_URL`). **No `needs: vector`** — the need is available now (#1545
+shipped, verified live 2026-07-16), but this template stores embeddings in the
+Mongo `chunks` collection and cosine-ranks in-app; declare `vector: pgvector`
+only if you also switch the code to pgvector. Refresh runs two ways: the manager "Refresh now" endpoint
 (on demand) and an active Python `type: cron` job (`services/refresh/`, daily 03:00
 UTC) — both call the same `indexing.run_sync` (see AGENTS.md §8).
 

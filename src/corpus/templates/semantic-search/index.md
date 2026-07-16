@@ -24,9 +24,11 @@ level with a best-passage highlight.
    `$text` index exists at boot — `$text` returns `[]` on an empty catalog rather
    than raising `IndexNotFound` (a 500). The `$text` query is also guarded in
    `except OperationFailure` as belt-and-suspenders.
-5. **No `needs: vector`** — pgvector runtime role-grant is blocked (#1545), so
-   embeddings live in the Mongo `chunks` collection (a float array) and are
-   cosine-ranked in-app. **The refresh cron IS active** — a Python `type: cron`,
+5. **No `needs: vector`** — the need is available now (#1545 shipped, verified
+   live 2026-07-16), but this
+   template stores embeddings in the Mongo `chunks` collection (a float array)
+   and cosine-ranks in-app; declare `vector: pgvector` only if you also switch
+   the code to pgvector. **The refresh cron IS active** — a Python `type: cron`,
    `run: job` service (`services/refresh/`) reindexes daily at 03:00 UTC, and the
    manager "Refresh now" endpoint reindexes on demand; both call the same
    `indexing.run_sync` (the cron vendors the backend `app/` modules — see AGENTS.md §8).
@@ -86,7 +88,8 @@ needs:
 
 > **Capability:** the need is `database: true` — the deployer provisions Mongo and
 > injects `DATABASE_MONGODB_URL` (+ legacy `MONGODB_URL`). NO `needs: vector`
-> (#1545). Three services: `web` (static), `backend` (python), `refresh` (cron).
+> (available, #1545 shipped — this template uses Mongo embeddings). Three
+> services: `web` (static), `backend` (python), `refresh` (cron).
 > `requires:` is the deprecated v1 alias — don't mix it with `needs:`.
 
 ## Configure + deploy

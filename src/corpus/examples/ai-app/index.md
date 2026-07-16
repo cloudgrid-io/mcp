@@ -32,8 +32,8 @@ services:
 needs:
   ai: true
   database: true
-# RAG over your own docs needs `needs: { vector: pgvector }` — not yet available
-# (platform issue #1545).
+# RAG over your own docs needs `needs: { vector: pgvector }` — available now,
+# #1545 shipped (verified live 2026-07-16). This example does not use it.
 ```
 
 ## services/web/package.json
@@ -234,4 +234,5 @@ export default function Chat({ initialHistory }) {
 - All app code lives under `services/web/`; the connection is read lazily inside
   `getDb`, never at module top level.
 - To answer over your own documents (RAG) you'd add `needs: { vector: pgvector }`
-  — not yet available (platform issue #1545).
+  — available now (#1545 shipped); this example ships without it, so you'd also
+  write the retrieval code.
