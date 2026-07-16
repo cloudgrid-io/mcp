@@ -152,8 +152,8 @@ engine hint. Cron is NOT a need — it is a **service type** (`type: cron` with
 | `kv: true` | Redis, no eviction | `KV_REDIS_URL` | Injects via `needs:` |
 | `queue: true` | Redis durable job queue | `QUEUE_REDIS_URL` | Injects via `needs:` |
 | `pubsub: true` | Redis pub/sub broadcast | `PUBSUB_REDIS_URL` | Injects via `needs:` |
-| `vector: pgvector` | pgvector embeddings DB | `VECTOR_PGVECTOR_URL` (+legacy `PGVECTOR_URL`) | **Injects via `needs:`** |
-| `object_storage: true` | GCS bucket | `OBJECT_STORAGE_GCS_BUCKET`, `OBJECT_STORAGE_GCS_REGION` | Injects via `needs:` |
+| `vector: pgvector` | pgvector embeddings DB | `VECTOR_PGVECTOR_URL` (+legacy `PGVECTOR_URL`) | **GATED (#1545)** - deploy stalls; store embeddings in Mongo for now |
+| `object_storage: true` | GCS bucket | `OBJECT_STORAGE_GCS_BUCKET`, `OBJECT_STORAGE_GCS_REGION` | **GATED (#1678)** - rejected at plug-time; use `disk` or a BYO bucket via secret |
 | `disk: true` | Persistent filesystem at `/data` | `DISK_PATH` | Injects via `needs:` |
 | `ai: true` | AI Gateway access | `AI_GATEWAY_URL` | Injects via `needs:` |
 | `type: cron` (service) | Scheduled job (`schedule`, `timezone`) | — | Service type, not a need |
@@ -162,8 +162,11 @@ engine hint. Cron is NOT a need — it is a **service type** (`type: cron` with
 
 - **`needs:` injects the connection env vars today.** `needs: { database: true }`
   → `DATABASE_MONGODB_URL` (+legacy `MONGODB_URL`); `needs: { cache: true }` →
-  `CACHE_REDIS_URL` (+legacy `REDIS_URL`); `needs: { vector: pgvector }` →
-  `VECTOR_PGVECTOR_URL`; and so on across the nine needs. Author `needs:`.
+  `CACHE_REDIS_URL` (+legacy `REDIS_URL`); `needs: { queue: true }` →
+  `QUEUE_REDIS_URL`; and so on across the durable needs. Author `needs:`.
+  (**GATED, do NOT author yet:** `vector: pgvector` #1545 - deploy stalls,
+  store embeddings in Mongo instead; `object_storage` #1678 - rejected at
+  plug-time, use `disk` or a BYO bucket via secret.)
   (*Historical note: the deployer once did not inject from `needs:` — platform
   bug #1527, now fixed and verified live.*)
 - **`requires:` is the deprecated v1 alias.** Don't author new yaml with it.
