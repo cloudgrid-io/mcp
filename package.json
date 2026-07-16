@@ -1,6 +1,6 @@
 {
   "name": "@cloudgrid-io/mcp",
-  "version": "0.20.5",
+  "version": "0.20.6",
   "description": "Use CloudGrid via MCP to brainstorm, build, deploy, and improve apps, games, websites, dashboards, and tools and get a live URL - templates, recipes, managed databases and AI, instant single-page publish, and full-app deploys, for developers and non-technical users. Three editions: local stdio (full toolset), hosted web (light, CLI-free), and a public docs-search server, over MCP.",
   "type": "module",
   "bin": {
@@ -29,6 +29,7 @@
     "test:grid-picker": "node test/grid-picker.test.mjs",
     "test:plug-timeout": "node test/plug-timeout.test.mjs",
     "test:manifest-confirm": "node test/manifest-confirm.test.mjs",
+    "test:qa-courier": "node test/qa-courier.test.mjs",
     "test:drift-guard": "node test/drift-guard.mjs",
     "smoke:drop": "node test/smoke-drop.mjs",
     "smoke:login": "node test/smoke-login.mjs",

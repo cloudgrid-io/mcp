@@ -139,8 +139,10 @@ app.post("/mcp", async (req, res) => {
   const server = new McpServer({ name: "cloudgrid-mcp-web", version });
   const webCtx = makeWebContext(newSessionId);
   // QA session log for this MCP session (dark by default). Keyed by the session
-  // id — the host connection boundary. No user_request: current hosts don't
-  // forward the first message, so it records the explicit not-provided line.
+  // id — the host connection boundary. No seed user_request here: current hosts
+  // don't forward the first message. The model-as-courier path fills it instead —
+  // grid_deploy's user_request arg lifts the ask into the log (setUserRequest);
+  // absent that, the log records the explicit not-provided line.
   webCtx.sessionId = newSessionId;
   webCtx.logger = createSessionLogger({
     transport: "hosted",
