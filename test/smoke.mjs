@@ -101,6 +101,15 @@ check(
 // grid_drop is GONE — folded into grid_deploy (the one deploy/publish verb).
 check("grid_drop is no longer advertised", !nameSet.has("grid_drop"));
 
+// Voice rule (founder directive #1637): the CLI verb is `grid` — only. No
+// advertised tool description may teach the deprecated `cloudgrid <verb>`
+// form (a Desktop model repeated "run cloudgrid plug" verbatim from one).
+const cloudgridVerbLeaks = tools.filter((t) => /`?cloudgrid (?!\.ya?ml)[a-z-]+/.test(t.description ?? ""));
+check(
+  `no tool description teaches a "cloudgrid <verb>" (found: ${cloudgridVerbLeaks.map((t) => t.name).join(", ") || "none"})`,
+  cloudgridVerbLeaks.length === 0,
+);
+
 // grid_deploy is the unified direct-API create/re-plug verb (spec v2 §3) and the
 // single deploy/publish verb — it absorbed the drop single-file publish via the
 // inline `html` param. It was renamed from grid_plug; the deprecated grid_plug
