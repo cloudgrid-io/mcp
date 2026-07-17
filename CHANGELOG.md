@@ -1,3 +1,19 @@
+## 0.20.9 (unreleased)
+
+- **Zip deploys.** `grid_deploy`'s `path` now accepts a `.zip` archive (local
+  edition): extracted safely (zip-slip guarded, `__MACOSX`/junk skipped, single
+  common root stripped when it surfaces an index/manifest) and deployed. A zip
+  with its own `cloudgrid.yaml` deploys as that project; a manifest-less
+  multi-file zip is wrapped as a static app (synthesized manifest, files under
+  `services/web/`) and shipped through the CLI (`grid init --here` + `grid
+  plug`) — the direct-API inline wire drops secondary files on inspiration
+  creates and never starts path-mode runtime builds (platform issues, filed).
+  A single-page zip short-circuits to the instant inline-HTML path. New combo:
+  `html` + a zip of assets — the generated page becomes index.html over the
+  archive's files (the Claude Desktop "gallery from a zip" flow). Verified by
+  a live end-to-end deploy (index + image byte-exact). New offline suite:
+  `test/zip-deploy.test.mjs` (23 checks). Adds the `fflate` dependency.
+
 ## 0.20.8
 
 - **Alias diet: 53 advertised tool names → 37.** Dropped 16 legacy redirect

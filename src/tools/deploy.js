@@ -673,6 +673,191 @@ function loadIgnoreMatchers(rootDir) {
     patterns.some((p) => (!p.dirOnly || isDir) && p.re.test(relPath));
 }
 
+// ── Zip deploys (local edition) ──────────────────────────────────────────────
+// "Build me a gallery site with the attached images (zip)" — the local server
+// CAN open archives even though the model cannot. `path` accepts a .zip: it is
+// extracted to a temp dir and deployed. Because the platform's multi-file
+// INSPIRATION create currently persists only the primary HTML (see the
+// inline-create issue filed 2026-07-17), a multi-file zip is ALWAYS shaped as
+// a static RUNTIME project — a synthesized cloudgrid.yaml (type: static) with
+// the files under services/web/ — which the server builds and serves fully.
+// A zip that ships its own cloudgrid.yaml is deployed as-is.
+//
+// `html` is allowed TOGETHER with a zip path (the one source combo): it becomes
+// services/web/index.html, so an agent on a no-filesystem client can generate
+// the page inline while the archive supplies the assets.
+
+function isZipPath(srcPath) {
+  const abs = resolve(srcPath);
+  if (!existsSync(abs) || !statSync(abs).isFile()) return false;
+  if (/\.zip$/i.test(abs)) return true;
+  // Magic sniff so "photos.ZIP.download"-style names still work.
+  try {
+    const fd = readFileSync(abs);
+    return fd.length >= 4 && fd[0] === 0x50 && fd[1] === 0x4b && fd[2] === 0x03 && fd[3] === 0x04;
+  } catch {
+    return false;
+  }
+}
+
+// Extract a zip safely and return the directory to deploy. Throws on traversal.
+async function expandZipToProject(zipPath, inlineHtml) {
+  const { unzipSync } = await import("fflate");
+  const raw = readFileSync(resolve(zipPath));
+  if (raw.byteLength > PLUG_MAX_TOTAL_BYTES) {
+    throw new Error("The zip exceeds the 100MB plug limit. Trim it or split the content.");
+  }
+  let entries;
+  try {
+    entries = unzipSync(new Uint8Array(raw));
+  } catch (err) {
+    throw new Error(`Could not read the zip archive: ${err.message}`);
+  }
+  // Sanitize: reject traversal, skip macOS metadata + always-skip dirs.
+  const files = [];
+  for (const [name, data] of Object.entries(entries)) {
+    if (name.endsWith("/")) continue; // directory entry
+    const norm = name.replace(/\\/g, "/");
+    if (norm.startsWith("/") || /^[A-Za-z]:/.test(norm) || norm.split("/").includes("..")) {
+      throw new Error(`Refusing zip entry outside the archive root: ${name}`);
+    }
+    const parts = norm.split("/");
+    if (parts.includes("__MACOSX") || parts.some((p) => PLUG_ALWAYS_SKIP.has(p))) continue;
+    files.push({ path: norm, data });
+  }
+  if (files.length === 0) throw new Error("The zip contains no deployable files.");
+  if (files.length > PLUG_MAX_FILES) {
+    throw new Error(`The zip has more than ${PLUG_MAX_FILES} files — too large to plug.`);
+  }
+  // Strip a single common root folder (the usual zip-of-a-folder shape) — but
+  // ONLY when stripping surfaces an index.html or cloudgrid.yaml at the root.
+  // An assets-only archive like img/a.png shares a common root too, and
+  // flattening it would break the page's relative img/ references.
+  const firstSeg = files[0].path.split("/")[0];
+  const singleRoot =
+    files.every((f) => f.path.split("/")[0] === firstSeg) && files.every((f) => f.path.includes("/"));
+  if (singleRoot) {
+    const stripped = files.map((f) => f.path.slice(firstSeg.length + 1));
+    if (stripped.some((p) => /^index\.html?$/i.test(p) || p === "cloudgrid.yaml")) {
+      files.forEach((f, i) => { f.path = stripped[i]; });
+      if (files.some((f) => !f.path)) throw new Error("Unexpected zip layout (empty path after root strip).");
+    }
+  }
+
+  const hasManifest = files.some((f) => f.path === "cloudgrid.yaml");
+  const hasIndex = files.some((f) => /^index\.html?$/i.test(f.path));
+  const hasInlineHtml = typeof inlineHtml === "string" && inlineHtml.length > 0;
+  if (hasInlineHtml && hasManifest) {
+    throw new Error(
+      "The zip already contains a cloudgrid.yaml project — deploy it as-is (drop the `html` param), " +
+        "or re-plug the entity and edit its files instead.",
+    );
+  }
+  if (hasInlineHtml && hasIndex) {
+    throw new Error(
+      "The zip already has an index.html — pass either the zip alone, or `html` with a zip of assets only.",
+    );
+  }
+  if (!hasManifest && !hasIndex && !hasInlineHtml) {
+    throw new Error(
+      "The zip has no index.html and no cloudgrid.yaml. Generate the page first and pass it as `html` " +
+        "alongside the zip (the archive then supplies the assets), or add an index.html to the archive.",
+    );
+  }
+
+  // A zip that is JUST one HTML page (no manifest, no assets) rides the
+  // instant single-file inspiration path instead of a runtime build.
+  if (!hasManifest && !hasInlineHtml && files.length === 1 && /^index\.html?$/i.test(files[0].path)) {
+    return { singleHtml: Buffer.from(files[0].data).toString("utf8") };
+  }
+
+  const dir = await mkdtemp(join(tmpdir(), "cloudgrid-zip-"));
+  const writeAll = async (base) => {
+    for (const f of files) {
+      const dest = resolve(join(base, f.path));
+      if (dest !== base && !dest.startsWith(base + sep)) {
+        throw new Error(`Refusing to write zip entry outside the temp dir: ${f.path}`);
+      }
+      await mkdir(dirname(dest), { recursive: true });
+      await writeFile(dest, f.data);
+    }
+  };
+
+  if (hasManifest) {
+    // The archive is already a CloudGrid project — deploy verbatim.
+    await writeAll(resolve(dir));
+    return { projectDir: dir, name: null };
+  }
+
+  // Synthesize a static-runtime wrapper: name from the archive, files under
+  // services/web/. (Static RUNTIME, not inspiration, so every file survives.)
+  const rawName = basename(resolve(zipPath)).replace(/\.zip$/i, "");
+  const slugged = rawName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 42);
+  const name = slugged.length >= 2 && /^[a-z0-9]/.test(slugged) ? slugged : "zip-site";
+  const webDir = resolve(join(dir, "services", "web"));
+  await mkdir(webDir, { recursive: true });
+  await writeAll(webDir);
+  if (hasInlineHtml) {
+    const art = htmlToArtifact(inlineHtml);
+    await writeFile(join(webDir, "index.html"), art.buffer);
+  }
+  await writeFile(
+    join(dir, "cloudgrid.yaml"),
+    `name: ${name}\ndescription: Deployed from ${basename(zipPath)}.\nservices:\n  web:\n    type: static\n    path: /\n`,
+  );
+  return { projectDir: dir, name };
+}
+
+// Deploy an extracted zip PROJECT through the CLI (`grid init --here` +
+// `grid plug`). The direct-API inline wire cannot be used here: verified live
+// 2026-07-17, it drops secondary files on inspiration creates AND never starts
+// the build for runtime creates from path-mode ("charged, not yet live" —
+// entities drop-df1f / drop-e86d). The CLI plug path builds correctly (every
+// runtime this week shipped through it), so zip projects ride it.
+async function plugZipProjectViaCli(ctx, { projectDir, name }, input, deps = {}) {
+  const { cliRun = runCloudgrid } = deps;
+  const grid = input?.grid || (await ctx.getActiveGrid?.()) || null;
+  const manifestPath = join(projectDir, "cloudgrid.yaml");
+  const manifestBody = readFileSync(manifestPath, "utf8");
+  const yamlName =
+    name ||
+    (() => {
+      const m = /^name:\s*(.+?)\s*$/m.exec(manifestBody);
+      return m ? m[1].replace(/^["']|["']$/g, "") : "zip-site";
+    })();
+  // `grid init --here` refuses a dir that already has a cloudgrid.yaml, and it
+  // is also the step that mints the real slug (name + 4-hex suffix). So: stash
+  // the manifest, init bare, then restore it with the assigned slug as name:.
+  await rm(manifestPath, { force: true });
+  const initArgs = ["init", "app", yamlName, "--here", ...(grid ? ["--grid", grid] : [])];
+  const initOut = String((await cliRun(initArgs, { cwd: projectDir })) || "");
+  let assignedSlug = /Slug:\s+(\S+)/.exec(initOut)?.[1] ?? null;
+  if (!assignedSlug) {
+    try {
+      assignedSlug = JSON.parse(readFileSync(join(projectDir, ".cloudgrid", "link.json"), "utf8")).entity_slug;
+    } catch {
+      assignedSlug = yamlName;
+    }
+  }
+  await writeFile(manifestPath, manifestBody.replace(/^name:.*$/m, `name: ${assignedSlug}`));
+  const stdout = await cliRun(
+    ["plug", "--no-progress", "--no-clipboard", "--no-notify"],
+    { cwd: projectDir },
+  );
+  const url = parseCliPlugUrl(String(stdout || ""));
+  if (!url) {
+    throw new Error(
+      `The zip project deployed via the CLI but no live URL was found in its output.\n${String(stdout || "").slice(0, 500)}`,
+    );
+  }
+  return {
+    text:
+      `Live: ${url}\n` +
+      "(Deployed from the zip archive as a static app via the bundled CloudGrid CLI.)",
+    structured: { url, status: "created", via: "zip-cli" },
+  };
+}
+
 // Walk a local folder into `[{path, buffer}]` artifacts (repo-relative paths),
 // honoring .gitignore/.cloudgridignore at the root plus the always-skip set.
 // A single file becomes one artifact named by its basename.
@@ -893,19 +1078,48 @@ export async function runPlug(ctx, input, deps = {}) {
   } = input || {};
 
   // ── Source: exactly one of html | artifact_files | path ─────────────────────
-  const hasHtml = typeof html === "string" && html.length > 0;
+  // One allowed combo: `html` + a `path` that is a ZIP archive — the html
+  // becomes index.html and the archive supplies the assets (the Desktop
+  // "gallery from a zip" flow, where the model can generate a page but cannot
+  // write files).
+  let hasHtml = typeof html === "string" && html.length > 0;
   const hasArtifacts = Array.isArray(artifact_files) && artifact_files.length > 0;
-  const hasPath = Boolean(srcPath);
-  if ((hasHtml ? 1 : 0) + (hasArtifacts ? 1 : 0) + (hasPath ? 1 : 0) > 1) {
+  let hasPath = Boolean(srcPath);
+  let effectivePath = srcPath;
+  const zipSource = hasPath && ctx.edition !== "web" && isZipPath(srcPath);
+  if ((hasHtml ? 1 : 0) + (hasArtifacts ? 1 : 0) + (hasPath ? 1 : 0) > 1 && !(zipSource && hasHtml && !hasArtifacts)) {
     throw new Error(
       "Pass exactly one source: `html` (a single inline HTML document), `artifact_files` " +
-        "(multiple inline files), or `path` (a local file/folder).",
+        "(multiple inline files), or `path` (a local file/folder/zip). Exception: `html` " +
+        "may accompany a .zip `path` — it becomes the index.html over the archive's assets.",
     );
   }
   if (ctx.edition === "web" && hasPath) {
     throw new Error(
       "The hosted server cannot read local files — pass the source inline via `html` or `artifact_files`.",
     );
+  }
+  let zipSingleHtml = null;
+  if (zipSource) {
+    if (target_entity_id || (slug && grid)) {
+      throw new Error(
+        "Re-plugging an existing entity from a zip is not supported yet — pick up the app " +
+          "(grid_edit_existing_app) and re-plug the folder, or deploy the zip as a new entity.",
+      );
+    }
+    if (anon) {
+      throw new Error("A zip deploy creates a static app and needs sign-in — it cannot be anonymous.");
+    }
+    const expanded = await expandZipToProject(srcPath, hasHtml ? html : null);
+    if (expanded.singleHtml) {
+      // One-page archive → instant inspiration via the proven html wire.
+      zipSingleHtml = expanded.singleHtml;
+      hasPath = false;
+      hasHtml = true;
+    } else {
+      // Multi-file / project archive → CLI deploy (see plugZipProjectViaCli).
+      return plugZipProjectViaCli(ctx, expanded, input, deps);
+    }
   }
   let artifacts;
   // Set on the single-file `html` path so the auth-aware inline size cap can be
@@ -915,11 +1129,11 @@ export async function runPlug(ctx, input, deps = {}) {
     // The ergonomic single-file publish path (the old drop verb): one self-
     // contained HTML document → one index.html artifact, with the shared
     // hardening (base64 rescue, @-path/file-path rejection, fragment wrap).
-    const art = htmlToArtifact(html, filename);
+    const art = htmlToArtifact(zipSingleHtml ?? html, filename);
     inlineHtmlBytes = art.buffer.byteLength;
     artifacts = [art];
   } else if (hasPath) {
-    artifacts = collectPathArtifacts(srcPath);
+    artifacts = collectPathArtifacts(effectivePath);
   } else if (hasArtifacts) {
     let total = 0;
     artifacts = artifact_files.map((f) => {
