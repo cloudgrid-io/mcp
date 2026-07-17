@@ -27,6 +27,7 @@
     "test:content": "node test/content-handling.test.mjs",
     "test:self-healing": "node test/self-healing.test.mjs",
     "test:grid-picker": "node test/grid-picker.test.mjs",
+    "test:plug-output-schema": "node test/plug-output-schema.test.mjs",
     "test:plug-timeout": "node test/plug-timeout.test.mjs",
     "test:manifest-confirm": "node test/manifest-confirm.test.mjs",
     "test:qa-courier": "node test/qa-courier.test.mjs",

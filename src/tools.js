@@ -2597,6 +2597,28 @@ export function registerTools(server, ctx) {
           value: z.string().describe("Visibility value to pass to grid_set_sharing."),
           label: z.string().describe("Human-readable label."),
         })).optional().describe("Web authed inspiration create: available visibility levels."),
+        // grid_deploy has ONE outputSchema but THREE response modes; the SDK renders
+        // this schema with additionalProperties:false and the client rejects any
+        // undeclared key (MCP -32602). Declare the two non-deploy-result modes so
+        // they validate: (1) the grid-picker "which grid?" ask (resolveGridOrAsk),
+        // and (2) the signed-in CLI-fallback recovery.
+        needs_grid: z.boolean().optional().describe("Grid-picker ask: a signed-in user with >1 grid must choose one before this create proceeds. Pass the chosen slug back in `grid`."),
+        needs_org: z.boolean().optional().describe("Alias of needs_grid (legacy org-picker widget)."),
+        grids: z.array(z.object({
+          slug: z.string(),
+          name: z.string(),
+          role: z.string(),
+          render_ready: z.boolean(),
+          is_active: z.boolean(),
+        })).optional().describe("Grid-picker ask: the grids to choose from."),
+        orgs: z.array(z.object({
+          slug: z.string(),
+          name: z.string(),
+          role: z.string(),
+          render_ready: z.boolean(),
+          is_active: z.boolean(),
+        })).optional().describe("Alias of grids (legacy org-picker widget)."),
+        via: z.string().optional().describe("Recovery marker: 'cli-fallback' when a signed-in create was published through the bundled CloudGrid CLI."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
       ...(ctx.edition === "web" && APPS_WIDGETS_ENABLED ? {
