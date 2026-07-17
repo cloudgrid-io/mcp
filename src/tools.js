@@ -239,9 +239,12 @@ function resolveCwd(cwd) {
 const CLI_NPX_PKG = "@cloudgrid-io/cli@latest";
 
 // Minimum CLI version the MCP will USE if it finds one already installed. Below
-// this, skip the local/global CLI and fall back to `npx @latest`. Keep at (or
-// above) the platform's current required floor.
-const MIN_CLI_VERSION = "0.15.0";
+// this, skip the local/global CLI and fall back to `npx @latest`. MUST stay at
+// (or above) the platform's live floor (platform_settings.cli_compat, enforced
+// server-side with HTTP 426) — a gate below the floor green-lights CLIs the API
+// rejects on every call (issue #59). Bump this in lockstep with every floor
+// raise (CLI release protocol checklist).
+const MIN_CLI_VERSION = "0.15.2";
 
 // Upload/create POST budget. The build itself is async (server returns 202 +
 // poll_url); this bounds only the request→response, so a stalled server errors
