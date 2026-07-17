@@ -1,5 +1,16 @@
 ## 0.20.8 (unreleased)
 
+- **Alias diet: 53 advertised tool names → 37.** Dropped 16 legacy redirect
+  aliases (grid_source, grid_list, grid_fork, grid_download, grid_claim,
+  grid_visibility, grid_init, grid_env, grid_secrets, grid_rollback,
+  grid_versions, grid_open, grid_doctor, grid_unplug, grid_use, grid_pickup) -
+  each alias shipped its full schema to every session via ListTools for zero
+  benefit; the corpus and playbook migrated to the canonical names releases ago
+  (no test or corpus referenced them). Kept the two with real muscle memory:
+  `grid_fetch` (→ grid_get_template) and `grid_logs` (→ grid_view_logs).
+  Callers of a dropped name get the standard unknown-tool error; the canonical
+  names are unchanged.
+
 - **fix(deploy): `grid_deploy` output-schema `-32602`.** `grid_deploy` declares one
   outputSchema but returns three shapes: the deploy result, the grid-picker
   "which grid?" ask (`needs_grid`/`needs_org`/`grids`/`orgs`), and the signed-in
