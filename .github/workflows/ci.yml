@@ -43,6 +43,12 @@ jobs:
       # on authed multi-grid creates (like grid_drop), never on edits/anon,
       # and proceeds on an explicit/single grid. Drives the real tool handlers.
       - run: npm run test:grid-picker
+      # Offline output-schema regression (grid_deploy -32602): one outputSchema,
+      # three response modes (deploy result / grid-picker ask / CLI-fallback). The
+      # SDK renders additionalProperties:false and the client validates every
+      # result - undeclared picker/fallback keys throw -32602. Real Client<->Server
+      # round-trip.
+      - run: npm run test:plug-output-schema
       # Offline upload-timeout test: the /api/v2/plug POST aborts (not hangs)
       # when the server stalls, surfacing a "may still be building — check
       # status" error instead of the "getting stuck" bug.
