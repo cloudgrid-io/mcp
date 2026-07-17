@@ -1,4 +1,4 @@
-## 0.20.9 (unreleased)
+## 0.20.9
 
 - **Zip deploys.** `grid_deploy`'s `path` now accepts a `.zip` archive (local
   edition): extracted safely (zip-slip guarded, `__MACOSX`/junk skipped, single
