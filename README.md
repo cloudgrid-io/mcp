@@ -15,10 +15,12 @@ drop, claim, and login tools.
 
 ## CLI compatibility
 
-MCP 0.8.0 is tested against CLI 0.12. The lazy-npx fallback pins
-`@cloudgrid-io/cli@~0.12` so a future CLI major with renamed verbs cannot
-silently break a released MCP. A CI drift guard (`npm run test:drift-guard`)
-asserts every wrapped verb exists in the CLI help.
+The MCP uses an installed CLI only when it meets the platform floor
+(`MIN_CLI_VERSION`, currently 0.15.2 - kept in lockstep with the API's live
+`cli_compat` floor, which rejects older CLIs with HTTP 426). Below the floor it
+skips the local/global CLI and lazily fetches `@cloudgrid-io/cli@latest` via
+npx instead. A CI drift guard (`npm run test:drift-guard`) asserts every
+wrapped verb exists in the CLI help.
 
 ### `GRID_AUTH_STALE` is out of scope
 
@@ -71,51 +73,58 @@ posted). `CLOUDGRID_QA_IDLE_MS` overrides the abandoned-idle window (default
 
 | Tool | Wraps | Notes |
 |---|---|---|
-| `grid_plug` | `POST /api/v2/plug` | The unified create/re-plug verb: create a new entity, or update the SAME entity in place with `target_entity_id` (same URL). Source via local `path` (local edition) or inline `artifact_files` (both). |
-| `grid_drop` | `POST /api/v2/plug` | Artifact drop. Anonymous, or owned if signed in. Re-drops in a session update the same drop in place; anonymous drops return an `entity_id` + `owner_token` re-plug/claim handle. |
-| `grid_claim` | `POST /api/v2/entities/:id/pickup` | Claim an anonymous drop into the signed-in account (the claim token IS the drop's owner token). Direct API. |
-| `grid_fork` | `POST /api/v2/runtimes/:id/fork` | Start a new entity from an existing runtime (lineage recorded). Needs sign-in. |
-| `grid_download` | `GET /api/v2/runtimes/:id/source` | Signed 15-minute source-bundle URLs. Needs sign-in. |
-| `grid_login` | `GET /auth/login` | Start a CLI-free sign-in; returns a URL to open. Direct API. |
+| `grid_deploy` | `POST /api/v2/plug` | THE deploy/publish verb (CloudGrid calls it "plug"): create a new entity, or update the SAME entity in place with `target_entity_id` (same URL). Source via inline `html` (single page), local `path` (local edition), or inline `artifact_files` (both). Anonymous drops return an `entity_id` + `owner_token` re-plug/claim handle. |
+| `grid_claim_anonymous_deploy` | `POST /api/v2/entities/:id/pickup` | Claim an anonymous drop into the signed-in account (the claim token IS the drop's owner token). |
+| `grid_copy_app` | `POST /api/v2/runtimes/:id/fork` | Start a new entity from an existing runtime (lineage recorded). Needs sign-in. |
+| `grid_download_source` | `GET /api/v2/runtimes/:id/source` | Signed 15-minute source-bundle URLs. Needs sign-in. |
+| `grid_get_app_source` | `GET /api/v2/.../source` | Fetch a deployed entity's source (resolves entity_id from a URL). Read-only. |
+| `grid_login` | `GET /auth/login` | Start a CLI-free sign-in; returns a URL to open. |
 | `grid_login_status` | `GET /auth/status` | Finish the sign-in; saves the token to the shared CLI credentials. |
-| `grid_visibility` | `PATCH /api/v2/inspirations/<id>` | Change who can see a drop (private, space, authenticated, org, link). Needs sign-in. Direct API; also in the web edition. |
+| `grid_set_sharing` | `PATCH /api/v2/inspirations/<id>` | Change who can see a drop (private, space, authenticated, org, link). Needs sign-in. |
+| `grid_list_grids` | `GET /api/v2/orgs` | List the caller's grids. Read-only. |
+| `grid_start` | corpus | Orientation: the playbook + workflow index + live context. Call FIRST. Read-only. |
+| `grid_get_template` | corpus | Fetch a workflow / template / example / doc from the bundled corpus. Read-only. (`grid_fetch` is a kept deprecated alias.) |
+| `grid_note` / `grid_report` / `grid_feedback` | API | Session notes, consent-gated error reports, feedback feed. |
 
-`grid_drop`, `grid_claim`, `grid_visibility`, and the two
-`grid_login` tools do not wrap the CLI -- they call the API directly, so they
-also work in the web edition where no CLI exists. `grid_login` writes the same
-`~/.cloudgrid/credentials` the CLI uses, so the two share one identity.
+The direct-API tools call the platform without the CLI, so they also work in
+the web edition. `grid_login` writes the same `~/.cloudgrid/credentials` the
+CLI uses, so the two share one identity.
 
 ### CLI-wrapping tools (local edition only)
 
 | Tool | Wraps | Notes |
 |---|---|---|
-| `grid_init` | `grid init` | Register an app or agent; optionally seed a web service. |
-| `grid_logs` | `grid logs` | Snapshot of recent logs. Does not stream. Read-only. |
+| `grid_create_project` | `grid init` | Register an app or agent; optionally seed a web service. |
+| `grid_view_logs` | `grid logs` | Snapshot of recent logs. Does not stream. Read-only. (`grid_logs` is a kept deprecated alias.) |
 | `grid_share` | `grid visibility set` | Set visibility, default link. |
-| `grid_feedback` | `grid feedback list` | Read the org feedback feed. Read-only. |
-| `grid_whoami` | `grid whoami` | Show the signed-in user and active org. Read-only. |
-| `grid_use` | `grid use` | Switch the active org. |
+| `grid_whoami` | `grid whoami` | Show the signed-in user and active grid. Read-only. |
+| `grid_switch_grid` | `grid use` | Switch the active grid. |
 | `grid_logout` | `grid logout` | Sign out and clear local credentials. Destructive. |
-| `grid_status` | `grid status` | Org dashboard or entity detail. Read-only. |
+| `grid_status` | `grid status` | Grid dashboard or entity detail. Read-only. |
 | `grid_info` | `grid info` | Entity metadata. Read-only. |
 | `grid_get` | `grid get grids\|entities\|spaces` | List grids, entities, or spaces. Read-only. |
 | `grid_describe_grid` | `grid describe grid <slug>` | Grid detail. Read-only. |
-| `grid_pickup` | `grid pickup <name>` | Download an entity's source and bind the folder. |
+| `grid_edit_existing_app` | `grid pickup <name>` | Download an entity's source and bind the folder. |
 | `grid_rename` | `grid rename` | Rename an entity's display name. |
-| `grid_unplug` | `grid unplug` | Take an entity off the grid. Destructive; requires confirm. |
+| `grid_take_offline` | `grid unplug` | Take an entity off the grid. Destructive; requires confirm. |
 | `grid_delete` | `grid delete entity` | Archive an inspiration. Destructive; requires confirm. |
-| `grid_rollback` | `grid rollback` | Rollback to a previous version. |
-| `grid_versions` | `grid versions` | List published versions. Read-only. |
-| `grid_env` | `grid env` | Get, set, or list environment variables. |
-| `grid_secrets` | `grid secrets` | Set or list secret names. Never returns secret values. |
+| `grid_rollback_deploy` | `grid rollback` | Rollback to a previous version. |
+| `grid_list_versions` | `grid versions` | List published versions. Read-only. |
+| `grid_set_env` | `grid env` | Get, set, or list environment variables. |
+| `grid_set_secret` | `grid secrets` | Set or list secret names. Never returns secret values. |
 | `grid_scaffold` | `grid scaffold` | Generate starter files. |
-| `grid_doctor` | `grid doctor` | Run local diagnostics. Read-only. |
-| `grid_open` | `grid open --print` | Return the public URL. Does not open a browser. Read-only. |
+| `grid_diagnose` | `grid doctor` | Run local diagnostics. Read-only. |
+| `grid_get_url` | `grid open --print` | Return the public URL. Does not open a browser. Read-only. |
 
-`grid_share` and `grid_visibility` overlap on purpose: `grid_share`
-wraps the CLI and defaults to `link`; `grid_visibility` is direct API, takes an
+`grid_share` and `grid_set_sharing` overlap on purpose: `grid_share`
+wraps the CLI and defaults to `link`; `grid_set_sharing` is direct API, takes an
 explicit scope, and defaults its target to the session's last drop -- it is the one
 the web edition gets.
+
+37 tool names are advertised in total: 35 canonical + 2 kept deprecated
+aliases (`grid_fetch`, `grid_logs`). The 0.20.8 alias diet dropped the other 16
+legacy aliases. Per-tool internals (signature, sketch, behavior):
+[docs/TOOL-INTERNALS.md](docs/TOOL-INTERNALS.md).
 
 All tools carry MCP annotations (`readOnlyHint`, `destructiveHint`,
 `openWorldHint`) for clients that support them.
