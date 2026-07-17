@@ -48,26 +48,17 @@ const GRIDCTL = [
   "grid_note",
 ];
 
-// Deprecated aliases (tool-name cleanup): the OLD names, kept callable as
-// redirect-only aliases of the new primary names above.
+// Kept aliases (0.20.8 alias diet): only the two with real muscle memory
+// survive. The other 16 legacy aliases were DROPPED - each alias schema was
+// pure ListTools context weight on every session.
 const ALIASES = [
   "grid_fetch",
-  "grid_source",
-  "grid_list",
-  "grid_fork",
-  "grid_download",
-  "grid_claim",
-  "grid_visibility",
-  "grid_init",
   "grid_logs",
-  "grid_env",
-  "grid_secrets",
-  "grid_rollback",
-  "grid_versions",
-  "grid_open",
-  "grid_doctor",
-  "grid_unplug",
-  "grid_use",
+];
+const DROPPED_ALIASES = [
+  "grid_source", "grid_list", "grid_fork", "grid_download", "grid_claim",
+  "grid_visibility", "grid_init", "grid_env", "grid_secrets", "grid_rollback",
+  "grid_versions", "grid_open", "grid_doctor", "grid_unplug", "grid_use",
   "grid_pickup",
 ];
 
@@ -93,6 +84,10 @@ for (const name of ALIASES) {
   check(`exposes deprecated alias ${name}`, nameSet.has(name));
   const t = tools.find((x) => x.name === name);
   check(`${name} description marks it a deprecated alias`, /Deprecated alias of grid_/.test(t?.description ?? ""));
+}
+// 0.20.8 alias diet: the 16 dropped legacy aliases must NOT be advertised.
+for (const name of DROPPED_ALIASES) {
+  check(`dropped alias ${name} is no longer advertised`, !nameSet.has(name));
 }
 
 // 0.10.0: the deprecated cloudgrid_* aliases are GONE. No advertised tool name

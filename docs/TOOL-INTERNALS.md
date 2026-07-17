@@ -12,10 +12,8 @@ For the user-facing summary see the docs site's
 [MCP tools reference](https://cloudgrid.io/docs/mcp/tools/).
 
 > **Tool-name cleanup (2026-07):** several opaque tool names were renamed to
-> clearer, keyword-rich ones. The OLD names stay registered as **deprecated,
-> redirect-only aliases** (same handler + schema; a keyword-free description so
-> the model never selects them over the primary). Sections below may still refer
-> to an old name — alias and primary share one handler. Rename map:
+> clearer, keyword-rich ones. Sections below may still refer to an old name —
+> alias and primary shared one handler. Historical rename map:
 > `grid_fetch`→`grid_get_template`, `grid_source`→`grid_get_app_source`,
 > `grid_list`→`grid_list_grids`, `grid_fork`→`grid_copy_app`,
 > `grid_download`→`grid_download_source`, `grid_claim`→`grid_claim_anonymous_deploy`,
@@ -25,8 +23,12 @@ For the user-facing summary see the docs site's
 > `grid_versions`→`grid_list_versions`, `grid_open`→`grid_get_url`,
 > `grid_doctor`→`grid_diagnose`, `grid_unplug`→`grid_take_offline`,
 > `grid_use`→`grid_switch_grid`, `grid_pickup`→`grid_edit_existing_app`.
-> (These aliases are kept, not dropped — unlike the earlier `grid_plug` alias.)
-> Registered centrally via `registerAlias(oldName, newName)`.
+>
+> **Alias diet (0.20.8):** only `grid_fetch` and `grid_logs` remain registered
+> as deprecated redirect-only aliases (real muscle memory in saved prompts).
+> The other 16 legacy aliases were DROPPED — each alias schema was pure
+> ListTools context weight on every session (53 advertised names → 37).
+> Kept aliases register via `registerAlias(oldName, newName)`.
 
 ---
 

@@ -411,7 +411,7 @@ try {
   const server = makeServer();
   registerTools(server, makeCtx({ lastDrop: null }));
 
-  check("grid_source registered", typeof server.handlers.grid_source === "function");
+  check("grid_source registered", typeof server.handlers.grid_get_app_source === "function");
   // 0.10.0: the deprecated cloudgrid_source alias is gone.
   check("cloudgrid_source alias NOT registered", server.handlers.cloudgrid_source === undefined);
   const cloudgridHandlers = Object.keys(server.handlers).filter((n) => n.startsWith("cloudgrid_"));
@@ -423,7 +423,7 @@ try {
   // the primary tool still returns inline HTML (via the API path here).
   reset();
   apiHtml = "<html>primary</html>";
-  const viaPrimary = await server.handlers.grid_source({ url: "https://acme.cloudgrid.io/a" });
+  const viaPrimary = await server.handlers.grid_get_app_source({ url: "https://acme.cloudgrid.io/a" });
   check(
     "grid_source returns inline HTML",
     viaPrimary.structuredContent.html === "<html>primary</html>",
@@ -431,7 +431,7 @@ try {
 
   // handler wraps a thrown error as a graceful { isError:true } result (no throw).
   reset();
-  const errRes = await server.handlers.grid_source({ url: "https://evil.example.com/x" });
+  const errRes = await server.handlers.grid_get_app_source({ url: "https://evil.example.com/x" });
   check("handler returns isError result on SSRF (does not throw)", errRes?.isError === true);
 
   // playbook rule (served by grid_start).
@@ -473,14 +473,15 @@ try {
     /grid\s*\+\s*slug/.test(server.descriptions.grid_deploy),
   );
   // grid_get_app_source (renamed from grid_source) description advertises
-  // URL→entity_id resolution + edition metadata. grid_source stays a deprecated alias.
+  // URL→entity_id resolution + edition metadata. The grid_source alias was
+  // dropped in the 0.20.8 alias diet — assert it stays gone.
   check(
     "grid_get_app_source description mentions resolving entity_id from a URL + capabilities",
     /entity_id/.test(server.descriptions.grid_get_app_source) && /capabilities/.test(server.descriptions.grid_get_app_source),
   );
   check(
-    "grid_source is a deprecated alias of grid_get_app_source",
-    /Deprecated alias of grid_get_app_source/.test(server.descriptions.grid_source ?? ""),
+    "grid_source alias is no longer registered (0.20.8 alias diet)",
+    server.descriptions.grid_source === undefined,
   );
 } finally {
   globalThis.fetch = realFetch;
