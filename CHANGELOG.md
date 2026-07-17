@@ -1,4 +1,4 @@
-## 0.20.10 (unreleased)
+## 0.20.10
 
 - **Voice: `grid` only (founder directive #1637).** 22 CLI-wrapping tool
   descriptions said "Wraps `cloudgrid <verb>`" — in every session's context —
