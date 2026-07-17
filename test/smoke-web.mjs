@@ -46,7 +46,7 @@ try {
   const names = toolList.map((t) => t.name).sort();
   console.log("web tools:", names.join(", "));
   // New grid_* names (direct-API + Agent Core) on the authed web edition.
-  for (const t of ["grid_claim", "grid_deploy", "grid_fork", "grid_download", "grid_login", "grid_login_status", "grid_visibility", "grid_list", "grid_start", "grid_fetch", "grid_report"]) {
+  for (const t of ["grid_deploy", "grid_login", "grid_login_status", "grid_start", "grid_fetch", "grid_report"]) {
     check(`exposes ${t}`, names.includes(t));
   }
   // Tool-name cleanup: the new clear primary names are present (both editions),
@@ -54,8 +54,12 @@ try {
   for (const nm of ["grid_get_template", "grid_get_app_source", "grid_list_grids", "grid_copy_app", "grid_download_source", "grid_claim_anonymous_deploy", "grid_set_sharing"]) {
     check(`exposes new name ${nm}`, names.includes(nm));
   }
-  for (const nm of ["grid_fetch", "grid_source", "grid_list", "grid_fork", "grid_download", "grid_claim", "grid_visibility"]) {
+  for (const nm of ["grid_fetch"]) {
     check(`${nm} is a deprecated alias`, /Deprecated alias of grid_/.test((toolList.find((t) => t.name === nm)?.description) ?? ""));
+  }
+  // 0.20.8 alias diet: dropped legacy aliases must NOT be advertised (web).
+  for (const nm of ["grid_source", "grid_list", "grid_fork", "grid_download", "grid_claim", "grid_visibility"]) {
+    check(`dropped alias ${nm} is no longer advertised`, !names.includes(nm));
   }
   // 0.10.0: the deprecated cloudgrid_* aliases are GONE. No advertised tool name
   // may start with cloudgrid_.

@@ -3152,15 +3152,10 @@ export function registerTools(server, ctx) {
     },
   );
 
-  // ── Deprecated aliases (tool-name cleanup): OLD direct-API names kept callable
-  //    (both editions) as redirect-only aliases of their new, clearer names.
+  // ── Kept alias (both editions): grid_fetch has real muscle memory in saved
+  //    prompts and older docs. Every other legacy alias was dropped in 0.20.8 -
+  //    16 alias schemas were pure ListTools context weight on every session.
   registerAlias("grid_fetch", "grid_get_template");
-  registerAlias("grid_source", "grid_get_app_source");
-  registerAlias("grid_list", "grid_list_grids");
-  registerAlias("grid_fork", "grid_copy_app");
-  registerAlias("grid_download", "grid_download_source");
-  registerAlias("grid_claim", "grid_claim_anonymous_deploy");
-  registerAlias("grid_visibility", "grid_set_sharing");
 
   if (ctx.edition !== "local") return; // web edition stops here — no CLI tools
 
@@ -3489,17 +3484,9 @@ export function registerTools(server, ctx) {
 
   // ── Deprecated aliases (tool-name cleanup): OLD CLI-tool names kept callable
   //    (local edition) as redirect-only aliases of their new, clearer names.
-  registerAlias("grid_init", "grid_create_project");
+  // Kept alias (local): grid_logs - muscle memory. The other legacy CLI-tool
+  // aliases were dropped in 0.20.8 (see CHANGELOG).
   registerAlias("grid_logs", "grid_view_logs");
-  registerAlias("grid_env", "grid_set_env");
-  registerAlias("grid_secrets", "grid_set_secret");
-  registerAlias("grid_rollback", "grid_rollback_deploy");
-  registerAlias("grid_versions", "grid_list_versions");
-  registerAlias("grid_open", "grid_get_url");
-  registerAlias("grid_doctor", "grid_diagnose");
-  registerAlias("grid_unplug", "grid_take_offline");
-  registerAlias("grid_use", "grid_switch_grid");
-  registerAlias("grid_pickup", "grid_edit_existing_app");
 }
 
 export { decodeJwt };
