@@ -1,0 +1,21 @@
+# Cross-repo corpus drift check: the corpus twins in cloudgrid-io/mcp
+# (src/corpus/) and cloudgrid-io/skills (repo root) must stay byte-identical.
+# Runs on push to main + daily cron + manual - NOT on PRs, because corpus
+# changes land as paired PRs and the first of a pair is legitimately ahead.
+name: corpus-drift
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  corpus-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node .github/scripts/corpus-drift.mjs
