@@ -28,6 +28,7 @@
     "test:self-healing": "node test/self-healing.test.mjs",
     "test:grid-picker": "node test/grid-picker.test.mjs",
     "test:plug-output-schema": "node test/plug-output-schema.test.mjs",
+    "test:zip-deploy": "node test/zip-deploy.test.mjs",
     "test:plug-timeout": "node test/plug-timeout.test.mjs",
     "test:manifest-confirm": "node test/manifest-confirm.test.mjs",
     "test:qa-courier": "node test/qa-courier.test.mjs",
@@ -51,6 +52,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "express": "^4.22.2",
+    "fflate": "^0.8.3",
     "zod": "^3.23.0"
   },
   "license": "Apache-2.0",

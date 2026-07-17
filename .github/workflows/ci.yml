@@ -49,6 +49,8 @@ jobs:
       # result - undeclared picker/fallback keys throw -32602. Real Client<->Server
       # round-trip.
       - run: npm run test:plug-output-schema
+      # Zip deploys: extraction guards, static-app wrapper, CLI leg, html+zip combo.
+      - run: npm run test:zip-deploy
       # Offline upload-timeout test: the /api/v2/plug POST aborts (not hangs)
       # when the server stalls, surfacing a "may still be building — check
       # status" error instead of the "getting stuck" bug.

@@ -181,9 +181,13 @@ export function registerTools(server, ctx) {
       ? {}
       : {
           path: z.string().optional().describe(
-            "Local edition: path to the entity folder (or a single file) to upload. A folder is read " +
-            "recursively, honoring .gitignore/.cloudgridignore (plus .git/node_modules always skipped). " +
-            "Mutually exclusive with `html` and `artifact_files`.",
+            "Local edition: path to the entity folder, a single file, or a .zip ARCHIVE to upload. " +
+            "A folder is read recursively, honoring .gitignore/.cloudgridignore (plus .git/node_modules " +
+            "always skipped). A .zip is extracted and deployed: with its own cloudgrid.yaml it deploys " +
+            "as that project; otherwise it becomes a static app (all files served). Use this for " +
+            "\"deploy this zip\" / \"gallery from these zipped images\" requests. Mutually exclusive with " +
+            "`html` and `artifact_files` — EXCEPT `html` + a .zip of assets: the html becomes index.html " +
+            "over the archive's files (generate the page, let the zip supply the images).",
           ),
         }),
     artifact_files: z.array(z.object({
