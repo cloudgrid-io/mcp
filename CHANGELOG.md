@@ -1,4 +1,4 @@
-## 0.20.8 (unreleased)
+## 0.20.8
 
 - **Alias diet: 53 advertised tool names → 37.** Dropped 16 legacy redirect
   aliases (grid_source, grid_list, grid_fork, grid_download, grid_claim,
