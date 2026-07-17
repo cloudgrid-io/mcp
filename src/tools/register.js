@@ -842,7 +842,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_create_project",
-    "Register a new CloudGrid app or agent, optionally seeding a web service. Wraps `cloudgrid init`.",
+    "Register a new CloudGrid app or agent, optionally seeding a web service. Wraps `grid init`.",
     {
       kind: z.enum(["app", "agent"]).describe("Entity kind."),
       name: z.string().describe("Slug: 3-40 lowercase alphanumerics and hyphens."),
@@ -870,7 +870,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_view_logs",
-    "Tail recent logs for an entity. Does not stream; returns a snapshot. Wraps `cloudgrid logs`.",
+    "Tail recent logs for an entity. Does not stream; returns a snapshot. Wraps `grid logs`.",
     {
       name: z.string().optional().describe("Entity name. Omit to use the entity linked to the current directory."),
       tail: z.number().int().positive().optional().describe("Number of recent lines. Default 100."),
@@ -888,7 +888,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_share",
-    "Set an entity's visibility and print its URL. Defaults to link (anyone with the URL). Wraps `cloudgrid visibility set`.",
+    "Set an entity's visibility and print its URL. Defaults to link (anyone with the URL). Wraps `grid visibility set`.",
     {
       name: z.string().describe("Entity slug."),
       mode: z.enum(["link", "private", "authenticated", "grid"]).optional().describe("Visibility mode. Default link."),
@@ -899,7 +899,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_feedback",
-    "List recent feedback events for the active org. Read-only. Wraps `cloudgrid feedback list`.",
+    "List recent feedback events for the active org. Read-only. Wraps `grid feedback list`.",
     {
       since: z.string().optional().describe("Only events newer than this, e.g. 24h, 7d."),
       limit: z.number().int().positive().max(200).optional().describe("Number of events. Default 50, max 200."),
@@ -920,7 +920,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_whoami",
-    "Show the signed-in user and active org. Wraps `cloudgrid whoami`.",
+    "Show the signed-in user and active org. Wraps `grid whoami`.",
     {},
     { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     cliTool(() => ["whoami"]),
@@ -928,7 +928,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_switch_grid",
-    "Switch the active org. Wraps `cloudgrid use`.",
+    "Switch the active org. Wraps `grid use`.",
     { org: z.string().describe("Org slug to switch to.") },
     { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     cliTool(({ org }) => ["use", org]),
@@ -936,7 +936,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_logout",
-    "Sign out and clear local credentials. Wraps `cloudgrid logout`.",
+    "Sign out and clear local credentials. Wraps `grid logout`.",
     {},
     { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     cliTool(() => ["logout"]),
@@ -944,7 +944,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_status",
-    "Org dashboard, entity detail, or deploy snapshot. Wraps `cloudgrid status`.",
+    "Org dashboard, entity detail, or deploy snapshot. Wraps `grid status`.",
     { name: z.string().optional().describe("Entity name or trace id. Omit for the org dashboard.") },
     { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     cliTool(({ name }) => (name ? ["status", name] : ["status"])),
@@ -952,7 +952,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_info",
-    "Show metadata for a CloudGrid entity. Wraps `cloudgrid info`.",
+    "Show metadata for a CloudGrid entity. Wraps `grid info`.",
     { name: z.string().optional().describe("Entity name. Omit for the entity linked to the current directory.") },
     { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     cliTool(({ name }) => {
@@ -963,13 +963,13 @@ export function registerTools(server, ctx) {
   );
 
   // grid_get is the single canonical lister for grids, entities, and spaces
-  // (wraps `cloudgrid get <resource> --json`). It replaces the former
+  // (wraps `grid get <resource> --json`). It replaces the former
   // cloudgrid_grid (which wrapped only `get entities`) — retired here so there is
   // exactly one way to list entities. resource="entities" reproduces the old
   // cloudgrid_grid behaviour with `grid` mapping to the CLI's `--grid` flag.
   regTool(
     "grid_get",
-    "List CloudGrid grids, entities, or spaces. Wraps `cloudgrid get <grids|entities|spaces> --json`.",
+    "List CloudGrid grids, entities, or spaces. Wraps `grid get <grids|entities|spaces> --json`.",
     {
       resource: z.enum(["grids", "entities", "spaces"]).describe("What to list: grids, entities, or spaces."),
       grid: z.string().optional().describe("Grid slug (entities/spaces only). Omit for the active grid."),
@@ -996,7 +996,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_describe_grid",
-    "Show a grid's detail: role, members, spaces, tier, wildcard-TLS state. Wraps `cloudgrid describe grid <slug> --json`.",
+    "Show a grid's detail: role, members, spaces, tier, wildcard-TLS state. Wraps `grid describe grid <slug> --json`.",
     { grid: z.string().describe("Grid slug to describe.") },
     { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     cliTool(({ grid }) => ["describe", "grid", grid, "--json"]),
@@ -1004,7 +1004,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_edit_existing_app",
-    "Download an entity's source + cloudgrid.yaml and link the folder to it. Overwrites with --force. Wraps `cloudgrid pickup`.",
+    "Download an entity's source + cloudgrid.yaml and link the folder to it. Overwrites with --force. Wraps `grid pickup`.",
     {
       name: z.string().describe("Entity slug or id to pick up."),
       target_dir: z.string().optional().describe("Directory to pick up into (relative to cwd). Defaults to the entity name."),
@@ -1029,7 +1029,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_rename",
-    "Rename a CloudGrid entity's display name (slug stays the same). Wraps `cloudgrid rename`.",
+    "Rename a CloudGrid entity's display name (slug stays the same). Wraps `grid rename`.",
     {
       name: z.string().describe("Entity slug."),
       new_name: z.string().describe("New display name."),
@@ -1040,7 +1040,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_take_offline",
-    "Take an entity off the grid. Destructive. Wraps `cloudgrid unplug`.",
+    "Take an entity off the grid. Destructive. Wraps `grid unplug`.",
     {
       name: z.string().describe("Entity slug to take down (required)."),
       confirm: z.literal(true).describe("Must be true to proceed."),
@@ -1051,7 +1051,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_delete",
-    "Archive a CloudGrid inspiration. Destructive. Wraps `cloudgrid delete entity`.",
+    "Archive a CloudGrid inspiration. Destructive. Wraps `grid delete entity`.",
     {
       name: z.string().describe("Entity slug to delete (required)."),
       confirm: z.literal(true).describe("Must be true to proceed."),
@@ -1062,7 +1062,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_rollback_deploy",
-    "Rollback an entity to a previous version. Wraps `cloudgrid rollback`.",
+    "Rollback an entity to a previous version. Wraps `grid rollback`.",
     {
       name: z.string().describe("Entity slug."),
       to: z.string().optional().describe("Target version tag or id. Omit to roll back one version."),
@@ -1077,7 +1077,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_list_versions",
-    "List published versions for an entity. Wraps `cloudgrid versions`.",
+    "List published versions for an entity. Wraps `grid versions`.",
     { name: z.string().optional().describe("Entity name. Omit for the entity linked to the current directory.") },
     { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     cliTool(({ name }) => {
@@ -1089,7 +1089,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_set_env",
-    "Manage environment variables for an entity. Wraps `cloudgrid env`.",
+    "Manage environment variables for an entity. Wraps `grid env`.",
     {
       action: z.enum(["get", "set", "list"]).describe("get, set, or list."),
       name: z.string().describe("Entity slug."),
@@ -1113,7 +1113,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_set_secret",
-    "Set or list secret names for an entity. Never returns secret values. Wraps `cloudgrid secrets`.",
+    "Set or list secret names for an entity. Never returns secret values. Wraps `grid secrets`.",
     {
       action: z.enum(["set", "list"]).describe("set or list (names only)."),
       name: z.string().describe("Entity slug."),
@@ -1133,7 +1133,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_scaffold",
-    "Scaffold service folders declared in cloudgrid.yaml (idempotent). Wraps `cloudgrid scaffold`.",
+    "Scaffold service folders declared in cloudgrid.yaml (idempotent). Wraps `grid scaffold`.",
     {
       cwd: z.string().optional().describe("Working directory. The CLI runs in this directory. Defaults to the MCP server's working directory."),
     },
@@ -1143,7 +1143,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_diagnose",
-    "Run CloudGrid diagnostics on the local environment. Wraps `cloudgrid doctor`.",
+    "Run CloudGrid diagnostics on the local environment. Wraps `grid doctor`.",
     {},
     { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     cliTool(() => ["doctor"]),
@@ -1151,7 +1151,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_get_url",
-    "Return the public URL for an entity. Does not open a browser. Wraps `cloudgrid open --print`.",
+    "Return the public URL for an entity. Does not open a browser. Wraps `grid open --print`.",
     { name: z.string().optional().describe("Entity name. Omit for the entity linked to the current directory.") },
     { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     cliTool(({ name }) => {

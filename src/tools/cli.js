@@ -307,11 +307,19 @@ export async function runCloudgrid(args, opts = {}, deps = {}) {
   let runtimeHint = null;
 
   const extract = (err) => {
-    const detail = [err && err.stdout, err && err.stderr, err && err.message]
+    let detail = [err && err.stdout, err && err.stderr, err && err.message]
       .filter(Boolean)
       .join("\n")
       .trim();
-    return new Error(detail || "cloudgrid command failed");
+    // Voice rule (founder directive: the verb is `grid`, only): exec errors
+    // embed the raw invocation (a cloudgrid binary path, the cli-shim, or an
+    // npx spec). Normalize the displayed command to `grid <verb>` so the model
+    // never learns and repeats a deprecated verb from an error message.
+    detail = detail.replace(
+      /Command failed:[^\n]*?(?= (?:init|plug|logs|status|info|get|describe|pickup|rename|unplug|delete|rollback|versions|env|secrets|scaffold|doctor|open|use|whoami|logout|visibility|feedback|login|dev|recipes|hooks|--)\b)/g,
+      "Command failed: grid",
+    );
+    return new Error(detail || "grid command failed");
   };
 
   // 1. Bundled CLI — own node_modules only, version-gated. Runs via

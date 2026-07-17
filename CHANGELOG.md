@@ -1,3 +1,14 @@
+## 0.20.10 (unreleased)
+
+- **Voice: `grid` only (founder directive #1637).** 22 CLI-wrapping tool
+  descriptions said "Wraps `cloudgrid <verb>`" — in every session's context —
+  and a Claude Desktop model repeated "run cloudgrid plug" to a user verbatim.
+  All descriptions now say `grid <verb>`; CLI exec errors normalize the raw
+  invocation (binary path / cli-shim / npx spec) to `Command failed: grid
+  <verb>` before the model sees it; smoke gains a guard so a "cloudgrid
+  <verb>" can never ship in a description again. (`cloudgrid.yaml` and other
+  file names are unchanged — the rule covers command verbs only.)
+
 ## 0.20.9
 
 - **Zip deploys.** `grid_deploy`'s `path` now accepts a `.zip` archive (local
