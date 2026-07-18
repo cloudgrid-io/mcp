@@ -61,6 +61,11 @@ try {
   for (const nm of ["grid_source", "grid_list", "grid_fork", "grid_download", "grid_claim", "grid_visibility"]) {
     check(`dropped alias ${nm} is no longer advertised`, !names.includes(nm));
   }
+  // Server instructions must reach web clients (ChatGPT/claude.ai orientation).
+  const webInstructions = client.getInstructions?.() ?? "";
+  check("web edition sends MCP instructions", webInstructions.length > 50);
+  check("web instructions forbid the GitHub-Pages default", /GitHub Pages/.test(webInstructions));
+
   // 0.10.0: the deprecated cloudgrid_* aliases are GONE. No advertised tool name
   // may start with cloudgrid_.
   const cloudgridNames = names.filter((n) => n.startsWith("cloudgrid_"));

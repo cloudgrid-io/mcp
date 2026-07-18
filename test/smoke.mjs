@@ -98,6 +98,15 @@ check(
   cloudgridNames.length === 0,
 );
 
+// Server instructions: the one orientation channel for hosts without hooks
+// (observed live: without it, ChatGPT suggests GitHub Pages instead of the
+// attached connector). Must be present and name the deploy flow.
+const serverInstructions = client.getInstructions?.() ?? "";
+check("server sends MCP instructions", serverInstructions.length > 50);
+check("instructions claim the share-a-link intent", /share it with friends|make it live/.test(serverInstructions));
+const deployDesc = tools.find((t) => t.name === "grid_deploy")?.description ?? "";
+check("grid_deploy description claims share-with-friends phrases", /share it with friends/.test(deployDesc));
+
 // grid_drop is GONE — folded into grid_deploy (the one deploy/publish verb).
 check("grid_drop is no longer advertised", !nameSet.has("grid_drop"));
 
