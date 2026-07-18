@@ -1,4 +1,4 @@
-## 0.20.11 (unreleased)
+## 0.20.11
 
 - **MCP server `instructions` — orientation for hookless hosts.** Neither
   edition sent the initialize `instructions` field, so hosts with no
