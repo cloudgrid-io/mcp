@@ -18,6 +18,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { createSessionLogger } from "./session-logger.js";
 import { createSink } from "./log-sink.js";
+import { INSTRUCTIONS_LOCAL } from "./playbook.js";
 
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url)));
 
@@ -43,7 +44,7 @@ ctx.logger = createSessionLogger({
   userRequest: process.env.CLOUDGRID_USER_REQUEST || null,
 });
 
-const server = new McpServer({ name: "cloudgrid-mcp", version });
+const server = new McpServer({ name: "cloudgrid-mcp", version }, { instructions: INSTRUCTIONS_LOCAL });
 registerTools(server, ctx);
 
 // Capture the calling agent's clientInfo (name+version) once the MCP handshake

@@ -24,6 +24,7 @@ import { registerTools, decodeJwt } from "./tools.js";
 import { mountOAuth, bearerChallenge } from "./oauth.js";
 import { createSessionLogger } from "./session-logger.js";
 import { createSink } from "./log-sink.js";
+import { INSTRUCTIONS_WEB } from "./playbook.js";
 
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url)));
 
@@ -136,7 +137,7 @@ app.post("/mcp", async (req, res) => {
       delete sessionAuth[transport.sessionId];
     }
   };
-  const server = new McpServer({ name: "cloudgrid-mcp-web", version });
+  const server = new McpServer({ name: "cloudgrid-mcp-web", version }, { instructions: INSTRUCTIONS_WEB });
   const webCtx = makeWebContext(newSessionId);
   // QA session log for this MCP session (dark by default). Keyed by the session
   // id — the host connection boundary. No seed user_request here: current hosts

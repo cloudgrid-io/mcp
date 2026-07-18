@@ -1,3 +1,18 @@
+## 0.20.11 (unreleased)
+
+- **MCP server `instructions` — orientation for hookless hosts.** Neither
+  edition sent the initialize `instructions` field, so hosts with no
+  hooks/skills channel (ChatGPT, claude.ai web) had zero orientation and the
+  model's training prior won: "share a link" produced GitHub Pages/Netlify
+  advice and "build me a game" ended as save-this-file, with the connector
+  attached (observed live 2026-07-18; only the literal word "grid" triggered
+  tool use). Both editions now send edition-tuned instructions claiming the
+  build/make-it-live/share-a-link intents and steering to grid_start ->
+  grid_deploy -> live URL. grid_deploy's description additionally claims the
+  exact phrases ("give me a link", "share it with friends", "make it live",
+  "put it online") and prefers CloudGrid over external-host suggestions.
+  Smoke guards assert instructions + trigger phrases on both editions.
+
 ## 0.20.10
 
 - **Voice: `grid` only (founder directive #1637).** 22 CLI-wrapping tool
