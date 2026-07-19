@@ -1,6 +1,6 @@
 {
   "name": "@cloudgrid-io/mcp",
-  "version": "0.20.12",
+  "version": "0.20.13",
   "description": "Use CloudGrid via MCP to brainstorm, build, deploy, and improve apps, games, websites, dashboards, and tools and get a live URL - templates, recipes, managed databases and AI, instant single-page publish, and full-app deploys, for developers and non-technical users. Three editions: local stdio (full toolset), hosted web (light, CLI-free), and a public docs-search server, over MCP.",
   "type": "module",
   "bin": {
