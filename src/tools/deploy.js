@@ -964,7 +964,7 @@ export function errorGuidance({ status, code, edition, isEdit, isAnon, signedIn 
   if (status === 401) {
     return isEdit
       ? "That did not authorize this entity (wrong entity, expired, or already claimed). Sign in if you own it (grid_login), pass its owner_token for an anonymously-created drop, or omit target_entity_id to create a new entity."
-      : "Sign in (grid_login), or for an anonymously-created drop pass its owner_token.";
+      : "Not signed in. Ask the user: sign in (grid_login) to publish to their grid, OR publish anonymously now (re-call grid_deploy with anon: true) - it goes live immediately with a claim_url + owner_token to claim into their account later. Do not silently fail; offer both.";
   }
   if (status === 403) {
     return "You lack the role to plug this target. To re-plug someone else's entity, pick it up first (grid_edit_existing_app / grid_claim_anonymous_deploy).";
