@@ -28,6 +28,21 @@ import {
   runSource,
 } from "./deploy.js";
 
+// Build the argv for grid_create_project → `grid new` (CLI >= 0.15.14; `init`
+// is a deprecated alias we no longer author). Modern shape: `new <slug>` with
+// `--agent` for agents (NOT the legacy `init <kind> <slug>` positional). The
+// old `--description` flag was removed from the CLI, so it is gone here too.
+// Exported pure so the argv is unit-tested without spawning a CLI.
+export function buildCreateProjectArgs({ kind, name, type, needs, dir, org } = {}) {
+  const args = ["new", name];
+  if (kind === "agent") args.push("--agent");
+  if (type) args.push("--type", type);
+  if (Array.isArray(needs) && needs.length) args.push("--needs", needs.join(","));
+  if (dir) args.push("--dir", dir);
+  if (org) args.push("--grid", org); // CLI 0.12 dropped --org for --grid (same slug)
+  return args;
+}
+
 // ── Registration ───────────────────────────────────────────────────────────────
 // Registers the tools onto `server`. ctx.edition decides whether the CLI-wrapping
 // tools are included (they need a local machine).
@@ -861,26 +876,19 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_create_project",
-    "Register a new CloudGrid app or agent, optionally seeding a web service. Wraps `grid new` (`init` remains an alias).",
+    "Scaffold a new CloudGrid app or agent folder (cloudgrid.yaml + a web service), optionally pre-declaring resources. Wraps `grid new` (scaffolds locally; no server entity until you grid_deploy).",
     {
-      kind: z.enum(["app", "agent"]).describe("Entity kind."),
+      kind: z.enum(["app", "agent"]).describe("Entity kind. 'agent' scaffolds an agent: block."),
       name: z.string().describe("Slug: 3-40 lowercase alphanumerics and hyphens."),
       type: z.enum(["node", "nextjs", "python", "static"]).optional().describe("Seed a web service of this type."),
-      description: z.string().optional().describe("Initial one-line description."),
-      dir: z.string().optional().describe("Target directory. Defaults to ./<name>."),
-      org: z.string().optional().describe("Override the active grid for this project."),
+      needs: z.array(z.enum(["database", "cache", "kv", "queue", "pubsub", "vector", "ai", "disk"])).optional()
+        .describe("Pre-declare infrastructure needs in the scaffolded cloudgrid.yaml (e.g. [\"database\",\"ai\"])."),
+      dir: z.string().optional().describe("Target directory. Defaults to the current folder."),
+      org: z.string().optional().describe("Override the active grid this project will target."),
       cwd: z.string().optional().describe("Working directory. The CLI runs in this directory. Defaults to the MCP server's working directory."),
     },
     { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
-    cliTool(({ kind, name, type, description, dir, org }) => {
-      const args = ["init", kind, name];
-      if (type) args.push("--type", type);
-      if (description) args.push("--description", description);
-      if (dir) args.push("--dir", dir);
-      // CLI 0.12 dropped `--org` in favour of `--grid` (same slug).
-      if (org) args.push("--grid", org);
-      return args;
-    }, { cwdParam: true }),
+    cliTool((input) => buildCreateProjectArgs(input), { cwdParam: true }),
   );
 
   // NOTE: grid_deploy is no longer CLI-wrapping — the unified direct-API verb

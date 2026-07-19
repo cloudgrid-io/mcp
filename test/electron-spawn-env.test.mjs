@@ -34,11 +34,17 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const { runCloudgrid, resolveNodeRuntime } = await import("../src/tools.js");
+const { MIN_CLI_VERSION } = await import("../src/tools/constants.js");
 
 const execFileAsync = promisify(execFile);
 const CLI_SHIM = fileURLToPath(new URL("../src/cli-shim.mjs", import.meta.url));
 const FAKE_ENTRY = "/fake/node_modules/@cloudgrid-io/cli/dist/index.js";
 const IS_WIN = process.platform === "win32";
+// A fixture CLI version that meets the current floor, derived from the floor
+// itself so this test can never drift below it again (a bump to MIN_CLI_VERSION
+// used to silently push the fixture under the floor, skipping the bundled rung
+// and failing every "CLI is usable" assertion below).
+const GOOD_VERSION = MIN_CLI_VERSION;
 
 let failures = 0;
 function check(label, cond) {
@@ -58,7 +64,7 @@ function makeExecSpy(handler) {
   return spy;
 }
 
-const fakeResolveCli = () => ({ entry: FAKE_ENTRY, version: "0.15.6" });
+const fakeResolveCli = () => ({ entry: FAKE_ENTRY, version: GOOD_VERSION });
 
 function electronFatalError() {
   const err = new Error("Command failed");
@@ -114,7 +120,7 @@ function electronFatalError() {
 {
   const exec = makeExecSpy(({ command, args }) => {
     if (command === process.execPath) throw electronFatalError();
-    if (String(args[args.length - 1]).includes("--version")) return { stdout: "0.15.6\n", stderr: "" };
+    if (String(args[args.length - 1]).includes("--version")) return { stdout: `${GOOD_VERSION}\n`, stderr: "" };
     return { stdout: "GLOBAL OK\n", stderr: "" };
   });
   const result = await runCloudgrid(["whoami"], {}, { exec, resolveCli: fakeResolveCli });
@@ -137,7 +143,7 @@ function electronFatalError() {
 // ── 4. No usable runtime at all: bundled rung is skipped, fallbacks run ───────
 {
   const exec = makeExecSpy(({ args }) => {
-    if (String(args[args.length - 1]).includes("--version")) return { stdout: "0.15.6\n", stderr: "" };
+    if (String(args[args.length - 1]).includes("--version")) return { stdout: `${GOOD_VERSION}\n`, stderr: "" };
     return { stdout: "GLOBAL OK\n", stderr: "" };
   });
   const result = await runCloudgrid(
