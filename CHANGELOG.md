@@ -1,3 +1,7 @@
+## 0.20.15
+
+- Voice: swept the remaining "org" prose to "grid" across user-facing surfaces - the local publish message ("Published to your grid: <url>"), the grid-picker card, and a dozen tool/field descriptions (active grid, grid memberships, grid name/role/DNS). Param names and API values (`org`) unchanged.
+
 ## 0.20.14
 
 - Reland of the CLI 0.15.14 docs sweep (#99 was auto-closed unmerged when its base branch was deleted; the corpus twins were briefly divergent - both drift crons caught it). Corpus now teaches grid new + plug-auto-create.

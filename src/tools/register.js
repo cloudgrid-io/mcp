@@ -101,7 +101,7 @@ export function registerTools(server, ctx) {
     }));
 
     server.registerResource("cloudgrid-org-picker", GRID_PICKER_URI, {
-      description: "Org picker card — lets the user choose which organization to publish into.",
+      description: "Grid picker card — lets the user choose which grid to publish into.",
       mimeType: "text/html;profile=mcp-app",
     }, async () => ({
       contents: [{
@@ -593,7 +593,7 @@ export function registerTools(server, ctx) {
       inputSchema: {
         visibility: z.enum(["private", "space", "authenticated", "org", "link"]).describe("The new scope."),
         target: z.string().optional().describe("Entity id. Defaults to this session's last drop."),
-        org: z.string().optional().describe("Org of the entity. Defaults to the active org."),
+        org: z.string().optional().describe("Grid of the entity. Defaults to the active grid."),
       },
       outputSchema: {
         visibility: z.string().describe("The visibility that was set."),
@@ -619,11 +619,11 @@ export function registerTools(server, ctx) {
       outputSchema: {
         orgs: z.array(z.object({
           slug: z.string().describe("Org slug."),
-          name: z.string().describe("Human-readable org name."),
-          role: z.string().describe("User's role in the org."),
-          is_active: z.boolean().optional().describe("True if this is the user's currently active org."),
-          render_ready: z.boolean().describe("True if the org's DNS and TLS are provisioned and pages will load. False means the org is still being set up."),
-        })).describe("The user's org memberships."),
+          name: z.string().describe("Human-readable grid name."),
+          role: z.string().describe("User's role in the grid."),
+          is_active: z.boolean().optional().describe("True if this is the user's currently active grid."),
+          render_ready: z.boolean().describe("True if the grid's DNS and TLS are provisioned and pages will load. False means the grid is still being set up."),
+        })).describe("The user's grid memberships."),
       },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     },
@@ -852,7 +852,7 @@ export function registerTools(server, ctx) {
       type: z.enum(["node", "nextjs", "python", "static"]).optional().describe("Seed a web service of this type."),
       description: z.string().optional().describe("Initial one-line description."),
       dir: z.string().optional().describe("Target directory. Defaults to ./<name>."),
-      org: z.string().optional().describe("Override the active org for this init."),
+      org: z.string().optional().describe("Override the active grid for this project."),
       cwd: z.string().optional().describe("Working directory. The CLI runs in this directory. Defaults to the MCP server's working directory."),
     },
     { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
@@ -902,7 +902,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_feedback",
-    "List recent feedback events for the active org. Read-only. Wraps `grid feedback list`.",
+    "List recent feedback events for the active grid. Read-only. Wraps `grid feedback list`.",
     {
       since: z.string().optional().describe("Only events newer than this, e.g. 24h, 7d."),
       limit: z.number().int().positive().max(200).optional().describe("Number of events. Default 50, max 200."),
@@ -923,7 +923,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_whoami",
-    "Show the signed-in user and active org. Wraps `grid whoami`.",
+    "Show the signed-in user and active grid. Wraps `grid whoami`.",
     {},
     { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     cliTool(() => ["whoami"]),
@@ -931,7 +931,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_switch_grid",
-    "Switch the active org. Wraps `grid use`.",
+    "Switch the active grid. Wraps `grid use`.",
     { org: z.string().describe("Org slug to switch to.") },
     { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     cliTool(({ org }) => ["use", org]),
