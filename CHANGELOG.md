@@ -1,3 +1,7 @@
+## 0.20.18
+
+- Anonymous-plug fallback on a not-authenticated create: grid_deploy checks auth first; if the user is not signed in (or a create 401s), the model offers "sign in to your grid, or publish anonymously now (claimable later)?" instead of failing. Playbook rule 17 + create-time 401 guidance. One deploy verb, no new tool.
+
 ## 0.20.17
 
 - **fix(mcpb): Desktop extension crashed on boot (ERR_MODULE_NOT_FOUND), broken since 0.20.12.** The .mcpb build hand-listed files and shipped the tools.js barrel without src/tools/*.js (the module split), plus missed playbook.js/session-logger/log-sink; Desktop showed "MCP CloudGrid could not connect". npm/npx were unaffected. Now bundles the whole src tree; a new mcpb-boot CI test builds+extracts+boots the bundle over stdio so a broken artifact fails CI.
