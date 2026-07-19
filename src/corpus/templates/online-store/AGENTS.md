@@ -82,7 +82,7 @@ verified Stripe event.
   Derive them from the incoming request (`new URL(request.url).origin`) rather than
   hardcoding the live host, so it works in `grid dev` and after `grid plug`.
 - **AI (only if you add it):** declare `needs: { ai: true }` and the platform
-  injects `AI_GATEWAY_URL`; call it via `@cloudgrid-io/ai`. Not required for a store.
+  injects `RUNTIME_GATEWAY_URL`; call it via `@cloudgrid-io/runtime`. Not required for a store.
 
 ## 4. Wiring payments (Stripe) — and optional auth
 

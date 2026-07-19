@@ -96,7 +96,7 @@ name: financial-dashboard
 #   # disk — persistent FS mount (PVC). Injects DISK_PATH. Pins to 1 replica.
 #   #   true | { size: 1Gi, mount: /var/data }  (forbidden: /proc /sys /dev)
 #   disk: true
-#   # ai — AI Gateway via @cloudgrid-io/ai. Injects AI_GATEWAY_URL. true | false.
+#   # ai — AI Gateway via @cloudgrid-io/runtime. Injects RUNTIME_GATEWAY_URL. true | false.
 #   ai: true
 
 
@@ -192,7 +192,7 @@ services:
     #   path: /api/health
     #   expected: "200"
     # Static runtime env vars (strings). Reserved: PORT, APP_NAME, SERVICE_NAME,
-    # NODE_ENV, MONGODB_URL, REDIS_URL, AI_GATEWAY_URL, N8N_WEBHOOK_URL, CLOUDGRID_*.
+    # NODE_ENV, MONGODB_URL, REDIS_URL, RUNTIME_GATEWAY_URL, N8N_WEBHOOK_URL, CLOUDGRID_*.
     # env:
     #   LOG_LEVEL: info
     # Sibling services/private resources that must be Ready first (no cron, no cycles).

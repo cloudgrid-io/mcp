@@ -64,7 +64,7 @@ The heart of this blueprint. Read it before building. It covers:
 2. **Mongo collections + fields** — `services`, `availabilityRules`, `bookings`,
    plus the overlap-check + unique-index rule that prevents double-booking.
 3. **CloudGrid injection** — `DATABASE_MONGODB_URL` for Mongo, `vault:` → env
-   vars for secrets, `AI_GATEWAY_URL` for ai.
+   vars for secrets, `RUNTIME_GATEWAY_URL` for ai.
 4. **Auth + payments wiring** — provider SDK from `AUTH_PROVIDER_KEY`; Stripe
    checkout + signature-verified webhook from `STRIPE_KEY` /
    `STRIPE_WEBHOOK_SECRET`.

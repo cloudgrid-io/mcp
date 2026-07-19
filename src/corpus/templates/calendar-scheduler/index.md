@@ -77,7 +77,7 @@ on #1543), and the `write files → grid plug --no-deploy → secrets set → gr
   `STRIPE_WEBHOOK_SECRET`) and a signed webhook.
 - Pick a date library (luxon / date-fns-tz) for timezone + recurrence math; keep
   it in `lib/time.js`.
-- Add `needs: { ai: true }` (injects `AI_GATEWAY_URL`) only for AI features like
+- Add `needs: { ai: true }` (injects `RUNTIME_GATEWAY_URL`) only for AI features like
   natural-language event entry.
 - Reminders: leave the cron `reminders` service commented until #1543 ships; use
   the interim external-scheduler-hits-an-HTTP-route workaround (AGENTS.md §5) if

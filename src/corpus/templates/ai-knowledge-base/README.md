@@ -4,7 +4,7 @@ A blueprint for a retrieval-augmented knowledge-base chatbot on CloudGrid: a
 persistent Next.js + Mongo app that ingests documents, chunks and embeds them,
 and answers questions grounded in the retrieved chunks (with citations) — the
 `app-with-data` runtime shape with a RAG loop layered on. Embeddings and answers
-run through CloudGrid's AI Gateway (`@cloudgrid-io/ai`, injected via
+run through CloudGrid's AI Gateway (`@cloudgrid-io/runtime`, injected via
 `needs: { ai: true }` — works today); the ideal vector store `needs: vector`
 (pgvector) is **now available** — #1545 shipped (verified live 2026-07-16) — but
 this blueprint stores embeddings in Mongo and computes similarity in-app. Because RAG involves choices

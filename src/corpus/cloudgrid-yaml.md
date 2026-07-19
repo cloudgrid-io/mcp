@@ -156,7 +156,7 @@ needs:
   vector: pgvector                  # pgvector. Injects VECTOR_PGVECTOR_URL. (#1545 shipped, verified live 2026-07-16.)
   object_storage: true              # GATED (platform #1678) - rejected at plug-time; use disk: or a BYO bucket via secret.
   disk: true                        # Persistent filesystem at /data. Injects DISK_PATH.
-  ai: true                          # AI Gateway access. Injects AI_GATEWAY_URL.
+  ai: true                          # AI Gateway access. Injects RUNTIME_GATEWAY_URL.
 
 # ─── Inter-entity communication ────────────────────────────────────
 calls:                              # Entities this app calls (outbound grants).
@@ -366,7 +366,7 @@ that path. `{ path, expected }` → HTTP with expected status
 
 String key-values injected at runtime (not build). **Reserved names (rejected):**
 `PORT`, `APP_NAME`, `SERVICE_NAME`, `NODE_ENV`, `MONGODB_URL`, `REDIS_URL`,
-`AI_GATEWAY_URL`, `N8N_WEBHOOK_URL`, and any key starting with `CLOUDGRID_`. Use
+`RUNTIME_GATEWAY_URL`, `N8N_WEBHOOK_URL`, and any key starting with `CLOUDGRID_`. Use
 `grid secrets set` for sensitive values.
 
 ### Per-service `needs` override
@@ -407,7 +407,7 @@ service type.**
 | `vector` | Vector embeddings DB | `VECTOR_PGVECTOR_URL` (+legacy `PGVECTOR_URL`) | pgvector (Postgres) |
 | `object_storage` | Object/blob bucket - **GATED (#1678)**: rejected at plug-time, use `disk` or a BYO bucket via secret | `OBJECT_STORAGE_GCS_BUCKET`, `OBJECT_STORAGE_GCS_REGION` | GCS |
 | `disk` | Persistent filesystem mount | `DISK_PATH` | PVC |
-| `ai` | AI Gateway access | `AI_GATEWAY_URL` | CloudGrid AI Gateway |
+| `ai` | AI Gateway access | `RUNTIME_GATEWAY_URL` | CloudGrid AI Gateway |
 
 `cache`, `kv`, `queue`, `pubsub` all share one physical Redis but each gets a
 distinct env var. `cache` runs `allkeys-lru` eviction (derived data); the other

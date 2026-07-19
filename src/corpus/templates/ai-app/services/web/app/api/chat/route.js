@@ -1,11 +1,12 @@
 // Chat API route: takes the user's message, asks the grid AI gateway for a
 // reply, persists the exchange to Mongo, and returns the reply.
 //
-// The AI call uses @cloudgrid-io/ai with ZERO config — no API key. createClient()
-// auto-detects the in-grid identity, so it only works inside a deployed grid app
-// (or under `grid dev`). Do NOT pass a key.
+// The AI call uses @cloudgrid-io/runtime with ZERO config — no API key. The SDK
+// reads the gateway URL from RUNTIME_GATEWAY_URL (injected by the grid) all on
+// its own, so it only works inside a deployed grid app (or under `grid dev`). Do
+// NOT set a key or reference the env var yourself.
 import { NextResponse } from "next/server";
-import { createClient } from "@cloudgrid-io/ai";
+import { runtime } from "@cloudgrid-io/runtime";
 import { getDb } from "../../../lib/db.js";
 
 // Never cache — always generate/persist live.
@@ -24,10 +25,12 @@ export async function POST(request) {
     return NextResponse.json({ error: "message is required" }, { status: 400 });
   }
 
-  // 1. Ask the grid AI gateway (zero-config in-grid identity — no key).
-  const client = createClient();
-  const r = await client.chat({ messages: [{ role: "user", content: text }] });
-  const reply = r.text ?? r.content ?? "";
+  // 1. Ask the grid AI gateway (zero-config in-grid identity — no key). Chat
+  //    expects a model; it returns { text }.
+  const { text: reply } = await runtime.ai.chat({
+    model: "claude-haiku",
+    messages: [{ role: "user", content: text }],
+  });
 
   // 2. Persist the exchange so the conversation survives refresh.
   const col = await messages();

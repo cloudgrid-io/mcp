@@ -86,11 +86,11 @@ runtime (after `grid plug`).
   injects them as the named env vars. Read them lazily too (inside the Stripe/auth
   client getters), not at module top level.
 - **AI (only if you add tutoring/quiz-gen)** — `needs: { ai: true }` → injects
-  **`AI_GATEWAY_URL`**; call it via `@cloudgrid-io/ai`. Not enabled in this
+  **`RUNTIME_GATEWAY_URL`**; call it via `@cloudgrid-io/runtime`. Not enabled in this
   blueprint; add the need if you want it.
 
 Reserved env var names you must NOT set yourself: `PORT`, `NODE_ENV`,
-`DATABASE_MONGODB_URL`/`MONGODB_URL`, `AI_GATEWAY_URL`, `CLOUDGRID_*`.
+`DATABASE_MONGODB_URL`/`MONGODB_URL`, `RUNTIME_GATEWAY_URL`, `CLOUDGRID_*`.
 
 ---
 

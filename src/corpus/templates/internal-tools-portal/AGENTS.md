@@ -128,8 +128,8 @@ dev-time (`grid dev`) and runtime (after `grid plug`).
   A tool that talks to a third-party API (Stripe, SendGrid, an internal service
   token) adds one more `vault:` line per secret, e.g. `STRIPE_KEY: stripe-live-key`.
 - **AI (optional):** if a tool needs an LLM (draft copy, summarize a record), add
-  `needs: { ai: true }` and the grid injects **`AI_GATEWAY_URL`** for use with
-  `@cloudgrid-io/ai`. Not required for the core portal.
+  `needs: { ai: true }` and the grid injects **`RUNTIME_GATEWAY_URL`** for use with
+  `@cloudgrid-io/runtime`. Not required for the core portal.
 
 Non-secret config (log level, feature toggles) → `services.web.env` in the yaml,
 or `grid env`. Actual secrets → the vault (never `env:`, never committed).

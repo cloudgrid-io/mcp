@@ -100,7 +100,7 @@ name: semantic-search
 #   #   true | { size: 1Gi, mount: /var/data }  (forbidden: /proc /sys /dev)
 #   #   Use with SOURCE_TYPE=local to read documents from the mount.
 #   disk: true
-#   # ai — AI Gateway via @cloudgrid-io/ai. Injects AI_GATEWAY_URL. true | false.
+#   # ai — AI Gateway via @cloudgrid-io/runtime. Injects RUNTIME_GATEWAY_URL. true | false.
 #   ai: true
 
 

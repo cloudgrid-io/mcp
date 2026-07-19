@@ -114,8 +114,8 @@ total from the verified Stripe event.
   `vault:`; non-secret flags (log level, default currency) can be plain
   `services.web.env` entries or `grid env`.
 - **AI (only if you add it, e.g. an AI usage-forecast):** declare
-  `needs: { ai: true }` and the platform injects **`AI_GATEWAY_URL`**; call it via
-  `@cloudgrid-io/ai`. Not required for a billing dashboard.
+  `needs: { ai: true }` and the platform injects **`RUNTIME_GATEWAY_URL`**; call it via
+  `@cloudgrid-io/runtime`. Not required for a billing dashboard.
 
 ## 4. Wiring payments (Stripe) — and optional auth
 

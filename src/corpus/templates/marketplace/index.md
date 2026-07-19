@@ -71,7 +71,7 @@ webhook), and the `write files → grid plug --no-deploy → secrets set → gri
 
 - Choose your auth provider SDK (Clerk or Auth0) and set the `role` claim.
 - Set your commission take-rate in `lib/commission.js`.
-- Add `needs: { ai: true }` (injects `AI_GATEWAY_URL`) only if you add AI features
+- Add `needs: { ai: true }` (injects `RUNTIME_GATEWAY_URL`) only if you add AI features
   like listing generation or search.
 - Build under `services/web/`, then `grid dev` (local) / `grid plug` (async — poll
   to a live URL). Point the Stripe webhook at `<live-url>/api/webhooks/stripe`.

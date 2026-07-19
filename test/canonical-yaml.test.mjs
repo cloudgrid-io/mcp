@@ -37,7 +37,7 @@ check("doc documents the full needs: vocabulary (all 9)",
   ["database", "cache", "kv", "queue", "pubsub", "vector", "object_storage", "disk", "ai"]
     .every((n) => doc.includes(n)));
 check("doc lists the injected env var names",
-  ["DATABASE_MONGODB_URL", "CACHE_REDIS_URL", "VECTOR_PGVECTOR_URL", "AI_GATEWAY_URL", "DISK_PATH"]
+  ["DATABASE_MONGODB_URL", "CACHE_REDIS_URL", "VECTOR_PGVECTOR_URL", "RUNTIME_GATEWAY_URL", "DISK_PATH"]
     .every((v) => doc.includes(v)));
 check("doc notes the legacy injected aliases (today via requires:)",
   doc.includes("MONGODB_URL") && doc.includes("REDIS_URL"));

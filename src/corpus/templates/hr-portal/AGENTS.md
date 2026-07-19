@@ -106,7 +106,7 @@ dev-time (`grid dev`) and runtime (after `grid plug`).
   `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, or `AUTH0_SECRET` / `AUTH0_CLIENT_ID` /
   `AUTH0_CLIENT_SECRET`) — just keep the `vault:` map keys and the code in sync.
 - **AI (optional):** if you later add `needs: { ai: true }`, the grid injects
-  **`AI_GATEWAY_URL`** for use with `@cloudgrid-io/ai` (e.g. drafting policy text
+  **`RUNTIME_GATEWAY_URL`** for use with `@cloudgrid-io/runtime` (e.g. drafting policy text
   or summarizing requests). Not required for the core portal.
 
 Non-secret config (log level, default PTO allotment) → `services.web.env` in the

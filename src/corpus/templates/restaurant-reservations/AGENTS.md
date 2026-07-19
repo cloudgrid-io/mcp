@@ -122,11 +122,11 @@ You never provision infra or set connection strings by hand. Declare intent in
 
 - **AI (optional).** If you add AI (e.g. menu-copy generation, natural-language
   booking parsing), declare `needs: { ai: true }` → the grid injects
-  **`AI_GATEWAY_URL`**; call it via `@cloudgrid-io/ai`. Not required for the base
+  **`RUNTIME_GATEWAY_URL`**; call it via `@cloudgrid-io/runtime`. Not required for the base
   blueprint.
 
 Reserved env var names you must NOT set: `PORT`, `APP_NAME`, `SERVICE_NAME`,
-`NODE_ENV`, `MONGODB_URL`, `REDIS_URL`, `AI_GATEWAY_URL`, `CLOUDGRID_*`.
+`NODE_ENV`, `MONGODB_URL`, `REDIS_URL`, `RUNTIME_GATEWAY_URL`, `CLOUDGRID_*`.
 
 ---
 

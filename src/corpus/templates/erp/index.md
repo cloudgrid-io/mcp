@@ -62,7 +62,7 @@ needs:
 
 > **Capability:** this template needs `database: true` (Mongo → `DATABASE_MONGODB_URL`
 > + legacy `MONGODB_URL`) and a `vault:` block for auth + Stripe secrets. Optional
-> `ai: true` adds `AI_GATEWAY_URL` for forecasting. `requires:` is the deprecated v1
+> `ai: true` adds `RUNTIME_GATEWAY_URL` for forecasting. `requires:` is the deprecated v1
 > alias — don't mix it with `needs:`. See the capability-map for the full injection
 > table.
 

@@ -116,8 +116,8 @@ routes and the UI agree on what is legal.
   Do NOT hardcode keys and do NOT set `DATABASE_MONGODB_URL`/`MONGODB_URL`
   yourself — the grid injects the DB vars.
 - **AI (optional):** if you add AI (e.g. auto-summarize a request), declare
-  `needs: { ai: true }`; the grid injects **`AI_GATEWAY_URL`** and you call it
-  through `@cloudgrid-io/ai`.
+  `needs: { ai: true }`; the grid injects **`RUNTIME_GATEWAY_URL`** and you call it
+  through `@cloudgrid-io/runtime`.
 - **Non-secret config** → `grid env`. **Secrets** → `grid secrets set` (mapped by
   `vault:`).
 

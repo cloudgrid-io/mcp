@@ -1,7 +1,7 @@
 # ai-app template — AI chatbot on Next.js + the grid AI gateway + Mongo
 
 A minimal but real, deployable AI chatbot. A Next.js App Router app that calls
-the grid AI gateway (via `@cloudgrid-io/ai`) for replies and persists the
+the grid AI gateway (via `@cloudgrid-io/runtime`) for replies and persists the
 conversation to the grid-shared MongoDB, so history survives refresh and is
 shared across sessions.
 
@@ -10,8 +10,9 @@ shared across sessions.
 You do **not** set an API key or provision a database. In `cloudgrid.yaml` you
 declare `needs: { ai: true, database: true }`, and the grid:
 
-- wires the **AI gateway** with the app's in-grid identity — `@cloudgrid-io/ai`
-  `createClient()` auto-detects it, so there is **no API key to set**; and
+- wires the **AI gateway** with the app's in-grid identity — `@cloudgrid-io/runtime`
+  reads the gateway URL from the injected `RUNTIME_GATEWAY_URL` itself, so there is
+  **no API key to set**; and
 - provisions shared Mongo and injects the connection string as the
   **`DATABASE_MONGODB_URL`** environment variable (plus the legacy `MONGODB_URL`
   alias) — at dev-time (`grid dev`) and at runtime (after `grid plug`).
@@ -19,15 +20,18 @@ declare `needs: { ai: true, database: true }`, and the grid:
 ### The AI call
 
 ```js
-import { createClient } from "@cloudgrid-io/ai";
-const client = createClient();                       // zero-arg, no key
-const r = await client.chat({ messages: [{ role: "user", content: text }] });
-const reply = r.text ?? r.content;                   // reply text
+import { runtime } from "@cloudgrid-io/runtime";
+// Chat expects a model and returns { text }. No key, no baseURL.
+const { text: reply } = await runtime.ai.chat({
+  model: "claude-haiku",
+  messages: [{ role: "user", content: text }],
+});
 ```
 
-`createClient()` takes no key — it uses the in-grid identity, so it only works
-inside a deployed grid app (or under `grid dev`). Do **not** pass or set an API
-key.
+`runtime.ai.chat` takes no key — the SDK reads `RUNTIME_GATEWAY_URL` (injected by
+the grid) and uses the in-grid identity, so it only works inside a deployed grid
+app (or under `grid dev`). Do **not** pass or set an API key, and never reference
+the env var yourself.
 
 ### The database
 
@@ -71,18 +75,19 @@ update the same URL.
 
 ```
 cloudgrid.yaml                        # name + services.web (nextjs) + needs: { ai: true, database: true }
-services/web/package.json             # next, react, react-dom, @cloudgrid-io/ai, mongodb
+services/web/package.json             # next, react, react-dom, @cloudgrid-io/runtime, mongodb
 services/web/lib/db.js                # lazy Mongo client from DATABASE_MONGODB_URL (legacy MONGODB_URL fallback)
 services/web/app/layout.js            # root layout + inline CSS
 services/web/app/page.js              # server component: reads chat history from Mongo
 services/web/app/chat.js              # client component: sends messages, renders the log
-services/web/app/api/chat/route.js    # POST: createClient().chat(...) -> persist -> reply; GET: history
+services/web/app/api/chat/route.js    # POST: runtime.ai.chat(...) -> persist -> reply; GET: history
 ```
 
 ## Adapt it
 
 - Give the assistant a persona — pass a `{ role: "system", content: "…" }`
-  message ahead of the user message in the `chat({ messages })` call.
+  message ahead of the user message in the `runtime.ai.chat({ model, messages })`
+  call (or pass `system:` directly alongside `messages`).
 - Send prior turns as context by including the stored history in `messages`.
 - Change the `messages` collection / fields; add users, sessions, titles.
 - Restyle the chat UI in `layout.js` / `chat.js`.

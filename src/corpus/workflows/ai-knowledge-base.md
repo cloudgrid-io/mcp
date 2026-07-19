@@ -5,7 +5,7 @@ needs: ai+database
 deploy: runtime
 editions: local
 kind: blueprint
-capabilities_note: "persistent RAG — needs ai + database. Runtime app, async build, local edition only. Declare needs:{ai:true, database:true}; the deployer injects AI_GATEWAY_URL (AI Gateway via @cloudgrid-io/ai — works today) and DATABASE_MONGODB_URL (+legacy MONGODB_URL). The ideal embedding store needs:{vector:pgvector} (VECTOR_PGVECTOR_URL) is now AVAILABLE — #1545 shipped (verified live 2026-07-16) — but this blueprint still stores embeddings in a Mongo `chunks` collection and cosine-ranks in-app; declare vector:pgvector only if you also build the retrieval on pgvector."
+capabilities_note: "persistent RAG — needs ai + database. Runtime app, async build, local edition only. Declare needs:{ai:true, database:true}; the deployer injects RUNTIME_GATEWAY_URL (AI Gateway via @cloudgrid-io/runtime — works today) and DATABASE_MONGODB_URL (+legacy MONGODB_URL). The ideal embedding store needs:{vector:pgvector} (VECTOR_PGVECTOR_URL) is now AVAILABLE — #1545 shipped (verified live 2026-07-16) — but this blueprint still stores embeddings in a Mongo `chunks` collection and cosine-ranks in-app; declare vector:pgvector only if you also build the retrieval on pgvector."
 summary: "A BLUEPRINT for a retrieval-augmented 'ask my docs' knowledge base — ingest documents, chunk + embed them, retrieve the nearest chunks per question, and answer grounded with citations, on persistent Next.js + Mongo + the CloudGrid AI Gateway. This is not fill-in-the-blanks app code; it ships structure + cloudgrid.yaml. Fetch the template, read AGENTS.md for the file tree / collections / RAG loop / CloudGrid wiring (needs ai+database, the pgvector note — #1545 shipped), then BUILD the app under services/web/ following it, and deploy async to a live URL (local edition only)."
 ---
 
@@ -18,7 +18,7 @@ grid's shared Mongo) with a **RAG loop**: ingest documents → chunk → embed �
 → at query time embed the question, retrieve the nearest chunks, and ask the model
 to answer using only those. It is the `app-with-data` shape plus embeddings +
 retrieval + a grounded answer step. Both the embedding and answer calls run through
-CloudGrid's **AI Gateway** (`@cloudgrid-io/ai`).
+CloudGrid's **AI Gateway** (`@cloudgrid-io/runtime`).
 
 **This is a BLUEPRINT.** Unlike a fill-in-the-blanks template, it ships
 *structure* — a `cloudgrid.yaml` and an `AGENTS.md` structure guide — not finished
@@ -85,7 +85,7 @@ needs:
 
 **App code MUST live under `services/<name>/`** — `path:` is the URL mount, NOT
 the filesystem path. **Declare `needs: { ai: true, database: true }`** (canonical)
-— the deployer injects `AI_GATEWAY_URL` (routed through `@cloudgrid-io/ai`, no API
+— the deployer injects `RUNTIME_GATEWAY_URL` (routed through `@cloudgrid-io/runtime`, no API
 key) and provisions Mongo, injecting `DATABASE_MONGODB_URL` (+ legacy
 `MONGODB_URL`). `requires:` is the deprecated v1 alias; never author it and never
 set `needs:` and `requires:` together (the validator rejects the combination).
@@ -96,24 +96,27 @@ embeddings.
 ## 5. Build the app following AGENTS.md
 
 Generate the files under `services/web/` per the guide:
-- **Lazy getters** for injected values — read `process.env.DATABASE_MONGODB_URL`
-  (legacy `MONGODB_URL` fallback) in `lib/db.js` and `process.env.AI_GATEWAY_URL`
-  in `lib/ai.js`, **inside** a getter, never at module top level (a top-level read
-  fails `next build`).
+- **Lazy Mongo getter** — read `process.env.DATABASE_MONGODB_URL` (legacy
+  `MONGODB_URL` fallback) in `lib/db.js` **inside** a getter, never at module top
+  level (a top-level read fails `next build`). `lib/ai.js` just imports
+  `@cloudgrid-io/runtime` — the SDK reads `RUNTIME_GATEWAY_URL` itself, so there is
+  no env var to read (and none to set).
 - **Ingest** (`POST /api/documents`): chunk the text (`lib/chunk.js`), `embed()`
-  the chunks via the AI Gateway, store one `chunks` doc per chunk with its
-  `embedding` array, mark the `documents` doc `ready`.
+  the chunks via `runtime.ai.embeddings({ text })` (batch; `vec.values`), store one
+  `chunks` doc per chunk with its `embedding` array, mark the `documents` doc
+  `ready`.
 - **Retrieve** (`lib/retrieve.js`): embed the question, cosine-rank the Mongo
   `chunks`, return top-k `{ text, documentId, score }` — a pure function that swaps
   cleanly to a pgvector query (now available — #1545 shipped).
 - **Answer** (`POST /api/ask`): retrieve top-k, prompt the model to answer ONLY
-  from the provided context and to cite the chunks, `chat()` via the AI Gateway,
-  return the answer plus source chunks so the UI shows **citations**.
+  from the provided context and to cite the chunks, `runtime.ai.chat({ model,
+  system, messages })` via the AI Gateway (chat needs a model; it returns
+  `{ text }`), return the answer plus source chunks so the UI shows **citations**.
 
 ## 6. Config / secrets
 
 - The AI Gateway and Mongo need **no secrets** — they are injected by `needs:`. Do
-  **NOT** set `AI_GATEWAY_URL`, `DATABASE_MONGODB_URL`, or legacy `MONGODB_URL`
+  **NOT** set `RUNTIME_GATEWAY_URL`, `DATABASE_MONGODB_URL`, or legacy `MONGODB_URL`
   yourself; the grid injects them.
 - Only if you add auth/payments: map the secret in the `vault:` block
   (`AUTH_PROVIDER_KEY` and/or `STRIPE_KEY`) and store the value with
