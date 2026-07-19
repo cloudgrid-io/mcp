@@ -1,3 +1,7 @@
+## 0.20.14
+
+- Reland of the CLI 0.15.14 docs sweep (#99 was auto-closed unmerged when its base branch was deleted; the corpus twins were briefly divergent - both drift crons caught it). Corpus now teaches grid new + plug-auto-create.
+
 ## 0.20.13
 
 - Visibility label "Your org" -> "Your grid" (+ web widget copy).
