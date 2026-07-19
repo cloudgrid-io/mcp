@@ -50,9 +50,11 @@ export function registerTools(server, ctx) {
       return result;
     } catch (err) {
       // A thrown handler must record as an ERROR — the old finally-based capture
-      // saw result=undefined and mis-recorded it as "ok". Synthesize an error
-      // result, then rethrow so the tool contract is unchanged.
-      try { ctx.logger?.recordCall(name, input, { isError: true }, Date.now() - started); } catch { /* never */ }
+      // saw result=undefined and mis-recorded it as "ok". Carry the error
+      // message so the QA log says WHY, not just "error" (diagnosability: a
+      // Songsmith hosted deploy logged a bare "error" and cost four blind
+      // reproductions). Synthesize an error result, then rethrow unchanged.
+      try { ctx.logger?.recordCall(name, input, { isError: true, errorMessage: String(err?.message || err) }, Date.now() - started); } catch { /* never */ }
       throw err;
     }
   };
