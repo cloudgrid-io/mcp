@@ -205,14 +205,15 @@ var, and `grid secrets set` stores the real value. Never inline a key.
 ## 6. Deploy steps
 
 Runtime app → **local edition** only (Claude Desktop / Claude Code / CLI); the
-hosted edition cannot build a runtime container. Order matters — `plug` needs a
-linked directory, so `init` first.
+hosted edition cannot build a runtime container.
 
-1. `grid init` (or `grid_create_project`) an app `<name>` — creates the entity +
-   `.cloudgrid/link.json` and a starter `cloudgrid.yaml` with empty `services:{}`.
-2. Fill: put the app under `services/web/` and set `cloudgrid.yaml` to this
+1. Put the app under `services/web/` and set `cloudgrid.yaml` to this
    blueprint's active fields (`services.web` nextjs `/`, `needs:{ai:true,
    database:true}`).
+2. The first `grid plug` auto-creates the entity from the manifest (honors its
+   `name:`) and writes `.cloudgrid/link.json`. To register without deploying —
+   e.g. to set secrets first — use `grid plug --no-deploy` (the
+   `grid_create_project` MCP tool does the same).
 3. (If you added auth/payments) store the vault secrets with `grid secrets set`;
    non-secret public config → `grid env`. The AI Gateway and Mongo need no secrets
    — they are injected by `needs`.

@@ -200,9 +200,10 @@ This is a built + deployed multi-service app → the **local edition** (Claude
 Desktop / Claude Code) or the CLI; the hosted edition cannot build a runtime
 container.
 
-1. `grid init semantic-search` — creates the entity + `.cloudgrid/link.json`.
-2. Put the code under `services/web/` and `services/backend/`; set `cloudgrid.yaml`
+1. Put the code under `services/web/` and `services/backend/`; set `cloudgrid.yaml`
    to the active fields (web static+build, backend python, `needs:{database:true}`).
+2. `grid plug --no-deploy` — registers the entity from the manifest (honors its
+   `name:`) and writes `.cloudgrid/link.json`, without building yet.
 3. `grid secrets set …` for embeddings + source + `MANAGER_PASSWORD_HASH` (§6).
 4. (Optional) `grid dev` to run locally against injected dev Mongo.
 5. **Build the frontend first:** `(cd services/web && npm install && npm run build)`.

@@ -61,7 +61,7 @@ No account needed to try a one-off share: `grid plug ./index.html` drops a publi
 
 ```
 # Scaffold and deploy a Node app
-grid init app my-api --type node
+grid new my-api --type node --dir my-api
 cd my-api && grid plug
 
 # Deploy the current directory and tail its logs
@@ -83,8 +83,8 @@ grid grid
 |---|---|
 | `login` / `logout` / `whoami` | Sign in (Google OAuth), sign out, show user + active org |
 | `use [slug]` | Set or show the active org |
-| `init <kind> <name>` | Register a new app or agent |
-| `plug [target]` | Build + deploy (or redeploy); prints the live URL |
+| `new <name>` | Scaffold a new app or agent project (`--type`, `--needs`, `--agent`, `--dir`); the entity is created on first `plug` |
+| `plug [target]` | Build + deploy (or redeploy); first plug auto-creates the entity from `cloudgrid.yaml`; prints the live URL |
 | `dev` | Run the linked entity locally with grid-injected resources |
 | `status [name]` | Org dashboard, entity detail, or a deploy snapshot |
 | `logs [name]` | Stream entity logs |
@@ -101,7 +101,7 @@ grid grid
 | `doctor` | Diagnostic checks (Node, Docker, API reachability, auth) |
 | `completion <shell>` | Shell completion script |
 
-Run `cloudgrid <command> --help` for the full flag set of any command.
+Run `grid <command> --help` for the full flag set of any command.
 
 ## Flags
 

@@ -93,12 +93,11 @@ Add indexes as the data grows (e.g. `items.sku` unique, `orders.status`).
 
 ## 5. Deploy (runtime, async)
 
-1. `grid init` an app `<name>` — creates the entity + `.cloudgrid/link.json` and
-   a `cloudgrid.yaml` with empty `services: {}`. Run init FIRST (plug needs a
-   linked dir).
-2. Fill `cloudgrid.yaml` to this blueprint's shape (services.web nextjs + path:/,
+1. Set `cloudgrid.yaml` to this blueprint's shape (services.web nextjs + path:/,
    `needs: { database: true }`, and the `vault:` mappings), and build the app under
    `services/web/`.
+2. `grid plug --no-deploy` — registers the entity from the manifest (honors its
+   `name:`) and writes `.cloudgrid/link.json`, without building yet.
 3. Put real secret values in the org vault so the `vault:` mappings resolve; set
    any publishable/front-end config via `grid env`.
 4. `grid plug` to deploy. A runtime deploy is **async** — the first response is

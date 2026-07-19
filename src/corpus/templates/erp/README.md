@@ -14,4 +14,5 @@ app on solid rails instead of guessing at the platform wiring.
 > (active fields: `name` + `services.web` nextjs at `path: /` + `needs:
 > { database: true }` + a `vault:` block for auth/Stripe keys), then build the
 > app under `services/web/` following the guide. Deploy is runtime + async
-> (`grid init` → fill → `grid plug` → poll to live); local edition only.
+> (write the files → `grid plug` → poll to live; the first plug auto-creates the
+> entity from `cloudgrid.yaml`); local edition only.

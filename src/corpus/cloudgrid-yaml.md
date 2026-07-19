@@ -11,8 +11,9 @@
 
 `cloudgrid.yaml` is the manifest at the **root of your project** that defines your
 entity (an app or an agent). It declares the services your entity runs, the
-infrastructure it needs, and how it behaves. `grid init` creates it; `grid plug`
-reads it to build and deploy.
+infrastructure it needs, and how it behaves. `grid new` scaffolds it; `grid plug`
+reads it to build and deploy (the first plug in an unlinked directory also
+registers the entity from it, honoring its `name:`).
 
 **Wiring a database or cache? Use `needs:`** — `needs: {database: true}` is
 canonical and the deployer injects the connection env vars from it. See §7 for the

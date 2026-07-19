@@ -20,14 +20,15 @@ init  ->  plug  ->  logs  ->  share  ->  feedback
 
 ### 1. Scaffold
 
-Register a new app and seed a static web service:
+Scaffold a new app in the current directory and seed a static web service:
 
 ```
-grid init app my-thing --type static
+grid new my-thing --type static
 ```
 
-`--type` accepts `node`, `nextjs`, `python`, or `static`. For an agent, use
-`grid init agent my-thing`.
+`--type` accepts `node`, `nextjs`, `python`, or `static`; `--dir <path>` targets a
+different folder. For an agent, use `grid new my-thing --agent`. Scaffolding is
+local-only — the entity is created on the first `grid plug`.
 
 ### 2. Deploy
 
@@ -37,6 +38,8 @@ From the project directory, deploy it:
 grid plug
 ```
 
+The first plug auto-creates the entity from `cloudgrid.yaml` (honoring its
+`name:`) and writes `.cloudgrid/link.json`.
 `grid plug` also takes a path or a URL. It builds and deploys, then prints the
 live URL. This usually takes about 30 seconds.
 

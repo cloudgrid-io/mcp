@@ -30,7 +30,8 @@ Runtime app → **local edition only**, async deploy (poll to a live URL).
 
 Fetch this blueprint with `grid_get_template("template", "hr-portal")`. It returns
 `cloudgrid.yaml`, `AGENTS.md` (the structure guide), and this README — no app
-code. Follow `AGENTS.md` to build, then `grid init → fill → grid plug → poll`.
+code. Follow `AGENTS.md` to build, then `grid plug → poll` (the first plug
+auto-creates the entity from `cloudgrid.yaml`).
 
 ## cloudgrid.yaml
 

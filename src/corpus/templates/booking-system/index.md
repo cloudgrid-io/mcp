@@ -68,8 +68,8 @@ The heart of this blueprint. Read it before building. It covers:
 4. **Auth + payments wiring** — provider SDK from `AUTH_PROVIDER_KEY`; Stripe
    checkout + signature-verified webhook from `STRIPE_KEY` /
    `STRIPE_WEBHOOK_SECRET`.
-5. **Deploy steps** — `grid init` → fill → `grid secrets set` → `grid plug` →
-   poll to live.
+5. **Deploy steps** — write the files → `grid plug --no-deploy` →
+   `grid secrets set` → `grid plug` → poll to live.
 6. **Edition note** — runtime app → local edition only (hosted is static-only).
 7. **Reminder cron** — intended shape + the platform-issue-#1543 PENDING note and
    stopgap.

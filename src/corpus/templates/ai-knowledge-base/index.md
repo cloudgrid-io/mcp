@@ -70,7 +70,8 @@ and read it. It covers the `services/web/` file tree, the `documents` / `chunks`
 collections, the CloudGrid injection table (needs + AI Gateway + the pgvector note),
 the ingest → retrieve → answer RAG loop with lazy `lib/db.js` / `lib/ai.js` /
 `lib/retrieve.js`, optional auth/payments via `vault:`, and the
-`grid init → fill → grid plug → poll` deploy flow.
+`write files → grid plug → poll` deploy flow (the first plug auto-creates the
+entity from `cloudgrid.yaml`).
 
 ## Adapt it
 

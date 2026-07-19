@@ -94,7 +94,8 @@ needs:
 
 ## Configure + deploy
 
-1. `grid init semantic-search` — creates the entity + `.cloudgrid/link.json`.
+1. `grid plug --no-deploy` — registers the entity from `cloudgrid.yaml` (honors
+   its `name:`) and writes `.cloudgrid/link.json`, without building yet.
 2. `grid secrets set EMBEDDINGS_API_KEY=sk-…` plus the source secrets
    (`SOURCE_TYPE` + Dropbox/local/url config) and `MANAGER_PASSWORD_HASH`
    (sha256 hex of the manager password). See `AGENTS.md`.
