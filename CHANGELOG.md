@@ -1,4 +1,4 @@
-## 0.20.12 (unreleased)
+## 0.20.12
 
 - **PLAYBOOK is now markdown** (`src/corpus/playbook.md`), loaded at startup —
   a backticked word once terminated the old template literal and broke the
