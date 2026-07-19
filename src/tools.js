@@ -36,5 +36,5 @@ export {
   runFork,
   runSource,
 } from "./tools/deploy.js";
-export { registerTools } from "./tools/register.js";
+export { registerTools, buildCreateProjectArgs } from "./tools/register.js";
 export { decodeJwt } from "./auth.js";

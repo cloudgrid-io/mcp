@@ -68,7 +68,7 @@ export const CLI_NPX_PKG = "@cloudgrid-io/cli@latest";
 // server-side with HTTP 426) — a gate below the floor green-lights CLIs the API
 // rejects on every call (issue #59). Bump this in lockstep with every floor
 // raise (CLI release protocol checklist).
-export const MIN_CLI_VERSION = "0.15.2";
+export const MIN_CLI_VERSION = "0.15.14";
 
 // Upload/create POST budget. The build itself is async (server returns 202 +
 // poll_url); this bounds only the request→response, so a stalled server errors
