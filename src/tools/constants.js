@@ -31,7 +31,7 @@ export const CONSOLE_URL = "https://console.cloudgrid.io/";
 
 export const VISIBILITY_LABELS = {
   private: "Only you",
-  org: "Your org",
+  org: "Your grid",
   authenticated: "Anyone signed in",
   space: "A space",
   link: "Anyone with the link",
