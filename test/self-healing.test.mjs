@@ -117,6 +117,7 @@ try {
   // 409 edit-rejected and 401 edit → have concise guidance.
   check("409 → guidance present", /cannot be updated right now/.test(errorGuidance({ status: 409, isEdit: true }) || ""));
   check("401 edit → guidance mentions authorization", /did not authorize|Sign in/.test(errorGuidance({ status: 401, isEdit: true }) || ""));
+  check("401 create → offers the anonymous fallback (not-authenticated flow)", /publish anonymously now|anon: true/.test(errorGuidance({ status: 401, isEdit: false }) || ""));
 
   // UNKNOWN 4xx codes pass through unchanged (null) — they're client-side
   // conditions, not bugs, so no rewriting and no report offer.
