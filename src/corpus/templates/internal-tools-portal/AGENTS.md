@@ -173,12 +173,11 @@ middleware (Stripe calls it unauthenticated; verify the Stripe signature instead
 
 A runtime deploy is **async** and needs the **local edition** (see below).
 
-1. **`grid init`** an app named `internal-tools-portal` — creates the entity +
-   `.cloudgrid/link.json` and a `cloudgrid.yaml` with an empty `services: {}`.
-   Run `init` FIRST (`plug` needs a linked directory).
-2. **Fill** the code under `services/web/` and set `cloudgrid.yaml` to the active
-   shape: `name` + `services.web { type: nextjs, path: / }` + `needs:
-   { database: true }` + the `vault:` auth-key map.
+1. **Write** the code under `services/web/` and set `cloudgrid.yaml` to the active
+   shape: `name: internal-tools-portal` + `services.web { type: nextjs, path: / }`
+   + `needs: { database: true }` + the `vault:` auth-key map.
+2. **`grid plug --no-deploy`** — registers the entity from the manifest (honors
+   its `name:`) and writes `.cloudgrid/link.json`, without building yet.
 3. **Create the vault items** the `vault:` block references (the auth provider's
    secret + publishable keys, plus any per-tool API secrets). `grid secrets` /
    vault UI — never commit them.

@@ -147,12 +147,11 @@ specifics:
 
 A runtime deploy is **async** and needs the **local edition** (see below).
 
-1. **`grid init`** an app named `hr-portal` — creates the entity +
-   `.cloudgrid/link.json` and a `cloudgrid.yaml` with an empty `services: {}`.
-   Run `init` FIRST (`plug` needs a linked directory).
-2. **Fill** the code under `services/web/` and set `cloudgrid.yaml` to the active
-   shape: `name` + `services.web { type: nextjs, path: / }` + `needs:
+1. **Write** the code under `services/web/` and set `cloudgrid.yaml` to the active
+   shape: `name: hr-portal` + `services.web { type: nextjs, path: / }` + `needs:
    { database: true }` + the `vault:` auth-key map.
+2. **`grid plug --no-deploy`** — registers the entity from the manifest (honors
+   its `name:`) and writes `.cloudgrid/link.json`, without building yet.
 3. **Create the vault items** the `vault:` block references (the auth provider's
    secret + publishable keys). `grid secrets` / vault UI — never commit them.
 4. **(Optional) `grid dev`** to run locally against the injected dev Mongo + the

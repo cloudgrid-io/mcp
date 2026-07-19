@@ -169,9 +169,10 @@ build is **asynchronous**.
 
 1. `grid_login_status` (→ `grid_login` if needed). Pick the grid if the
    user has more than one.
-2. `grid_create_project` an app `<name>` — creates the entity + `.cloudgrid/link.json`
-   and a `cloudgrid.yaml` with empty `services: {}`. Run `init` FIRST (plug needs
-   a linked dir).
+2. `grid_create_project` an app `<name>` — scaffolds the project folder and a
+   `cloudgrid.yaml` with empty `services: {}`. No server entity exists yet — the
+   first plug auto-creates it from the manifest (honoring its `name:`) and
+   writes `.cloudgrid/link.json`.
 3. **Fill** — write the app under `services/web/`, then set `cloudgrid.yaml` to
    this blueprint's active fields: `name`, `services.web { type: nextjs, path: / }`,
    `needs: { database: true }`, and the `vault:` mappings you actually use.

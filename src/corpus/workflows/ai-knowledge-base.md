@@ -65,9 +65,11 @@ There is no app code to copy — you generate it from the guide.
 
 ## 4. Scaffold + fill cloudgrid.yaml
 
-`grid_create_project` an app `<name>` FIRST (creates the entity + `.cloudgrid/link.json`
-and a starter `cloudgrid.yaml` with empty `services:{}`; `plug` needs a linked
-directory). Then put the app under **`services/web/`** and set `cloudgrid.yaml` to
+`grid_create_project` an app `<name>` — it scaffolds the project folder and a
+starter `cloudgrid.yaml` with empty `services:{}` (no server entity yet; the
+first `grid plug` auto-creates it from the manifest, honoring its `name:`, and
+writes `.cloudgrid/link.json`). Then put the app under **`services/web/`** and
+set `cloudgrid.yaml` to
 the blueprint's active fields:
 
 ```yaml

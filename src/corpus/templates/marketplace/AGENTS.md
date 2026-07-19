@@ -178,14 +178,14 @@ export function stripe() {
 ## 5. Deploy steps
 
 Runtime app → **local edition** only (Claude Desktop / Claude Code / CLI); the
-hosted edition cannot build a runtime container. Order matters — `plug` needs a
-linked directory, so `init` first.
+hosted edition cannot build a runtime container.
 
-1. `grid init` (or `grid_create_project`) an app `<name>` — creates the entity +
-   `.cloudgrid/link.json` and a starter `cloudgrid.yaml` with empty `services:{}`.
-2. Fill: put the app under `services/web/` and set `cloudgrid.yaml` to this
+1. Put the app under `services/web/` and set `cloudgrid.yaml` to this
    blueprint's active fields (`services.web` nextjs `/`, `needs:{database:true}`,
    the `vault:` block).
+2. `grid plug --no-deploy` — registers the entity from the manifest (honors its
+   `name:`) and writes `.cloudgrid/link.json`, without building yet (the
+   `grid_create_project` MCP tool does the same).
 3. Store the secrets the vault block maps:
    `grid secrets set stripe-live-key sk_live_…`,
    `grid secrets set stripe-webhook-secret whsec_…`,

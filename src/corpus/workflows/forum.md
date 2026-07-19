@@ -62,10 +62,11 @@ edition** (Claude Desktop / Claude Code) or the CLI.
    `AGENTS.md` — it defines the file tree, the `threads` / `posts` / `users`
    collections + fields, the nesting model, and the CloudGrid wiring. This is the
    spec you build to.
-2. `grid_create_project` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
-   and writes a `cloudgrid.yaml` with an EMPTY `services: {}`. `plug` needs a
-   linked directory, so run `init` FIRST. Then write the app under
-   **`services/web/`** and fill `cloudgrid.yaml` to the shape below.
+2. `grid_create_project` an app `<name>`. It scaffolds the project folder and
+   writes a `cloudgrid.yaml` with an EMPTY `services: {}`. No server entity
+   exists yet — the first `grid plug` auto-creates it from the manifest
+   (honoring its `name:`) and writes `.cloudgrid/link.json`. Then write the app
+   under **`services/web/`** and fill `cloudgrid.yaml` to the shape below.
 
 ## 4. Build the app + wire Mongo, auth, moderation
 

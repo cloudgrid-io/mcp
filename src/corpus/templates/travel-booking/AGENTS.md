@@ -152,12 +152,11 @@ webhook signing secret as `STRIPE_WEBHOOK_SECRET`; read both lazily in
 
 ## 5. Deploy steps
 
-1. `grid init` — scaffolds the entity + `.cloudgrid/link.json`; writes a
-   `cloudgrid.yaml` with an empty `services: {}`. Run this FIRST (plug needs a
-   linked directory).
-2. Fill it in: build the files under `services/web/` and set `cloudgrid.yaml` to
+1. Build the files under `services/web/` and set `cloudgrid.yaml` to
    this template's shape (`services.web` nextjs + `needs: { database: true }` +
    the `vault:` block).
+2. `grid plug --no-deploy` — registers the entity from the manifest (honors its
+   `name:`) and writes `.cloudgrid/link.json`, without building yet.
 3. `grid secrets set stripe-live-key <sk_live_…>` and the other vault items
    (`stripe-webhook-secret`, `auth-provider-key`), so the `vault:` mappings
    resolve at deploy.

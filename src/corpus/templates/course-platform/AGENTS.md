@@ -132,12 +132,11 @@ Use a hosted auth provider SDK (e.g. Clerk or Auth0) rather than rolling your ow
 
 A runtime deploy is **asynchronous** and requires the **local edition** (§6).
 
-1. **`grid init`** an app named `course-platform`. `init` creates the entity +
-   `.cloudgrid/link.json` and writes a `cloudgrid.yaml` with an empty
-   `services: {}`. Run it FIRST — `plug` needs a linked directory.
-2. **Fill** — replace the generated `cloudgrid.yaml` with the one in this template
+1. **Write the manifest + app** — use the `cloudgrid.yaml` from this template
    (name + vault + `services.web` nextjs + `needs: { database: true }`), and write
    the app under `services/web/` per the tree above.
+2. **`grid plug --no-deploy`** — registers the entity from the manifest (honors
+   `name: course-platform`) and writes `.cloudgrid/link.json`, without building yet.
 3. **Set secrets** — `grid secrets set stripe-live-key`,
    `grid secrets set stripe-webhook-secret`, `grid secrets set auth-provider-key`.
    Set non-secret client config with `grid env` (e.g. the auth publishable key).

@@ -163,9 +163,10 @@ you want client accounts.
 
 1. `grid_login_status` → `grid_login` if needed. Respect the grid picker
    (ask which grid if the user has more than one).
-2. `grid_create_project` an app `<name>` FIRST — it creates the entity, writes
-   `.cloudgrid/link.json`, and a `cloudgrid.yaml` with empty `services: {}`.
-   `plug` needs a linked directory.
+2. `grid_create_project` an app `<name>` — it scaffolds the project folder and
+   a `cloudgrid.yaml` with empty `services: {}`. No server entity exists yet —
+   the first plug auto-creates it from the manifest (honoring its `name:`) and
+   writes `.cloudgrid/link.json`.
 3. Write the app under `services/web/` and set `cloudgrid.yaml` to the active
    shape: `name` + `services.web{type: nextjs, path: /}` + `needs:{database:true}`
    + the `vault:` block. (Leave the `reminders` cron service COMMENTED — see §7.)

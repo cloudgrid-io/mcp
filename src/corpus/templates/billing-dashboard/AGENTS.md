@@ -160,12 +160,11 @@ publicly.
 
 ## 5. Deploy steps
 
-1. `grid init` an app `<name>` (creates the entity + `.cloudgrid/link.json`, writes
-   a `cloudgrid.yaml` with empty `services: {}`). Run this FIRST — `plug` needs a
-   linked directory.
-2. Write the app under `services/web/` and set `cloudgrid.yaml` to the shape in this
+1. Write the app under `services/web/` and set `cloudgrid.yaml` to the shape in this
    template (name + `services.web` nextjs + `needs: { database: true }` + the
    `vault: { STRIPE_KEY: stripe-live-key }` block).
+2. `grid plug --no-deploy` — registers the entity from the manifest (honors its
+   `name:`) and writes `.cloudgrid/link.json`, without building yet.
 3. `grid secrets set stripe-live-key` (and `stripe-webhook-secret` once you map it)
    so the vault items the `vault:` block references exist. Do NOT set
    `DATABASE_MONGODB_URL` yourself — the grid injects it.

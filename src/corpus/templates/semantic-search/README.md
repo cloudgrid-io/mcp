@@ -63,7 +63,7 @@ search / indexing degrade to a clear "not indexed / missing secret" state.
 ## Deploy (manager does this)
 
 ```bash
-grid init semantic-search   # creates the entity + .cloudgrid/link.json
+grid plug --no-deploy       # registers the entity from cloudgrid.yaml + writes .cloudgrid/link.json
 grid secrets set EMBEDDINGS_API_KEY=sk-...   # + source secrets + MANAGER_PASSWORD_HASH
 
 # Build the static frontend BEFORE plug — CloudGrid validates that a

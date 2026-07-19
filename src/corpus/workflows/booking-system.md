@@ -52,9 +52,10 @@ edition** (Claude Desktop / Claude Code) or the CLI.
    `services` / `availabilityRules` / `bookings` collections + the double-booking
    guard, how CloudGrid injects the DB and vault secrets, how to wire Stripe +
    auth, and the reminder-cron design).
-2. `grid_create_project` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
-   and writes a `cloudgrid.yaml` with an EMPTY `services: {}`. `plug` needs a
-   linked directory, so run `init` FIRST.
+2. `grid_create_project` an app `<name>`. It scaffolds the project folder and
+   writes a `cloudgrid.yaml` with an EMPTY `services: {}`. No server entity
+   exists yet — the first `grid plug` auto-creates it from the manifest
+   (honoring its `name:`) and writes `.cloudgrid/link.json`.
 
 ## 4. Build the app + set cloudgrid.yaml
 

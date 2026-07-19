@@ -39,7 +39,8 @@ services/web/src/document.txt       # the content to index — replace with the 
 
 ## What the CLI writes for you: `.cloudgrid/link.json`
 
-After `grid init app <name> --here` (or the first `grid plug`), the CLI binds
+On the first `grid plug` (which auto-creates the entity from `cloudgrid.yaml`,
+honoring its `name:`), the CLI binds
 the folder to its grid entity by writing `.cloudgrid/link.json`. It looks like:
 
 ```json
@@ -55,20 +56,22 @@ the folder to its grid entity by writing `.cloudgrid/link.json`. It looks like:
 ```
 
 **Never hand-author or copy this file** — the CLI writes it, and every value is
-minted at init time (the slug gets a 4-hex suffix). Two practical consequences:
+minted when the entity is first registered (the slug gets a 4-hex suffix). Two
+practical consequences:
 
 - A folder **with** `.cloudgrid/link.json` is bound: `grid plug` UPDATES that
   entity. To fork someone else's project into your own app, `rm -rf .cloudgrid`
-  (and remove any `name:` you don't own from `cloudgrid.yaml`), then
-  `grid init app <your-name> --here` for a fresh identity.
+  (and remove any `name:` you don't own from `cloudgrid.yaml`) — the next
+  `grid plug` mints a fresh identity.
 - `link.json` is why identity does NOT belong in `cloudgrid.yaml` — the
   manifest describes the app; the link binds the folder.
 
 ## Deploy
 
 ```bash
-grid init app <name> --here     # once, registers the entity + writes .cloudgrid/link.json
-grid plug                       # build + deploy, async — live URL in ~2-3 min
+grid plug                       # first plug registers the entity from cloudgrid.yaml
+                                # + writes .cloudgrid/link.json, then builds + deploys
+                                # (async — live URL in ~2-3 min)
 grid visibility set <slug> link # default is grid-only (403 outside the org)
 ```
 

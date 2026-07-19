@@ -94,7 +94,7 @@ CLI uses, so the two share one identity.
 
 | Tool | Wraps | Notes |
 |---|---|---|
-| `grid_create_project` | `grid init` | Register an app or agent; optionally seed a web service. |
+| `grid_create_project` | `grid new` | Scaffold an app or agent project; optionally seed a web service. |
 | `grid_view_logs` | `grid logs` | Snapshot of recent logs. Does not stream. Read-only. (`grid_logs` is a kept deprecated alias.) |
 | `grid_share` | `grid visibility set` | Set visibility, default link. |
 | `grid_whoami` | `grid whoami` | Show the signed-in user and active grid. Read-only. |
