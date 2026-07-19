@@ -845,7 +845,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_create_project",
-    "Register a new CloudGrid app or agent, optionally seeding a web service. Wraps `grid init`.",
+    "Register a new CloudGrid app or agent, optionally seeding a web service. Wraps `grid new` (`init` remains an alias).",
     {
       kind: z.enum(["app", "agent"]).describe("Entity kind."),
       name: z.string().describe("Slug: 3-40 lowercase alphanumerics and hyphens."),
