@@ -1462,7 +1462,7 @@ export async function runPlug(ctx, input, deps = {}) {
     lines.push(`Updated in place: ${url}`);
   } else if (isInspirationCreate) {
     // Authed inspiration create — owned by the caller. Wording mirrors the drop verb.
-    lines.push(ctx.edition === "web" ? `Your app is live: ${url}` : `Published to your org: ${url}`);
+    lines.push(ctx.edition === "web" ? `Your app is live: ${url}` : `Published to your grid: ${url}`);
     if (ctx.edition !== "web") lines.push("Owned by you.");
   } else {
     lines.push(`Live: ${url}`);
