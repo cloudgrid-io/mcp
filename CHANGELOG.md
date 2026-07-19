@@ -1,3 +1,8 @@
+## 0.20.13
+
+- Visibility label "Your org" -> "Your grid" (+ web widget copy).
+- Docs sweep: the corpus teaches the CLI 0.15.14 ritual - grid new (no --here) and grid plug auto-creating the entity from cloudgrid.yaml on first plug; 90 files. Twin sweep in skills 0.14.18.
+
 ## 0.20.12
 
 - **PLAYBOOK is now markdown** (`src/corpus/playbook.md`), loaded at startup —
