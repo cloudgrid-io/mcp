@@ -44,12 +44,12 @@ copy("manifest.json");
 copy("package.json");
 copy("package-lock.json");
 copy("LICENSE");
-copy("src/index.js");
-copy("src/auth.js");
-copy("src/tools.js");
-copy("src/cli-shim.mjs"); // runCloudgrid spawns the bundled CLI through this shim
-copy("src/widgets");
-copy("src/corpus"); // grid_fetch reads the bundled corpus (workflows/templates/examples/docs)
+// Copy the ENTIRE src tree (matches package.json "files": ["src"], the npm
+// allowlist that has always worked). A hand-maintained file list rotted when
+// tools.js was split into src/tools/*.js (0.20.12): the barrel shipped without
+// its modules, so the .mcpb crashed on boot with ERR_MODULE_NOT_FOUND and
+// Desktop reported "MCP CloudGrid could not connect". Never allowlist src again.
+copy("src"); // index.js, tools.js + tools/, playbook.js, corpus/, widgets/, cli-shim, auth, session-logger, log-sink, …
 copy("assets/cloudgrid-icon-512.png");
 
 // Install production deps (clean, no dev deps, no scripts to avoid side-effects)
