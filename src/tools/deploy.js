@@ -1642,7 +1642,7 @@ export async function runVisibility(ctx, { target, visibility, kind, org }) {
     headers["X-CloudGrid-Org"] = orgSlug;
   }
 
-  // Two visibility surfaces with two vocabularies (Decision 041 / Backlog 118):
+  // Two visibility surfaces with two vocabularies:
   //   - inspirations: PATCH /api/v2/inspirations/:id       { private|space|authenticated|org|link }
   //   - runtimes:     PATCH /api/v2/entities/:id/visibility { private|authenticated|grid|link }
   // Whole-grid visibility is the legacy `org` on inspirations and the canonical
