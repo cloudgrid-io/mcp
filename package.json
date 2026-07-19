@@ -54,7 +54,7 @@
     "@modelcontextprotocol/sdk": "^1.0.0",
     "express": "^4.22.2",
     "fflate": "^0.8.3",
-    "zod": "^3.23.0"
+    "zod": "^4.4.3"
   },
   "license": "Apache-2.0",
   "homepage": "https://github.com/cloudgrid-io/mcp",
