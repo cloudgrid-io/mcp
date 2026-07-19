@@ -1,3 +1,7 @@
+## 0.20.21
+
+- fix(corpus): the ai-app/ai-knowledge-base templates now use @cloudgrid-io/runtime + runtime.ai.chat({ model, ... }) reading RUNTIME_GATEWAY_URL, replacing the stale @cloudgrid-io/ai + dead AI_GATEWAY_URL that made every built AI app fail with AI_UNAVAILABLE 404 (user reports: Tamir, Nataly). Reserved-env-var list + capability-map + all template manifests updated; archetypes test asserts the new SDK.
+
 ## 0.20.20
 
 - QA session log now records the error REASON (scrubbed) under a failed call, not just "error" - a hosted deploy failure previously logged no cause. Captured from both the throw and fail-result paths; scrubText hardened for Anthropic (sk-ant-) keys.
