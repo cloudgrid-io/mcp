@@ -13,5 +13,5 @@ survive refresh and be shared across the team — not a static page.
 Mongo collections, how CloudGrid injects the DB (`DATABASE_MONGODB_URL`) and the
 vault-backed auth keys, how to wire staff-only auth + RBAC (roles on the `staff`
 record, server-side checks per tool, the tool registry in `lib/tools.js`), and the
-`grid init → fill → grid plug → poll` deploy flow — then adapt it and build the app
-following it.
+`write files → grid plug → poll` deploy flow (the first plug auto-creates the
+entity from `cloudgrid.yaml`) — then adapt it and build the app following it.

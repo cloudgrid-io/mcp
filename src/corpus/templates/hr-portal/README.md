@@ -10,5 +10,6 @@ users — not a static page.
 **This is a blueprint: structure + cloudgrid.yaml, not filled app code.** Read
 `AGENTS.md` for the full structure guide — the `services/web/` file tree, the
 Mongo collections, how CloudGrid injects the DB (`DATABASE_MONGODB_URL`) and the
-vault-backed auth keys, how to wire auth roles, and the `grid init → fill → grid
-plug → poll` deploy flow — then adapt it and build the app following it.
+vault-backed auth keys, how to wire auth roles, and the `write files → grid plug
+→ poll` deploy flow (the first plug auto-creates the entity from
+`cloudgrid.yaml`) — then adapt it and build the app following it.

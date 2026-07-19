@@ -169,9 +169,10 @@ A forum is a runtime (built + deployed container) app — **local edition**
 
 1. `grid_login_status` → `grid_login` if needed. Respect the grid picker
    (ask which grid if the user has more than one).
-2. `grid_create_project` an app `<name>` — creates the entity + `.cloudgrid/link.json`
-   and a `cloudgrid.yaml` with empty `services: {}`. Run `init` FIRST (`plug`
-   needs a linked dir).
+2. `grid_create_project` an app `<name>` — scaffolds the project folder and a
+   `cloudgrid.yaml` with empty `services: {}`. No server entity exists yet — the
+   first plug auto-creates it from the manifest (honoring its `name:`) and
+   writes `.cloudgrid/link.json`.
 3. Write the app under `services/web/` per §1, then fill `cloudgrid.yaml` to the
    active shape: `name`, `services.web { type: nextjs, path: / }`, `needs:
    { database: true }`, and the `vault:` mappings for the auth keys.

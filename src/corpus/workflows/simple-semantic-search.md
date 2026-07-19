@@ -5,7 +5,7 @@ needs: vector, ai
 deploy: runtime
 editions: local
 capabilities_note: "vector search — needs: { vector: pgvector } (injects VECTOR_PGVECTOR_URL; #1545 shipped, verified live 2026-07-16) + ai: true (embeddings via @cloudgrid-io/runtime, no API key). Runtime app, async build, local edition only."
-summary: "One node service that embeds a document into the entity's own pgvector schema at startup and serves POST /search + a minimal UI — probe-sized vector column, idempotent background seed, /health 503-until-ready, cosine <=> ranking. grid init app --here, grid plug, live in ~3 minutes."
+summary: "One node service that embeds a document into the entity's own pgvector schema at startup and serves POST /search + a minimal UI — probe-sized vector column, idempotent background seed, /health 503-until-ready, cosine <=> ranking. grid plug (auto-creates the entity from cloudgrid.yaml), live in ~3 minutes."
 ---
 
 # Workflow: simple-semantic-search
@@ -47,13 +47,13 @@ services:
 ## 4. Deploy
 
 ```bash
-grid init app <name> --here    # registers the entity, writes .cloudgrid/link.json
-grid plug                      # async build — live URL in ~2-3 minutes
+grid plug                      # first plug registers the entity from cloudgrid.yaml
+                               # (honors its name:), then async build — live URL in ~2-3 minutes
 grid visibility set <slug> link
 ```
 
-`.cloudgrid/link.json` (entity_id / org / slug binding) is WRITTEN BY THE CLI —
-never hand-author it. If the folder was copied from someone else's project,
+`.cloudgrid/link.json` (entity_id / org / slug binding) is WRITTEN BY THE CLI on
+the first `grid plug` — never hand-author it. If the folder was copied from someone else's project,
 `rm -rf .cloudgrid` first so `grid plug` doesn't update THEIR app.
 
 ## 5. Verify like it's real

@@ -197,14 +197,15 @@ guarded by a shared secret from the vault), instead of a `type: cron` service.
 ## 6. Deploy steps
 
 Runtime app → **local edition** only (Claude Desktop / Claude Code / CLI); the
-hosted edition cannot build a runtime container. Order matters — `plug` needs a
-linked directory, so `init` first.
+hosted edition cannot build a runtime container.
 
-1. `grid init` (or `grid_create_project`) an app `<name>` — creates the entity +
-   `.cloudgrid/link.json` and a starter `cloudgrid.yaml` with empty `services:{}`.
-2. Fill: put the app under `services/web/` and set `cloudgrid.yaml` to this
+1. Put the app under `services/web/` and set `cloudgrid.yaml` to this
    blueprint's active fields (`services.web` nextjs `/`, `needs:{database:true}`).
    Uncomment a `vault:` entry only if you added auth / payments / reminders.
+2. The first `grid plug` auto-creates the entity from the manifest (honors its
+   `name:`) and writes `.cloudgrid/link.json`. To register without deploying —
+   e.g. to set secrets first — use `grid plug --no-deploy` (the
+   `grid_create_project` MCP tool does the same).
 3. (If you mapped vault items) store the values:
    `grid secrets set <vault-item-key> <value>`. Non-secret public config → `grid env`.
    Do NOT set `DATABASE_MONGODB_URL` / `MONGODB_URL` yourself — the grid injects them.

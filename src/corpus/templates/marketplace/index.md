@@ -64,7 +64,8 @@ and read it. It covers the `services/web/` file tree, the `vendors` / `listings`
 `orders` collections, the CloudGrid injection table (needs + vault + AI gateway),
 how to wire auth (Clerk/Auth0 + roles) and payments (Stripe Connect onboarding,
 Checkout with `application_fee` + `transfer_data.destination`, and the signed
-webhook), and the `grid init → fill → secrets set → grid plug → poll` deploy flow.
+webhook), and the `write files → grid plug --no-deploy → secrets set → grid plug
+→ poll` deploy flow.
 
 ## Adapt it
 

@@ -42,9 +42,11 @@ the **local edition** (Claude Desktop / Claude Code) or the CLI.
 
 ## 3. Scaffold
 
-`grid_create_project` an app `<name>` FIRST — it creates the entity +
-`.cloudgrid/link.json` and a starter `cloudgrid.yaml` with empty `services: {}`
-(`plug` needs a linked directory).
+`grid_create_project` an app `<name>` — it scaffolds the project folder and a
+starter `cloudgrid.yaml` with empty `services: {}`. No server entity exists yet:
+the first `grid plug` auto-creates it from the manifest (honoring its `name:`)
+and writes `.cloudgrid/link.json`; `grid plug --no-deploy` registers it without
+deploying (useful to set secrets first).
 
 ## 4. Fetch the template and READ AGENTS.md
 

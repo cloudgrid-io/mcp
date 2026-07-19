@@ -54,9 +54,10 @@ deploy steps.
 
 ## 4. Scaffold
 
-`grid_create_project` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
-and writes a `cloudgrid.yaml` with an EMPTY `services: {}`. `plug` needs a linked
-directory, so run `init` FIRST. Then (a) build the app under **`services/web/`**
+`grid_create_project` an app `<name>`. It scaffolds the project folder and writes a `cloudgrid.yaml` with an EMPTY
+`services: {}`. No server entity exists yet — the first `grid plug` auto-creates
+it from the manifest (honoring its `name:`) and writes `.cloudgrid/link.json`.
+Then (a) build the app under **`services/web/`**
 following `AGENTS.md`, and (b) fill `cloudgrid.yaml` to the shape below.
 
 ## 5. Build the app + set cloudgrid.yaml

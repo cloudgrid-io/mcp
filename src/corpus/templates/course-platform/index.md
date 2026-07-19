@@ -65,6 +65,7 @@ needs:
 ## Build it
 
 Read `AGENTS.md` for the full file tree, collection fields, env/vault wiring, auth
-+ Stripe route contracts, and deploy steps. Then scaffold (`grid init`), write the
-app under `services/web/`, set secrets (`grid secrets set …`), and `grid plug`
-(async — poll to a live URL). Re-plug the same entity to iterate.
++ Stripe route contracts, and deploy steps. Then write the app under
+`services/web/`, register it (`grid plug --no-deploy`), set secrets
+(`grid secrets set …`), and `grid plug` (async — poll to a live URL). Re-plug the
+same entity to iterate.

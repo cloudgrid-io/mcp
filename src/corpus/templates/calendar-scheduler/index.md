@@ -66,7 +66,8 @@ and read it. It covers the `services/web/` file tree, the `events` / `availabili
 / `bookings` collections, the CloudGrid injection table (needs + optional vault +
 AI gateway), how to wire optional auth (Clerk/Auth0 + `ownerId`) and payments
 (Stripe Checkout + signed webhook), the intended cron reminder job shape (blocked
-on #1543), and the `grid init → fill → secrets set → grid plug → poll` deploy flow.
+on #1543), and the `write files → grid plug --no-deploy → secrets set → grid plug
+→ poll` deploy flow.
 
 ## Adapt it
 

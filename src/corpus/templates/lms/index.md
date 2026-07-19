@@ -73,7 +73,7 @@ needs:
 ## Build it
 
 Read `AGENTS.md` for the full file tree, collection fields, env/vault wiring, the
-instructor/student role gates + grading loop, and deploy steps. Then scaffold
-(`grid init`), write the app under `services/web/`, set secrets
+instructor/student role gates + grading loop, and deploy steps. Then write the
+app under `services/web/`, register it (`grid plug --no-deploy`), set secrets
 (`grid secrets set auth-provider-key`), and `grid plug` (async — poll to a live
 URL). Re-plug the same entity to iterate.

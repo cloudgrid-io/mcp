@@ -3,16 +3,18 @@ version: 0.2.0
 name: init
 description: |
   Scaffold a new CloudGrid app or agent. Use when the user wants to start a new
-  project, create a new entity, set up a new app or agent, or seed a web service
-  (node, nextjs, python, or static) before deploying. Wraps grid init.
-argument-hint: "[app|agent] [name]"
+  project, set up a new app or agent, or seed a web service
+  (node, nextjs, python, or static) before deploying. Wraps grid new.
+argument-hint: "[name] [--agent]"
 allowed-tools: Bash
 ---
 
 # CloudGrid Init
 
-Register a new app or agent in the active org and, optionally, seed a web service
-to deploy. Wraps `grid init`. After this, `cloudgrid:plug` deploys it.
+Scaffold a new app or agent project and, optionally, seed a web service to
+deploy. Wraps `grid new`. Scaffolding is local-only — no server entity exists
+until the first `grid plug`, which auto-creates it from `cloudgrid.yaml`. After
+this, `cloudgrid:plug` deploys it.
 
 ## Step 0 — Bootstrap
 
@@ -32,40 +34,42 @@ to deploy. Wraps `grid init`. After this, `cloudgrid:plug` deploys it.
 You need two things: the kind and the name.
 
 - **Kind:** `app` or `agent`. Default to `app` unless the user describes an agent
-  (something that acts on its own, calls tools, or runs on a schedule).
+  (something that acts on its own, calls tools, or runs on a schedule). For an
+  agent, pass `--agent` (an app with an `agent:` block is an agent).
 - **Name:** a slug, 3 to 40 lowercase letters, numbers, or hyphens. If the user
   gives a title, derive a slug from it. Confirm the slug before running.
 
 Optional, only if the user implies them:
 
 - `--type` to seed a web service: `node`, `nextjs`, `python`, or `static`.
-- `--dir` to scaffold somewhere other than `./<name>`.
-- `--description` for a one-line description.
+- `--dir <path>` to scaffold somewhere other than the current directory.
+- `--needs <list>` to pre-declare resources (e.g. `database,cache`).
 
 ## Usage
 
-Register an app and seed a static site:
+Scaffold an app in the current directory and seed a static site:
 
 ```
-grid init app my-thing --type static
+grid new my-thing --type static
 ```
 
-Register an agent:
+Scaffold an agent:
 
 ```
-grid init agent my-helper
+grid new my-helper --agent
 ```
 
-Register without seeding any files (you will add your own):
+Scaffold without seeding any files (you will add your own):
 
 ```
-grid init app my-thing
+grid new my-thing
 ```
 
-## After init
+## After scaffolding
 
-Tell the user the entity is registered and what is next: `cd` into the directory
-(if seeded) and run `grid plug` to deploy. Hand off to `cloudgrid:plug`.
+Tell the user the project is set up and what is next: run `grid plug` to deploy —
+the first plug creates the entity from `cloudgrid.yaml` and takes it live. Hand
+off to `cloudgrid:plug`.
 
 ## References
 
