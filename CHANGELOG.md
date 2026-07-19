@@ -1,3 +1,7 @@
+## 0.20.16
+
+- Voice guard: smoke now walks every model-visible string (tool descriptions, nested schema describes, server instructions) and fails on org-as-a-noun prose. Caught + fixed one more leak (grid_feedback org param description) on its first run.
+
 ## 0.20.15
 
 - Voice: swept the remaining "org" prose to "grid" across user-facing surfaces - the local publish message ("Published to your grid: <url>"), the grid-picker card, and a dozen tool/field descriptions (active grid, grid memberships, grid name/role/DNS). Param names and API values (`org`) unchanged.
