@@ -110,6 +110,35 @@ check("grid_deploy description claims share-with-friends phrases", /share it wit
 // grid_drop is GONE — folded into grid_deploy (the one deploy/publish verb).
 check("grid_drop is no longer advertised", !nameSet.has("grid_drop"));
 
+// Voice guard (founder directive: the product noun is GRID). Walk every
+// string a model actually receives — tool descriptions, every nested schema
+// describe(), and the server instructions — and reject org-as-a-noun prose.
+// API values/param names (`org`, org_slug, needs_org) are contract and exempt;
+// this catches the phrasing classes that leaked three separate times.
+const ORG_PROSE = /\b(?:your|active|the user's[\w' ]*?) org\b|\borg (?:name|membership|memberships)\b|\borg's\b|\bthe org is\b|\brole in the org\b|\borganization\b/i;
+function* allDescriptions(node, path = "") {
+  if (typeof node === "string") { yield [path, node]; return; }
+  if (!node || typeof node !== "object") return;
+  for (const [k, v] of Object.entries(node)) {
+    if (k === "description" && typeof v === "string") yield [`${path}.${k}`, v];
+    else if (typeof v === "object") yield* allDescriptions(v, `${path}.${k}`);
+  }
+}
+{
+  const voiceLeaks = [];
+  for (const t of tools) {
+    if (ORG_PROSE.test(t.description ?? "")) voiceLeaks.push(`${t.name}: description`);
+    for (const [p, d] of allDescriptions(t.inputSchema, `${t.name}.input`)) if (ORG_PROSE.test(d)) voiceLeaks.push(p);
+    for (const [p, d] of allDescriptions(t.outputSchema ?? {}, `${t.name}.output`)) if (ORG_PROSE.test(d)) voiceLeaks.push(p);
+  }
+  const instr = client.getInstructions?.() ?? "";
+  if (ORG_PROSE.test(instr)) voiceLeaks.push("server instructions");
+  check(
+    `no org-as-a-noun prose reaches the model (found: ${voiceLeaks.slice(0, 5).join(", ") || "none"})`,
+    voiceLeaks.length === 0,
+  );
+}
+
 // Voice rule (founder directive #1637): the CLI verb is `grid` — only. No
 // advertised tool description may teach the deprecated `cloudgrid <verb>`
 // form (a Desktop model repeated "run cloudgrid plug" verbatim from one).

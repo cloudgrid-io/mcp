@@ -57,6 +57,11 @@ try {
   for (const nm of ["grid_fetch"]) {
     check(`${nm} is a deprecated alias`, /Deprecated alias of grid_/.test((toolList.find((t) => t.name === nm)?.description) ?? ""));
   }
+  // Voice guard (web edition): no org-as-a-noun prose in anything the model sees.
+  const ORG_PROSE_W = /\b(?:your|active|the user's[\w' ]*?) org\b|\borg (?:name|membership|memberships)\b|\borg's\b|\bthe org is\b|\brole in the org\b|\borganization\b/i;
+  const webVoiceLeaks = toolList.filter((t) => ORG_PROSE_W.test(JSON.stringify([t.description, t.inputSchema, t.outputSchema])));
+  check(`web: no org-as-a-noun prose (found: ${webVoiceLeaks.map((t) => t.name).join(", ") || "none"})`, webVoiceLeaks.length === 0);
+
   // 0.20.8 alias diet: dropped legacy aliases must NOT be advertised (web).
   for (const nm of ["grid_source", "grid_list", "grid_fork", "grid_download", "grid_claim", "grid_visibility"]) {
     check(`dropped alias ${nm} is no longer advertised`, !names.includes(nm));
