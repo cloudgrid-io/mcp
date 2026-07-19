@@ -51,6 +51,10 @@ jobs:
       - run: npm run test:plug-output-schema
       # Zip deploys: extraction guards, static-app wrapper, CLI leg, html+zip combo.
       - run: npm run test:zip-deploy
+      # Bundle-boot: build the .mcpb, extract to a spaced path, boot it over
+      # stdio, assert initialize returns. Catches a broken artifact (missing
+      # files) that unit tests never exercise. (mcpb crashed silently since 0.20.12.)
+      - run: npm run test:mcpb-boot
       # Offline upload-timeout test: the /api/v2/plug POST aborts (not hangs)
       # when the server stalls, surfacing a "may still be building — check
       # status" error instead of the "getting stuck" bug.

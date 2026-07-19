@@ -29,6 +29,7 @@
     "test:grid-picker": "node test/grid-picker.test.mjs",
     "test:plug-output-schema": "node test/plug-output-schema.test.mjs",
     "test:zip-deploy": "node test/zip-deploy.test.mjs",
+    "test:mcpb-boot": "node test/mcpb-boot.test.mjs",
     "test:plug-timeout": "node test/plug-timeout.test.mjs",
     "test:manifest-confirm": "node test/manifest-confirm.test.mjs",
     "test:qa-courier": "node test/qa-courier.test.mjs",
