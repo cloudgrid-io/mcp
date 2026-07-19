@@ -246,6 +246,22 @@ test("recordCall marks error outcome on isError result", async () => {
   assert.equal(logger.calls[0].outcome, "error");
 });
 
+test("recordCall captures the error reason (fail-result text AND thrown errorMessage)", async () => {
+  const l1 = new SessionLogger({ transport: "stdio", sessionId: "e1", sink: stubSink(), ctx: makeCtx(), now: () => 0 });
+  await l1.recordCall("grid_deploy", {}, { content: [{ type: "text", text: "SCOPE_INVALID: scope=personal" }], isError: true }, 20);
+  assert.equal(l1.calls[0].error_reason, "SCOPE_INVALID: scope=personal");
+  const l2 = new SessionLogger({ transport: "stdio", sessionId: "e2", sink: stubSink(), ctx: makeCtx(), now: () => 0 });
+  await l2.recordCall("grid_deploy", {}, { isError: true, errorMessage: "Could not reach CloudGrid at https://api.cloudgrid.io" }, 20);
+  assert.match(l2.calls[0].error_reason, /Could not reach CloudGrid/);
+});
+
+test("error reason is secret-scrubbed", async () => {
+  const l = new SessionLogger({ transport: "stdio", sessionId: "e3", sink: stubSink(), ctx: makeCtx(), now: () => 0 });
+  await l.recordCall("grid_deploy", {}, { isError: true, errorMessage: "bad token sk-ant-api03-SECRETSECRETSECRETSECRETSECRETSECRET-abcdAA rejected" }, 20);
+  assert.doesNotMatch(l.calls[0].error_reason, /SECRETSECRET/);
+  assert.match(l.calls[0].error_reason, /REDACTED/);
+});
+
 test("recordCall extracts grid_deploy url/status into key", async () => {
   const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink: stubSink(), ctx: makeCtx(), now: () => 0 });
   await logger.recordCall("grid_deploy", {}, { content: [], structuredContent: { url: "https://x--cg.cloudgrid.io", status: "live", entity_id: "e_1" } }, 100);

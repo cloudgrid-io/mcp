@@ -22,7 +22,8 @@ const TEXT_SECRET_PATTERNS = [
   /\bAKIA[0-9A-Z]{16}\b/g,                                        // AWS access key id
   /\bAIza[0-9A-Za-z_\-]{30,}\b/g,                                 // Google API key
   /\bsk_(?:live|test)_[0-9A-Za-z]{16,}\b/g,                       // Stripe secret keys
-  /\bsk-[A-Za-z0-9]{16,}/g,                                       // sk- API keys
+  /\bsk-ant-[A-Za-z0-9_-]{20,}/g,                                 // Anthropic API keys (sk-ant-…, hyphenated)
+  /\bsk-[A-Za-z0-9]{16,}/g,                                       // other sk- API keys
   /\b[0-9a-fA-F]{32,}\b/g,                                        // long hex runs
 ];
 export function scrubText(text) {
@@ -98,6 +99,7 @@ export function renderLogText(p) {
     const dur = c.duration_ms != null ? `  (${(c.duration_ms / 1000).toFixed(1)}s)` : "";
     lines.push(`[${c.at}] ${c.name}${args}  ${c.outcome}${dur}`);
     if (c.key) lines.push(`           → ${c.key}`);
+    if (c.error_reason) lines.push(`           ✗ ${c.error_reason}`);
   }
   lines.push(RULE);
   lines.push(
@@ -171,12 +173,21 @@ export class SessionLogger {
       await this.resolveHeader();
       const outcome = result?.isError ? "error" : "ok";
       const args = scrubArgs(input);
+      // On an error, capture WHY (scrubbed): the throw path passes errorMessage;
+      // a returned fail() puts the message in content[0].text. Without this the
+      // log only said "error" and every failure needed a blind repro.
+      let errorReason = null;
+      if (outcome === "error") {
+        const raw = result?.errorMessage || result?.content?.[0]?.text || null;
+        if (raw) errorReason = scrubText(String(raw)).slice(0, 300);
+      }
       this.calls.push({
         at: this._clock(this.now()),
         name,
         args,
         outcome,
         key: this._keyResult(name, result),
+        error_reason: errorReason,
         duration_ms: durationMs,
       });
       // Only a deploy failure (grid_deploy) is the QA "failure" trigger. Other
