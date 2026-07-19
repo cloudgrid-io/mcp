@@ -288,6 +288,7 @@ export function registerTools(server, ctx) {
         // they validate: (1) the grid-picker "which grid?" ask (resolveGridOrAsk),
         // and (2) the signed-in CLI-fallback recovery.
         needs_grid: z.boolean().optional().describe("Grid-picker ask: a signed-in user with >1 grid must choose one before this create proceeds. Pass the chosen slug back in `grid`."),
+        needs_auth: z.boolean().optional().describe("Auth gate: a NEW deploy was attempted while not signed in. Ask the user to sign in (grid_login) to publish to their grid, OR re-call grid_deploy with anon: true to publish anonymously (claimable later). Do not proceed silently."),
         needs_org: z.boolean().optional().describe("Alias of needs_grid (legacy picker alias)."),
         grids: z.array(z.object({
           slug: z.string(),
@@ -357,7 +358,20 @@ export function registerTools(server, ctx) {
         }
         if (input?.anon !== true && !isEdit) {
           const token = await ctx.getToken();
-          if (token) {
+          if (!token) {
+            // AUTH HARD GATE (create only): not signed in and not anon → do NOT
+            // silently ride the anonymous wire. Return the login-or-anon choice
+            // and stop. The model relays it; the user picks. (Rule 17, enforced.)
+            return okResult({
+              text:
+                "You're not signed in. To publish this I can either:\n" +
+                "  1. Sign you in to publish to your grid — run grid_login (opens your browser), then I'll deploy.\n" +
+                "  2. Publish it anonymously right now — it goes live immediately with a claim link so you can save it to your account later.\n" +
+                "Which would you like? (For anonymous, re-call grid_deploy with anon: true.)",
+              structured: { needs_auth: true },
+            });
+          }
+          {
             const decision = await resolveGridOrAsk(ctx, {
               token,
               suppliedGrid: input?.grid,
