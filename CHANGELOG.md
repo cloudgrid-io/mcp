@@ -1,3 +1,7 @@
+## 0.20.20
+
+- QA session log now records the error REASON (scrubbed) under a failed call, not just "error" - a hosted deploy failure previously logged no cause. Captured from both the throw and fail-result paths; scrubText hardened for Anthropic (sk-ant-) keys.
+
 ## 0.20.19
 
 - Hard auth + grid gates on grid_deploy CREATE. No-auth create no longer silently publishes anonymously - it returns needs_auth (sign in vs publish anonymously) and stops. Authed multi-grid create returns needs_grid (pick a grid) as before, and playbook rule 7 now has the model establish the grid up front. Edits, anon:true, explicit-grid, and single-grid all bypass. New create-gates CI test.
