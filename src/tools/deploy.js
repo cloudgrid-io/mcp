@@ -817,37 +817,47 @@ async function expandZipToProject(zipPath, inlineHtml) {
 async function plugZipProjectViaCli(ctx, { projectDir, name }, input, deps = {}) {
   const { cliRun = runCloudgrid } = deps;
   const grid = input?.grid || (await ctx.getActiveGrid?.()) || null;
-  const manifestPath = join(projectDir, "cloudgrid.yaml");
-  const manifestBody = readFileSync(manifestPath, "utf8");
-  const yamlName =
-    name ||
-    (() => {
-      const m = /^name:\s*(.+?)\s*$/m.exec(manifestBody);
-      return m ? m[1].replace(/^["']|["']$/g, "") : "zip-site";
-    })();
-  // `grid init --here` refuses a dir that already has a cloudgrid.yaml, and it
-  // is also the step that mints the real slug (name + 4-hex suffix). So: stash
-  // the manifest, init bare, then restore it with the assigned slug as name:.
-  await rm(manifestPath, { force: true });
-  const initArgs = ["init", "app", yamlName, "--here", ...(grid ? ["--grid", grid] : [])];
-  const initOut = String((await cliRun(initArgs, { cwd: projectDir })) || "");
-  let assignedSlug = /Slug:\s+(\S+)/.exec(initOut)?.[1] ?? null;
-  if (!assignedSlug) {
-    try {
-      assignedSlug = JSON.parse(readFileSync(join(projectDir, ".cloudgrid", "link.json"), "utf8")).entity_slug;
-    } catch {
-      assignedSlug = yamlName;
+  const plugArgs = ["plug", "--no-progress", "--no-clipboard", "--no-notify"];
+  // CLI >= 0.15.14: `plug` auto-creates the entity in an unlinked dir from the
+  // manifest (init semantics folded into plug), honoring its name:. Try that
+  // first — one command, no stash dance.
+  let stdout = null;
+  try {
+    stdout = String((await cliRun(plugArgs, { cwd: projectDir })) || "");
+  } catch (err) {
+    const msg = String(err?.message || err);
+    // Older CLIs (< 0.15.14) refuse an unlinked dir and point at init. Fall
+    // back to the legacy dance: stash the manifest (old `init --here` refuses
+    // a dir that already has one), init (mints the real slug), restore the
+    // manifest with the assigned slug, then plug. `--here` exists on every
+    // CLI that takes this branch; 0.15.14+ (which dropped it) never gets here.
+    if (!/isn't linked|not linked|grid init|grid new/i.test(msg)) throw err;
+    const manifestPath = join(projectDir, "cloudgrid.yaml");
+    const manifestBody = readFileSync(manifestPath, "utf8");
+    const yamlName =
+      name ||
+      (() => {
+        const m = /^name:\s*(.+?)\s*$/m.exec(manifestBody);
+        return m ? m[1].replace(/^["']|["']$/g, "") : "zip-site";
+      })();
+    await rm(manifestPath, { force: true });
+    const initArgs = ["init", "app", yamlName, "--here", ...(grid ? ["--grid", grid] : [])];
+    const initOut = String((await cliRun(initArgs, { cwd: projectDir })) || "");
+    let assignedSlug = /Slug:\s+(\S+)/.exec(initOut)?.[1] ?? null;
+    if (!assignedSlug) {
+      try {
+        assignedSlug = JSON.parse(readFileSync(join(projectDir, ".cloudgrid", "link.json"), "utf8")).entity_slug;
+      } catch {
+        assignedSlug = yamlName;
+      }
     }
+    await writeFile(manifestPath, manifestBody.replace(/^name:.*$/m, `name: ${assignedSlug}`));
+    stdout = String((await cliRun(plugArgs, { cwd: projectDir })) || "");
   }
-  await writeFile(manifestPath, manifestBody.replace(/^name:.*$/m, `name: ${assignedSlug}`));
-  const stdout = await cliRun(
-    ["plug", "--no-progress", "--no-clipboard", "--no-notify"],
-    { cwd: projectDir },
-  );
-  const url = parseCliPlugUrl(String(stdout || ""));
+  const url = parseCliPlugUrl(stdout);
   if (!url) {
     throw new Error(
-      `The zip project deployed via the CLI but no live URL was found in its output.\n${String(stdout || "").slice(0, 500)}`,
+      `The zip project deployed via the CLI but no live URL was found in its output.\n${stdout.slice(0, 500)}`,
     );
   }
   return {

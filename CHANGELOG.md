@@ -1,3 +1,21 @@
+## 0.20.12 (unreleased)
+
+- **PLAYBOOK is now markdown** (`src/corpus/playbook.md`), loaded at startup —
+  a backticked word once terminated the old template literal and broke the
+  build. Byte-identical content; also retrievable now via
+  `grid_get_template({kind:"doc", name:"playbook"})` and indexed by the docs
+  search server.
+- **CLI 0.15.14 compat (init → new).** The CLI renamed `init` to `new` (help
+  listing; `init` remains a hidden alias), dropped `--here` (current dir is
+  the default), and folded entity registration into `plug` (auto-creates in
+  an unlinked dir from the manifest). Zip deploys now try plain `plug` FIRST
+  (new CLIs: one command, manifest name honored natively) and fall back to
+  the legacy stash → `init --here` → re-plug dance only when an old CLI
+  refuses the unlinked dir. Drift-guard verb map follows the advertised name
+  (`new`); the tool argv keeps the `init` alias for old-CLI compat. Verified
+  LIVE against the real 0.15.14 (z1514-41cd: index + byte-exact image) and
+  covered offline for both generations.
+
 ## 0.20.11
 
 - **MCP server `instructions` — orientation for hookless hosts.** Neither

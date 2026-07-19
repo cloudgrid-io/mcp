@@ -67,11 +67,12 @@ async function capturePlug(input) {
       { status: 200, headers: { "content-type": "application/json" } },
     );
   };
+  // Default stub = a NEW-generation CLI (>= 0.15.14): `plug` auto-creates in
+  // an unlinked dir, so the leg is a single plug call. The legacy fallback has
+  // its own dedicated test below.
   const cliRun = async (args, opts) => {
     cliCalls.push({ args, cwd: opts?.cwd });
     if (args[0] === "init") return "Charged.\n  Slug:    zip-test-ab12\n";
-    // snapshot at plug time: the manifest is stashed during init and restored
-    // (with the assigned slug) before plug runs.
     projectFiles = snapshotDir(opts.cwd);
     return "  \u2713 Live.\n  Outlet: https://zip-test--test-grid.cloudgrid.io\n";
   };
@@ -99,7 +100,7 @@ try {
     check("wrapper: image under services/web/ (secondary file survives)", names.includes("services/web/img/pixel.png"));
     check("wrapper: image bytes intact", files["services/web/img/pixel.png"]?.equals(Buffer.from(PNG)));
     const yaml = files["cloudgrid.yaml"]?.toString() ?? "";
-    check("wrapper: name is the init-assigned slug", /^name: zip-test-ab12$/m.test(yaml));
+    check("wrapper: manifest name preserved (new CLI honors it at plug)", /^name: my-gallery$/m.test(yaml));
     check("wrapper: static service at /", /type: static/.test(yaml) && /path: \//.test(yaml));
   }
 
@@ -110,10 +111,38 @@ try {
       "img/pixel.png": PNG,
     });
     const { res, cliCalls } = await capturePlug({ path: zip, grid: "test-grid" });
-    check("cli-leg: grid init app <name> --here --grid", cliCalls[0]?.args.join(" ") === "init app cli-leg --here --grid test-grid");
-    check("cli-leg: grid plug runs in the project dir", cliCalls[1]?.args[0] === "plug" && Boolean(cliCalls[1]?.cwd));
+    check("cli-leg (new CLI): plug-first, single call, no init", cliCalls.length === 1 && cliCalls[0]?.args[0] === "plug" && Boolean(cliCalls[0]?.cwd));
     check("cli-leg: returns the live URL", res.structured?.url === "https://zip-test--test-grid.cloudgrid.io");
     check("cli-leg: via marker", res.structured?.via === "zip-cli");
+  }
+
+  // \u2500\u2500 1b2. LEGACY CLI (< 0.15.14): plug refuses unlinked dir \u2192 init dance \u2500\u2500
+  {
+    const zip = writeZip("legacy-leg.zip", {
+      "index.html": enc("<h1>legacy</h1>"),
+      "img/pixel.png": PNG,
+    });
+    let plugAttempts = 0;
+    const calls = [];
+    let filesAtFinalPlug = null;
+    const legacyCli = async (args, opts) => {
+      calls.push(args[0]);
+      if (args[0] === "plug") {
+        plugAttempts++;
+        if (plugAttempts === 1) throw new Error("This directory isn't linked to a CloudGrid node.\nRun: grid init <kind> <slug>");
+        filesAtFinalPlug = snapshotDir(opts.cwd);
+        return "  ✓ Live.\n  Outlet: https://legacy-leg-99aa--test-grid.cloudgrid.io\n";
+      }
+      if (args[0] === "init") {
+        check("legacy: init keeps --here (old CLIs have it)", args.includes("--here"));
+        return "Charged.\n  Slug:    legacy-leg-99aa\n";
+      }
+      return "";
+    };
+    const res = await runPlug(makeCtx(), { path: zip, grid: "test-grid" }, { fetchImpl: async () => new Response("{}"), cliRun: legacyCli });
+    check("legacy: order is plug \\u2192 init \\u2192 plug", calls.join(",") === "plug,init,plug");
+    check("legacy: manifest repointed to the init-assigned slug", /^name: legacy-leg-99aa$/m.test(filesAtFinalPlug?.["cloudgrid.yaml"]?.toString() ?? ""));
+    check("legacy: live URL surfaced", res.structured?.url === "https://legacy-leg-99aa--test-grid.cloudgrid.io");
   }
 
   // \u2500\u2500 1c. Single-page zip short-circuits to the instant inspiration wire \u2500\u2500
@@ -145,8 +174,8 @@ try {
       "services/web/index.html": enc("<h1>own</h1>"),
     });
     const { files } = await capturePlug({ path: zip, grid: "test-grid" });
-    check("own-manifest: manifest kept (name repointed to the assigned slug)",
-      files["cloudgrid.yaml"]?.toString().includes("name: zip-test-ab12") && files["cloudgrid.yaml"]?.toString().includes("type: static"));
+    check("own-manifest: manifest kept verbatim (plug-first)",
+      files["cloudgrid.yaml"]?.toString().includes("name: own-proj") && files["cloudgrid.yaml"]?.toString().includes("type: static"));
     check("own-manifest: no double services/web nesting",
       Boolean(files["services/web/index.html"]) && !files["services/web/services/web/index.html"]);
   }

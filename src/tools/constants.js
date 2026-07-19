@@ -79,7 +79,10 @@ export const PLUG_UPLOAD_TIMEOUT_MS = Number(process.env.CLOUDGRID_PLUG_UPLOAD_T
 // Verb map for the drift guard: each CLI-wrapping tool's top-level verb(s).
 // The drift-guard test imports this and asserts every verb exists in `cloudgrid --help`.
 export const CLI_TOOL_VERBS = {
-  grid_create_project:     ["init"],
+  // CLI 0.15.14 renamed the verb to `new` in --help (init remains a hidden
+  // alias, which the tool argv still uses for old-CLI compat). The guard
+  // checks the HELP listing, so it tracks the advertised name.
+  grid_create_project:     ["new"],
   // grid_deploy is NOT here: grid_deploy is now a direct-API tool
   // (POST /api/v2/plug, spec v2 §3), not a CLI wrapper.
   grid_view_logs:     ["logs"],
