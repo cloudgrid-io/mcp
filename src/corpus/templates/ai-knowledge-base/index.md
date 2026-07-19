@@ -21,7 +21,7 @@ the app following it.
    `cloudgrid.yaml` is the URL mount, NOT the filesystem path.
 2. **Read injected values LAZILY (inside a getter), never at module top level** —
    a top-level read fails `next build`. The grid injects `DATABASE_MONGODB_URL`
-   (+ legacy `MONGODB_URL`) for Mongo and `AI_GATEWAY_URL` for the AI Gateway.
+   (+ legacy `MONGODB_URL`) for Mongo and `RUNTIME_GATEWAY_URL` for the AI Gateway.
 3. **Declare `needs: { ai: true, database: true }`** (canonical shape). Never
    author `requires:`, and never set `needs:` and `requires:` together (the
    validator rejects the combination).
@@ -57,7 +57,7 @@ needs:
 
 > **Capability:** `needs: { database: true }` → the deployer provisions Mongo and
 > injects `DATABASE_MONGODB_URL` (plus legacy `MONGODB_URL`). `needs: { ai: true }`
-> → injects `AI_GATEWAY_URL`; `@cloudgrid-io/ai` routes embeddings + chat through
+> → injects `RUNTIME_GATEWAY_URL`; `@cloudgrid-io/runtime` routes embeddings + chat through
 > it with no API key to manage. `needs: { vector: pgvector }` (injects
 > `VECTOR_PGVECTOR_URL`) is available (#1545 shipped) but not declared here —
 > this blueprint uses Mongo embeddings. See the capability-map for the full

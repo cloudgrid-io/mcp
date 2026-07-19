@@ -67,8 +67,8 @@ Add indexes as the data grows (e.g. `items.sku` unique, `orders.status`).
   yaml only names the mapping. (One-off non-vault secrets can also go via
   `grid secrets set`; non-secret config via `grid env`.) Never commit a key.
 - **AI (optional):** if a module uses AI (e.g. demand forecasting), add
-  `ai: true` under `needs:` — the grid injects `AI_GATEWAY_URL`, called via
-  `@cloudgrid-io/ai`. Not enabled by default in this blueprint.
+  `ai: true` under `needs:` — the grid injects `RUNTIME_GATEWAY_URL`, called via
+  `@cloudgrid-io/runtime`. Not enabled by default in this blueprint.
 
 ## 4. Wiring auth + RBAC and payments
 

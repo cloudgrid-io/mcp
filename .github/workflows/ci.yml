@@ -118,8 +118,9 @@ jobs:
       # requires:, never both), DB connection read LAZILY (never at module top
       # level), no hardcoded connection string/secret. api-service: Node http on
       # PORT||8080, DATABASE_MONGODB_URL||MONGODB_URL, a REST resource. ai-app:
-      # @cloudgrid-io/ai createClient().chat({messages}) zero-arg (no key) +
-      # persists to Mongo. GUARDS that neither declares needs: vector (#1545) or a
+      # @cloudgrid-io/runtime runtime.ai.chat({ model, messages }) (SDK auto-reads
+      # RUNTIME_GATEWAY_URL, no key) + persists to Mongo. GUARDS that neither
+      # declares needs: vector (#1545) or a
       # cron service (#1543).
       - run: npm run test:archetypes
       # Offline QA session-log test: SessionLogger accumulates header/request/

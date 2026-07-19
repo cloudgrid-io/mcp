@@ -105,11 +105,11 @@ runtime (after `grid plug`).
   client getter in `lib/auth.js`), not at module top level. If you add paid
   courses, map `STRIPE_KEY`/`STRIPE_WEBHOOK_SECRET` the same way.
 - **AI (optional — auto-grading / quiz generation / a study tutor)** — add
-  `needs: { ai: true }` → the grid injects **`AI_GATEWAY_URL`**; call it via
-  `@cloudgrid-io/ai`. Not enabled in this blueprint; add the need if you want it.
+  `needs: { ai: true }` → the grid injects **`RUNTIME_GATEWAY_URL`**; call it via
+  `@cloudgrid-io/runtime`. Not enabled in this blueprint; add the need if you want it.
 
 Reserved env var names you must NOT set yourself: `PORT`, `NODE_ENV`,
-`DATABASE_MONGODB_URL`/`MONGODB_URL`, `AI_GATEWAY_URL`, `CLOUDGRID_*`.
+`DATABASE_MONGODB_URL`/`MONGODB_URL`, `RUNTIME_GATEWAY_URL`, `CLOUDGRID_*`.
 
 ---
 

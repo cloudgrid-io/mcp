@@ -88,7 +88,7 @@ A user is a member when a `memberships` doc for their `authId` has
   non-secret `services.web.env` block (or as a build-time env) rather than the
   vault.
 - **AI (optional)** — if you add AI features, declare `needs: { ai: true }` and
-  call the gateway at `process.env.AI_GATEWAY_URL` via `@cloudgrid-io/ai`. Not
+  call the gateway at `process.env.RUNTIME_GATEWAY_URL` via `@cloudgrid-io/runtime`. Not
   required for this blueprint.
 
 ## 4. Wiring auth + payments

@@ -1,7 +1,7 @@
 # Template: ai-app (Next.js AI chatbot + grid AI gateway + Mongo)
 
 A minimal but real, deployable AI chatbot. A Next.js App Router app that calls
-the grid AI gateway (via `@cloudgrid-io/ai`) for replies and persists the
+the grid AI gateway (via `@cloudgrid-io/runtime`) for replies and persists the
 conversation to the grid-shared MongoDB. History survives refresh and is shared
 across sessions.
 
@@ -11,11 +11,12 @@ across sessions.
    `path:` in `cloudgrid.yaml` is the URL mount, NOT the filesystem path. The
    service named `web` → the CLI looks for `services/web/`. Files at the root
    fail with `Error: Service directory not found: …/services/web`.
-2. **The AI call is zero-config — no API key.** `import { createClient } from
-   "@cloudgrid-io/ai"; const client = createClient();` auto-detects the in-grid
-   identity, so it only works inside a deployed grid app (or under `grid dev`).
-   Do NOT pass or set an API key. Read the reply from `r.text` (fall back to
-   `r.content`).
+2. **The AI call is zero-config — no API key.** `import { runtime } from
+   "@cloudgrid-io/runtime"` then `runtime.ai.chat({ model, messages })`. The SDK
+   reads the gateway URL from `RUNTIME_GATEWAY_URL` (injected by the grid) itself,
+   so it only works inside a deployed grid app (or under `grid dev`). Do NOT pass
+   or set an API key, and never reference the env var yourself. Chat expects a
+   `model` and returns `{ text }`.
 3. **Read the DB connection string LAZILY (inside the getter), never at module
    top level.** The grid injects it as `DATABASE_MONGODB_URL` (plus the legacy
    `MONGODB_URL` alias) at dev + runtime; the app reads
@@ -36,12 +37,12 @@ Write these files into the scaffolded app folder — the app code goes under
 
 ```
 cloudgrid.yaml                        # name + services.web (nextjs) + needs: { ai: true, database: true }
-services/web/package.json             # next, react, react-dom, @cloudgrid-io/ai, mongodb
+services/web/package.json             # next, react, react-dom, @cloudgrid-io/runtime, mongodb
 services/web/lib/db.js                # lazy Mongo client from DATABASE_MONGODB_URL (legacy MONGODB_URL fallback)
 services/web/app/layout.js            # root layout + inline CSS
 services/web/app/page.js              # server component: reads chat history from Mongo
 services/web/app/chat.js              # client component: sends messages, renders the log
-services/web/app/api/chat/route.js    # POST: createClient().chat(...) -> persist -> reply; GET: history
+services/web/app/api/chat/route.js    # POST: runtime.ai.chat(...) -> persist -> reply; GET: history
 ```
 
 ## cloudgrid.yaml
@@ -78,7 +79,7 @@ needs:
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "@cloudgrid-io/ai": "^0.2.0",
+    "@cloudgrid-io/runtime": "^1.0.3",
     "mongodb": "^6.12.0"
   }
 }
@@ -118,11 +119,12 @@ export async function getDb() {
 // Chat API route: take the user's message, ask the grid AI gateway for a reply,
 // persist the exchange to Mongo, return the reply.
 //
-// The AI call uses @cloudgrid-io/ai with ZERO config — no API key. createClient()
-// auto-detects the in-grid identity, so it only works inside a deployed grid app
-// (or under `grid dev`). Do NOT pass a key.
+// The AI call uses @cloudgrid-io/runtime with ZERO config — no API key. The SDK
+// reads the gateway URL from RUNTIME_GATEWAY_URL (injected by the grid) itself,
+// so it only works inside a deployed grid app (or under `grid dev`). Do NOT set a
+// key or reference the env var yourself.
 import { NextResponse } from "next/server";
-import { createClient } from "@cloudgrid-io/ai";
+import { runtime } from "@cloudgrid-io/runtime";
 import { getDb } from "../../../lib/db.js";
 
 export const dynamic = "force-dynamic";
@@ -139,10 +141,12 @@ export async function POST(request) {
     return NextResponse.json({ error: "message is required" }, { status: 400 });
   }
 
-  // 1. Ask the grid AI gateway (zero-config in-grid identity — no key).
-  const client = createClient();
-  const r = await client.chat({ messages: [{ role: "user", content: text }] });
-  const reply = r.text ?? r.content ?? "";
+  // 1. Ask the grid AI gateway (zero-config in-grid identity — no key). Chat
+  //    expects a model; it returns { text }.
+  const { text: reply } = await runtime.ai.chat({
+    model: "claude-haiku",
+    messages: [{ role: "user", content: text }],
+  });
 
   // 2. Persist the exchange so the conversation survives refresh.
   const col = await messages();
@@ -248,7 +252,8 @@ export default function Chat({ initialHistory }) {
 ## Adapt it
 
 - Give the assistant a persona — pass a `{ role: "system", content: "…" }`
-  message ahead of the user message in `chat({ messages })`.
+  message ahead of the user message in `runtime.ai.chat({ model, messages })`
+  (or pass `system:` directly alongside `messages`).
 - Send prior turns as context by including the stored history in `messages`.
 - Change the `messages` collection / fields; add users, sessions, titles.
 - Run `grid dev` to test locally, `grid plug` to deploy (async — poll to live).

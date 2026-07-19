@@ -106,10 +106,10 @@ dev` and runtime.
   keys to whatever the provider SDK expects (see §4) and set the vault items with
   `grid_set_secret` / the org vault — do not commit keys.
 - **AI (optional)** — if you add `needs: { ai: true }` (e.g. auto-moderation or
-  summarize-thread), the grid injects **`AI_GATEWAY_URL`**; call it via
-  `@cloudgrid-io/ai`. Not required for the base forum.
+  summarize-thread), the grid injects **`RUNTIME_GATEWAY_URL`**; call it via
+  `@cloudgrid-io/runtime`. Not required for the base forum.
 - **Reserved vars** you must NOT set yourself: `PORT`, `NODE_ENV`,
-  `DATABASE_MONGODB_URL`, `MONGODB_URL`, `REDIS_URL`, `AI_GATEWAY_URL`,
+  `DATABASE_MONGODB_URL`, `MONGODB_URL`, `REDIS_URL`, `RUNTIME_GATEWAY_URL`,
   `CLOUDGRID_*`.
 
 `lib/db.js` — copy the lazy-getter pattern from `app-with-data`:

@@ -66,7 +66,7 @@ The heart of this blueprint. Read it before building. It covers:
 2. **Mongo collections + fields** — `flights`, `hotels`, `bookings`, `trips`,
    plus the guarded-`$inc` overbooking rule that prevents overselling seats/rooms.
 3. **CloudGrid injection** — `DATABASE_MONGODB_URL` for Mongo, `vault:` → env vars
-   for secrets, `AI_GATEWAY_URL` for ai.
+   for secrets, `RUNTIME_GATEWAY_URL` for ai.
 4. **Auth + payments wiring** — provider SDK from `AUTH_PROVIDER_KEY`; Stripe
    checkout + signature-verified webhook from `STRIPE_KEY` /
    `STRIPE_WEBHOOK_SECRET`.

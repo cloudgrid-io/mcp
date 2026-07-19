@@ -10,8 +10,9 @@
 //      connection string / secret.
 //   4. api-service: Node http on process.env.PORT || 8080, DATABASE_MONGODB_URL
 //      || MONGODB_URL read inside a getter, a REST resource.
-//   5. ai-app: @cloudgrid-io/ai createClient().chat({messages}) (zero-arg, no
-//      key) + persists the exchange to Mongo; needs: { ai, database }.
+//   5. ai-app: @cloudgrid-io/runtime runtime.ai.chat({ model, messages }) (the
+//      SDK auto-reads RUNTIME_GATEWAY_URL, no key) + persists the exchange to
+//      Mongo; needs: { ai, database }.
 //   6. GUARD: neither template declares needs: vector (blocked #1545) or a cron
 //      service (blocked #1543).
 // Run: node test/archetypes.test.mjs
@@ -185,14 +186,15 @@ async function fetchResolves(kind, name) {
   check(`${name} yaml does NOT declare a cron service (blocked #1543)`, !/type:\s*cron/.test(yaml));
 
   const pkg = read(dir + "services/web/package.json");
-  check(`${name} package.json depends on @cloudgrid-io/ai`, /@cloudgrid-io\/ai/.test(pkg));
+  check(`${name} package.json depends on @cloudgrid-io/runtime (^1.0.3)`, /@cloudgrid-io\/runtime/.test(pkg) && !/@cloudgrid-io\/ai\b/.test(pkg));
   check(`${name} package.json depends on next + mongodb`, /"next"/.test(pkg) && /"mongodb"/.test(pkg));
 
   const route = read(dir + "services/web/app/api/chat/route.js");
-  check(`${name} route imports createClient from @cloudgrid-io/ai`, /import\s*\{\s*createClient\s*\}\s*from\s*["']@cloudgrid-io\/ai["']/.test(route));
-  check(`${name} route calls createClient() zero-arg (no key)`, /createClient\(\s*\)/.test(route));
-  check(`${name} route calls client.chat({ messages })`, /\.chat\(\s*\{\s*messages/.test(route));
-  check(`${name} route reads the reply from r.text (falls back to r.content)`, /r\.text/.test(route) && /r\.content/.test(route));
+  check(`${name} route imports runtime from @cloudgrid-io/runtime`, /import\s*\{\s*runtime\s*\}\s*from\s*["']@cloudgrid-io\/runtime["']/.test(route));
+  check(`${name} route does NOT read the gateway env var (SDK auto-reads RUNTIME_GATEWAY_URL)`, !/process\.env\.\w*GATEWAY\w*/.test(route) && !/createClient/.test(route));
+  check(`${name} route calls runtime.ai.chat({ ... })`, /runtime\.ai\.chat\(\s*\{/.test(route));
+  check(`${name} route passes a model to chat`, /model:\s*["']claude-haiku["']/.test(route));
+  check(`${name} route reads the reply from chat's { text } result`, /\{\s*text(\s*:\s*\w+)?\s*\}\s*=\s*await\s*runtime\.ai\.chat/.test(route));
   check(`${name} route persists to Mongo (insert)`, /insert(One|Many)\(/.test(route));
   check(`${name} route is force-dynamic`, /dynamic\s*=\s*["']force-dynamic["']/.test(route));
 
@@ -204,7 +206,7 @@ async function fetchResolves(kind, name) {
   // No hardcoded connection string / secret anywhere in the template's code.
   const codeBlob = route + "\n" + db + "\n" + read(dir + "services/web/app/page.js");
   check(`${name} embeds NO real mongodb connection string`, !/mongodb(\+srv)?:\/\//.test(codeBlob));
-  check(`${name} does NOT set an AI API key`, !/apiKey/i.test(codeBlob) && !/createClient\([^)]*key/i.test(codeBlob));
+  check(`${name} does NOT set an AI API key`, !/apiKey/i.test(codeBlob) && !/runtime\.ai\.chat\([^)]*key/i.test(codeBlob));
 }
 
 // ── Example content sanity ───────────────────────────────────────────────────
@@ -215,8 +217,9 @@ async function fetchResolves(kind, name) {
     /needs:\s*\n\s*database:\s*true/.test(apiEx) && !/^\s*requires:/m.test(apiEx));
 
   const aiEx = fetchCorpus("example", "ai-app");
-  check("ai-app example uses createClient().chat + services/web/ + needs: ai+database",
-    /createClient\(\s*\)/.test(aiEx) && /\.chat\(/.test(aiEx) && /services\/web\//.test(aiEx) &&
+  check("ai-app example uses runtime.ai.chat + services/web/ + needs: ai+database",
+    /runtime\.ai\.chat\(/.test(aiEx) && /@cloudgrid-io\/runtime/.test(aiEx) && !/@cloudgrid-io\/ai\b/.test(aiEx) &&
+    /services\/web\//.test(aiEx) &&
     /ai:\s*true/.test(aiEx) && /database:\s*true/.test(aiEx) && !/^\s*requires:/m.test(aiEx));
 }
 

@@ -101,7 +101,7 @@ client for plan/status — read this (kept current by the webhook).
   vault. An auth SDK's publishable key goes here too.
 - **AI (optional)** — if you add AI features (e.g. churn-reason summaries),
   declare `needs: { ai: true }` and call the gateway at
-  `process.env.AI_GATEWAY_URL` via `@cloudgrid-io/ai`. Not required for this
+  `process.env.RUNTIME_GATEWAY_URL` via `@cloudgrid-io/runtime`. Not required for this
   blueprint.
 
 ## 4. Wiring auth + payments

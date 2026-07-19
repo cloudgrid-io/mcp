@@ -92,7 +92,7 @@ injected as env vars at `grid dev` (local) and at runtime (after `grid plug`):
 | Stripe secret key | `vault: { STRIPE_KEY: stripe-live-key }` | `STRIPE_KEY` | `lib/stripe.js` |
 | Stripe webhook secret | `vault: { STRIPE_WEBHOOK_SECRET: stripe-webhook-secret }` | `STRIPE_WEBHOOK_SECRET` | `api/webhooks/stripe/route.js` |
 | Auth provider server key | `vault: { AUTH_PROVIDER_KEY: auth-provider-key }` | `AUTH_PROVIDER_KEY` | `lib/auth.js` |
-| AI (optional) | `needs: { ai: true }` | `AI_GATEWAY_URL` | via `@cloudgrid-io/ai` |
+| AI (optional) | `needs: { ai: true }` | `RUNTIME_GATEWAY_URL` | via `@cloudgrid-io/runtime` |
 
 The `vault:` block only **maps** an org vault item key → an env var name. You must
 store the real value once with `grid secrets set <vault-item-key> <value>` (e.g.

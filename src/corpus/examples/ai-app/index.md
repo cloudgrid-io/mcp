@@ -1,7 +1,7 @@
 # Example: ai-app — "Trip Planner Bot"
 
 A filled reference imitating the `ai-app` template: a themed AI assistant — a
-travel trip planner. Same stack (Next.js App Router + `@cloudgrid-io/ai` for the
+travel trip planner. Same stack (Next.js App Router + `@cloudgrid-io/runtime` for the
 grid AI gateway + the `mongodb` driver for chat history), slightly richer than
 the bare chatbot: it gives the assistant a **persona** via a `system` message and
 sends the **prior conversation** as context, so replies stay on-theme and
@@ -11,8 +11,9 @@ Data persists in the grid-shared Mongo, so the conversation survives refresh.
 
 **Same four proven rules as the template:** (1) app code lives under
 **`services/web/`** (the service name, NOT the repo root — `path:` is the URL
-mount); (2) the AI call is **zero-config — `createClient()` with no key** (it
-uses the in-grid identity); (3) the DB connection string is read **lazily inside
+mount); (2) the AI call is **zero-config — `runtime.ai.chat({ model, messages })`
+with no key** (the SDK reads `RUNTIME_GATEWAY_URL` and the in-grid identity
+itself); (3) the DB connection string is read **lazily inside
 the `getDb` getter**, never at module top level (a top-level read fails `next
 build`); (4) the datastore is declared with the canonical **`needs: { ai: true,
 database: true }`**. Don't use the deprecated `requires:` alias.
@@ -48,7 +49,7 @@ needs:
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "@cloudgrid-io/ai": "^0.2.0",
+    "@cloudgrid-io/runtime": "^1.0.3",
     "mongodb": "^6.12.0"
   }
 }
@@ -87,21 +88,18 @@ export async function getDb() {
 ```js
 // Trip-planner chat route: give the assistant a persona, send the prior
 // conversation as context, ask the grid AI gateway, persist the exchange,
-// return the reply. Zero-config AI — createClient() with no key uses the in-grid
-// identity.
+// return the reply. Zero-config AI — @cloudgrid-io/runtime reads RUNTIME_GATEWAY_URL
+// (injected by the grid) itself and uses the in-grid identity — no key.
 import { NextResponse } from "next/server";
-import { createClient } from "@cloudgrid-io/ai";
+import { runtime } from "@cloudgrid-io/runtime";
 import { getDb } from "../../../lib/db.js";
 
 export const dynamic = "force-dynamic";
 
-const SYSTEM = {
-  role: "system",
-  content:
-    "You are Trip Planner Bot, a concise, friendly travel assistant. Suggest " +
-    "itineraries, budgets, and practical tips. Ask a clarifying question when the " +
-    "destination or dates are unclear.",
-};
+const SYSTEM =
+  "You are Trip Planner Bot, a concise, friendly travel assistant. Suggest " +
+  "itineraries, budgets, and practical tips. Ask a clarifying question when the " +
+  "destination or dates are unclear.";
 
 async function messages() {
   return (await getDb()).collection("messages");
@@ -119,12 +117,13 @@ export async function POST(request) {
   prior.reverse();
   const context = prior.map((m) => ({ role: m.role, content: m.content }));
 
-  // Ask the grid AI gateway: persona + prior turns + the new user message.
-  const client = createClient();
-  const r = await client.chat({
-    messages: [SYSTEM, ...context, { role: "user", content: text }],
+  // Ask the grid AI gateway: persona (system) + prior turns + the new user
+  // message. Chat expects a model and returns { text }.
+  const { text: reply } = await runtime.ai.chat({
+    model: "claude-haiku",
+    system: SYSTEM,
+    messages: [...context, { role: "user", content: text }],
   });
-  const reply = r.text ?? r.content ?? "";
 
   // Persist the exchange.
   const now = new Date();
@@ -229,8 +228,8 @@ export default function Chat({ initialHistory }) {
 - Deploy the same way as the template: `grid dev` locally, `grid plug` to deploy
   (async — poll status to a live URL). Re-plug the same entity to keep one URL.
 - The needs are Mongo + the AI gateway (`needs: { ai: true, database: true }`).
-  The AI call is zero-config — `createClient()` with no key uses the in-grid
-  identity.
+  The AI call is zero-config — `runtime.ai.chat` with no key; the SDK reads
+  `RUNTIME_GATEWAY_URL` and the in-grid identity itself.
 - All app code lives under `services/web/`; the connection is read lazily inside
   `getDb`, never at module top level.
 - To answer over your own documents (RAG) you'd add `needs: { vector: pgvector }`

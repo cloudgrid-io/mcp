@@ -159,7 +159,7 @@ engine hint. Cron is NOT a need — it is a **service type** (`type: cron` with
 | `vector: pgvector` | pgvector embeddings DB | `VECTOR_PGVECTOR_URL` (+legacy `PGVECTOR_URL`) | **Injects via `needs:`** (#1545 shipped, verified live 2026-07-16) |
 | `object_storage: true` | GCS bucket | `OBJECT_STORAGE_GCS_BUCKET`, `OBJECT_STORAGE_GCS_REGION` | **GATED (#1678)** - rejected at plug-time; use `disk` or a BYO bucket via secret |
 | `disk: true` | Persistent filesystem at `/data` | `DISK_PATH` | Injects via `needs:` |
-| `ai: true` | AI Gateway access | `AI_GATEWAY_URL` | Injects via `needs:` |
+| `ai: true` | AI Gateway access | `RUNTIME_GATEWAY_URL` | Injects via `needs:` |
 | `type: cron` (service) | Scheduled job (`schedule`, `timezone`) | — | Service type, not a need |
 
 ### Injection status

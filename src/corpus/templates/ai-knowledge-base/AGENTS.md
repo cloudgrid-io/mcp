@@ -10,7 +10,7 @@ as `app-with-data` / `crm`) with a **RAG** loop layered on: ingest documents →
 chunk them → embed each chunk → store the vectors → at query time embed the
 question, retrieve the nearest chunks, and ask the model to answer grounded in
 them (with citations). Both the embedding and the answer step run through
-CloudGrid's **AI Gateway** (`@cloudgrid-io/ai`, injected via `needs: { ai: true }`).
+CloudGrid's **AI Gateway** (`@cloudgrid-io/runtime`, injected via `needs: { ai: true }`).
 
 > **Vector-store status (read this first):** the ideal store for embeddings is
 > `needs: vector` (pgvector on Postgres, injecting `VECTOR_PGVECTOR_URL`), and it
@@ -32,10 +32,10 @@ URL mount, NOT the filesystem path. Files at the repo root fail with
 ```
 cloudgrid.yaml                              # name + services.web(nextjs,/) + needs:{ai:true, database:true}
 services/web/
-  package.json                              # next, react, react-dom, mongodb, @cloudgrid-io/ai
+  package.json                              # next, react, react-dom, mongodb, @cloudgrid-io/runtime
   lib/
     db.js                                   # lazy Mongo client from DATABASE_MONGODB_URL (legacy MONGODB_URL fallback)
-    ai.js                                   # lazy @cloudgrid-io/ai client from AI_GATEWAY_URL — embed() + chat()
+    ai.js                                   # @cloudgrid-io/runtime AI (auto-reads RUNTIME_GATEWAY_URL) — embed() + chat()
     chunk.js                                # pure fn: splitIntoChunks(text) -> string[] (e.g. ~800-token windows, overlap)
     retrieve.js                             # embed query -> cosine-rank chunks in Mongo -> top-k with scores
   app/
@@ -86,13 +86,13 @@ injected as env vars at `grid dev` (local) and at runtime (after `grid plug`):
 | What | Declared in cloudgrid.yaml | Injected env var(s) | Read in code |
 |------|----------------------------|---------------------|--------------|
 | MongoDB | `needs: { database: true }` | `DATABASE_MONGODB_URL` (+ legacy `MONGODB_URL`) | `lib/db.js` |
-| AI Gateway | `needs: { ai: true }` | `AI_GATEWAY_URL` | `lib/ai.js` (via `@cloudgrid-io/ai`) |
+| AI Gateway | `needs: { ai: true }` | `RUNTIME_GATEWAY_URL` | `lib/ai.js` (via `@cloudgrid-io/runtime`) |
 | Vector store (available — #1545 shipped) | `needs: { vector: pgvector }` | `VECTOR_PGVECTOR_URL` (+ legacy `PGVECTOR_URL`) | `lib/retrieve.js` — not used by this blueprint (Section 7 for the swap) |
 | Auth key (optional) | `vault: { AUTH_PROVIDER_KEY: auth-provider-key }` | `AUTH_PROVIDER_KEY` | `lib/auth.js` |
 | Stripe key (optional) | `vault: { STRIPE_KEY: stripe-live-key }` | `STRIPE_KEY` | `lib/stripe.js` |
 
 The **AI Gateway needs no API key** — `needs: { ai: true }` injects
-`AI_GATEWAY_URL` and `@cloudgrid-io/ai` routes through it. The `vault:` block only
+`RUNTIME_GATEWAY_URL` and `@cloudgrid-io/runtime` routes through it. The `vault:` block only
 **maps** an org vault item key → an env var name; store the real value once with
 `grid secrets set <vault-item-key> <value>`. Never commit a secret; never hardcode
 a connection string.
@@ -114,23 +114,20 @@ export async function getDb() {
 ```
 
 ```js
-// lib/ai.js — lazy AI Gateway client (no API key; the gateway URL is injected)
-import { createClient } from "@cloudgrid-io/ai";
-function ai() {
-  const url = process.env.AI_GATEWAY_URL;
-  if (!url) throw new Error("AI_GATEWAY_URL not set — declare needs:{ai:true} and run via `grid dev`/`grid plug`.");
-  globalThis.__ai ??= createClient({ baseURL: url });
-  return globalThis.__ai;
-}
-// embed one or many strings -> vectors (used for both indexing and queries)
+// lib/ai.js — CloudGrid runtime AI. No API key and no baseURL: the SDK reads
+// RUNTIME_GATEWAY_URL (injected by needs:{ai:true}) and the in-grid identity
+// itself. Never reference the env var or pass a key.
+import { runtime } from "@cloudgrid-io/runtime";
+// embed one or many strings -> an aligned array of vectors (indexing + queries)
 export async function embed(texts) {
-  const res = await ai().embeddings.create({ input: Array.isArray(texts) ? texts : [texts] });
-  return res.data.map((d) => d.embedding);
+  const input = Array.isArray(texts) ? texts : [texts];
+  const vec = await runtime.ai.embeddings({ text: input }); // batch -> vec.values aligned to input order
+  return vec.values; // number[][]; vec also carries .model, .dim, .tokens
 }
-// grounded chat answer
-export async function chat(messages) {
-  const res = await ai().chat.completions.create({ messages });
-  return res.choices[0].message.content;
+// grounded chat answer -> string. Chat expects a model and returns { text }.
+export async function chat({ system, messages }) {
+  const { text } = await runtime.ai.chat({ model: "claude-haiku", system, messages });
+  return text;
 }
 ```
 
@@ -176,7 +173,8 @@ export async function retrieve(question, k = 5) {
 2. Build a system prompt: *"Answer ONLY from the provided context; if it isn't
    there, say you don't know. Cite the chunks you used."* Put the retrieved chunk
    texts (with ids) in the context.
-3. `chat([...])` via `lib/ai.js`; return the answer plus the source chunks so the
+3. `chat({ system, messages })` via `lib/ai.js` (the grounding instruction is the
+   `system`); return the answer plus the source chunks so the
    UI can render **citations**. Grounding + citations are the point — never let the
    model answer from parametric memory alone.
 

@@ -4,8 +4,8 @@ when: chatbot, AI assistant, Q&A bot, conversational app, support bot, ask-me-an
 needs: ai, database
 deploy: runtime
 editions: local
-capabilities_note: AI chatbot — needs ai (the grid AI gateway) + a database (Mongo) for chat history. Next.js App Router app. Uses @cloudgrid-io/ai createClient().chat() with zero-config in-grid identity auth (no API key). Runtime app, async build, local edition only. Declare `needs: { ai: true, database: true }`. (RAG over your own docs needs `needs: { vector: pgvector }` — now available, #1545 shipped (verified live 2026-07-16); this template ships the plain chatbot without it.)
-summary: Build an AI chatbot on the grid — a Next.js app that calls @cloudgrid-io/ai createClient().chat({messages}) (zero-config in-grid auth, no key) and persists the conversation to grid-shared Mongo. Edition-gate first, scaffold, put the app under services/web/, declare needs:{ai:true,database:true}, read DATABASE_MONGODB_URL lazily, deploy async, poll to a live URL.
+capabilities_note: AI chatbot — needs ai (the grid AI gateway) + a database (Mongo) for chat history. Next.js App Router app. Uses @cloudgrid-io/runtime runtime.ai.chat({ model, messages }) — zero-config in-grid identity (the SDK reads RUNTIME_GATEWAY_URL automatically; chat needs a model; no API key). Runtime app, async build, local edition only. Declare `needs: { ai: true, database: true }`. (RAG over your own docs needs `needs: { vector: pgvector }` — now available, #1545 shipped (verified live 2026-07-16); this template ships the plain chatbot without it.)
+summary: Build an AI chatbot on the grid — a Next.js app that calls @cloudgrid-io/runtime runtime.ai.chat({ model, messages }) (zero-config in-grid auth, reads RUNTIME_GATEWAY_URL, no key) and persists the conversation to grid-shared Mongo. Edition-gate first, scaffold, put the app under services/web/, declare needs:{ai:true,database:true}, read DATABASE_MONGODB_URL lazily, deploy async, poll to a live URL.
 ---
 
 # Workflow: ai-app
@@ -80,15 +80,19 @@ ai: true, database: true }`).
    (`app/api/chat/route.js`, `export const dynamic = "force-dynamic"`) that reads
    the user message, calls the AI gateway, persists the exchange to Mongo, and
    returns the reply.
-3. **Call the AI gateway with `@cloudgrid-io/ai`** — zero config, no API key:
+3. **Call the AI gateway with `@cloudgrid-io/runtime`** — zero config, no API key:
    ```js
-   import { createClient } from "@cloudgrid-io/ai";
-   const client = createClient();                    // zero-arg, no key
-   const r = await client.chat({ messages: [{ role: "user", content: text }] });
-   const reply = r.text ?? r.content;                // reply text
+   import { runtime } from "@cloudgrid-io/runtime";
+   // Chat expects a model and returns { text }. No key, no baseURL.
+   const { text: reply } = await runtime.ai.chat({
+     model: "claude-haiku",
+     messages: [{ role: "user", content: text }],
+   });
    ```
-   The SDK auto-detects the in-grid identity — **do NOT set an API key.** It only
-   works inside a deployed grid app (or under `grid dev`).
+   The SDK reads `RUNTIME_GATEWAY_URL` (injected by the grid) and the in-grid
+   identity automatically — **do NOT set an API key or reference the env var.**
+   `chat` needs a `model`. It only works inside a deployed grid app (or under
+   `grid dev`).
 4. **Persist the exchange to Mongo** — read `process.env.DATABASE_MONGODB_URL`
    (falling back to the legacy `process.env.MONGODB_URL`) **lazily inside the
    getter, never at module top level**, or `next build` fails (the module is

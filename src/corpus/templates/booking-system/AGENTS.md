@@ -100,8 +100,8 @@ You do NOT provision infra or set connection strings/secrets by hand. Declared i
   `STRIPE_KEY`, `STRIPE_WEBHOOK_SECRET`, `AUTH_PROVIDER_KEY`. Add the underlying
   vault items with `grid secrets set <item> <value>` (or the vault UI) BEFORE
   plug, so resolution succeeds. Never hardcode a key; never commit `.env`.
-- **AI (`needs: { ai: true }`, if you add it)** → `AI_GATEWAY_URL`, used via
-  `@cloudgrid-io/ai`. Not required for a basic booking system.
+- **AI (`needs: { ai: true }`, if you add it)** → `RUNTIME_GATEWAY_URL`, used via
+  `@cloudgrid-io/runtime`. Not required for a basic booking system.
 
 Read every injected var lazily (inside getters), same rule as the DB.
 
