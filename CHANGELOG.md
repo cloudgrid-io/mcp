@@ -1,3 +1,7 @@
+## 0.20.17
+
+- **fix(mcpb): Desktop extension crashed on boot (ERR_MODULE_NOT_FOUND), broken since 0.20.12.** The .mcpb build hand-listed files and shipped the tools.js barrel without src/tools/*.js (the module split), plus missed playbook.js/session-logger/log-sink; Desktop showed "MCP CloudGrid could not connect". npm/npx were unaffected. Now bundles the whole src tree; a new mcpb-boot CI test builds+extracts+boots the bundle over stdio so a broken artifact fails CI.
+
 ## 0.20.16
 
 - Voice guard: smoke now walks every model-visible string (tool descriptions, nested schema describes, server instructions) and fails on org-as-a-noun prose. Caught + fixed one more leak (grid_feedback org param description) on its first run.
