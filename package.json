@@ -50,7 +50,8 @@
     "snapshot:corpus": "node scripts/snapshot-corpus.mjs",
     "build:mcpb": "node scripts/build-mcpb.mjs",
     "test:widgets": "node test/apps-widgets.test.mjs",
-    "test:fork": "node test/fork.test.mjs"
+    "test:fork": "node test/fork.test.mjs",
+    "test:set-sharing": "node test/set-sharing.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

@@ -620,10 +620,11 @@ export function registerTools(server, ctx) {
   reg(
     "grid_set_sharing",
     {
-      description: "Change who can see a CloudGrid inspiration: private, space, authenticated, org, or link (anyone with the URL). Use when the user wants to make a drop private, restrict who sees it, or open it up — including right after a drop, with no target id needed. Defaults to the drop made in this session. Requires sign-in. Calls the API directly.",
+      description: "Change who can see a CloudGrid inspiration OR runtime app/agent: private, authenticated, grid (everyone in the grid), or link (anyone with the URL). `space` is inspiration-only. Use when the user wants to make something private, restrict who sees it, or open it up — including right after a drop, with no target id needed. Kind-aware: routes runtime apps/agents to the entities visibility surface and inspirations to the inspiration surface automatically. Defaults to the drop made in this session. Requires sign-in. Calls the API directly.",
       inputSchema: {
-        visibility: z.enum(["private", "space", "authenticated", "org", "link"]).describe("The new scope."),
+        visibility: z.enum(["private", "space", "authenticated", "grid", "org", "link"]).describe("The new scope. Use `grid` for whole-grid visibility (`org` is the deprecated alias). `space` is inspiration-only."),
         target: z.string().optional().describe("Entity id. Defaults to this session's last drop."),
+        kind: z.enum(["inspiration", "app", "agent"]).optional().describe("Entity kind. Omit to auto-detect from this session's last drop (falls back to trying the runtime surface, then the inspiration surface)."),
         org: z.string().optional().describe("Grid of the entity. Defaults to the active grid."),
       },
       outputSchema: {

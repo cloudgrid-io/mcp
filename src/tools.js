@@ -35,6 +35,7 @@ export {
   runPlug,
   runFork,
   runSource,
+  runVisibility,
 } from "./tools/deploy.js";
 export { registerTools, buildCreateProjectArgs } from "./tools/register.js";
 export { decodeJwt } from "./auth.js";

@@ -1398,6 +1398,9 @@ export async function runPlug(ctx, input, deps = {}) {
     ctx.state.lastDrop = {
       entity_id: data.entity_id ?? null,
       url: url ?? null,
+      // Kind lets grid_set_sharing route to the right visibility surface
+      // (inspirations vs runtime entities) without a re-detect round-trip.
+      kind: data.detection?.kind ?? data.kind ?? null,
       owner_token: useAnonWire ? (freshOwnerToken ?? ownerToken ?? null) : null,
     };
   }
@@ -1619,10 +1622,11 @@ export async function runDownload(ctx, { id, version }) {
   };
 }
 
-// Change an inspiration's visibility. Authed, direct API — works on the hosted
-// edition where the CLI-wrapping share tool is unavailable. Defaults to the drop
-// made in this session, so "make it private" needs no ids.
-export async function runVisibility(ctx, { target, visibility, org }) {
+// Change an entity's visibility — inspiration OR runtime app/agent. Authed,
+// direct API — works on the hosted edition where the CLI-wrapping share tool is
+// unavailable. Kind-aware routing (see below). Defaults to the drop made in this
+// session, so "make it private" needs no ids.
+export async function runVisibility(ctx, { target, visibility, kind, org }) {
   const token = await ctx.getToken();
   if (!token) {
     throw new Error("Changing visibility needs an owner. Run grid_login first.");
@@ -1638,33 +1642,86 @@ export async function runVisibility(ctx, { target, visibility, org }) {
     headers["X-CloudGrid-Grid"] = orgSlug;
     headers["X-CloudGrid-Org"] = orgSlug;
   }
-  let res;
-  try {
-    res = await fetch(`${API_BASE}/api/v2/inspirations/${encodeURIComponent(id)}`, {
-      method: "PATCH",
-      headers,
-      body: JSON.stringify({ visibility }),
-    });
-  } catch (err) {
-    throw new Error(`Could not reach CloudGrid at ${API_BASE}: ${err.message}`);
+
+  // Two visibility surfaces with two vocabularies:
+  //   - inspirations: PATCH /api/v2/inspirations/:id       { private|space|authenticated|org|link }
+  //   - runtimes:     PATCH /api/v2/entities/:id/visibility { private|authenticated|grid|link }
+  // Whole-grid visibility is the legacy `org` on inspirations and the canonical
+  // `grid` on runtimes. Normalize the caller's value to `grid`, then map per
+  // route. `space` exists only on inspirations.
+  const vis = visibility === "org" ? "grid" : visibility;
+  const runtimeValue = vis; // private | authenticated | grid | link
+  const inspirationValue = vis === "grid" ? "org" : vis; // private | space | authenticated | org | link
+
+  const k = kind || ctx.state.lastDrop?.kind || null;
+  const isRuntimeKind = k === "app" || k === "agent";
+
+  if (vis === "space" && isRuntimeKind) {
+    throw new Error(
+      "'space' visibility isn't available for runtime apps/agents. Use grid, authenticated, private, or link.",
+    );
   }
-  const raw = await res.text();
-  let data = null;
-  try { data = JSON.parse(raw); } catch { /* handled below */ }
-  if (!res.ok) {
-    const msg = data?.error?.message || raw || `HTTP ${res.status}`;
-    const hint = data?.error?.details?.[0]?.hint;
-    throw new Error(`Visibility change failed (HTTP ${res.status}): ${msg}${hint ? ` ${hint}` : ""}`);
-  }
-  const lines = [`Visibility is now ${visibility}.`];
-  if (data?.url) lines.push(data.url);
-  return {
-    text: lines.join("\n"),
-    structured: {
-      visibility,
-      ...(data?.url ? { url: data.url } : {}),
-    },
+
+  const patch = async (pathName, value) => {
+    let res;
+    try {
+      res = await fetch(`${API_BASE}${pathName}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ visibility: value }),
+      });
+    } catch (err) {
+      throw new Error(`Could not reach CloudGrid at ${API_BASE}: ${err.message}`);
+    }
+    const raw = await res.text();
+    let data = null;
+    try { data = JSON.parse(raw); } catch { /* handled by caller */ }
+    return { res, data, raw };
   };
+
+  const runtimePath = `/api/v2/entities/${encodeURIComponent(id)}/visibility`;
+  const inspirationPath = `/api/v2/inspirations/${encodeURIComponent(id)}`;
+
+  // Route order. `space` is inspiration-only; a known runtime kind goes straight
+  // to the entities route; a known inspiration goes straight to the inspiration
+  // route; an unknown kind tries the runtime route first and falls back to the
+  // inspiration route on a not-found (mirrors runFork).
+  let order;
+  if (vis === "space") order = ["inspiration"];
+  else if (isRuntimeKind) order = ["runtime"];
+  else if (k === "inspiration") order = ["inspiration"];
+  else order = ["runtime", "inspiration"];
+
+  let last;
+  for (let i = 0; i < order.length; i++) {
+    const route = order[i];
+    last = route === "runtime"
+      ? await patch(runtimePath, runtimeValue)
+      : await patch(inspirationPath, inspirationValue);
+    if (last.res.ok) {
+      const lines = [`Visibility is now ${vis}.`];
+      if (last.data?.url) lines.push(last.data.url);
+      return {
+        text: lines.join("\n"),
+        structured: {
+          visibility: vis,
+          ...(last.data?.url ? { url: last.data.url } : {}),
+        },
+      };
+    }
+    // Fall back runtime→inspiration only when the id isn't a runtime entity
+    // (a genuine 4xx like NOT_OWNER must surface, not silently re-route).
+    const code = last.data?.error?.code;
+    const canFallback =
+      route === "runtime" &&
+      i < order.length - 1 &&
+      (last.res.status === 404 || code === "NOT_FOUND" || code === "NOT_A_RUNTIME");
+    if (!canFallback) break;
+  }
+
+  const msg = last?.data?.error?.message || last?.raw || `HTTP ${last?.res?.status}`;
+  const hint = last?.data?.error?.details?.[0]?.hint;
+  throw new Error(`Visibility change failed (HTTP ${last?.res?.status}): ${msg}${hint ? ` ${hint}` : ""}`);
 }
 
 // Max HTML we'll return inline from runSource. Past this, we return the first

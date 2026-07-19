@@ -90,6 +90,11 @@ jobs:
       # gracefully on non-200, and the grid_source tool + playbook/drop/plug
       # guidance are wired. Mocks global fetch.
       - run: npm run test:source
+      # Offline set-sharing kind-awareness: grid_set_sharing routes runtime
+      # app/agent to PATCH /entities/:id/visibility (grid vocab) and inspirations
+      # to PATCH /inspirations/:id (org vocab), maps org<->grid, falls back on a
+      # not-found, and keeps space inspiration-only. Mocks global fetch.
+      - run: npm run test:set-sharing
       # Offline app-with-data test (0.9.0): the first runtime (DB-backed) build
       # path. Asserts the app-with-data workflow/template/example + persistent-apps
       # troubleshooting resolve via fetchCorpus and the real grid_fetch handler,
