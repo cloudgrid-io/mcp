@@ -82,6 +82,13 @@ try {
   check("unknown: fell back to the inspiration route", inspirationCalls().length === 1);
   check("unknown: fallback used the inspiration vocab (org)", inspirationCalls()[0]?.body?.visibility === "org");
 
+  // 4b. Unknown kind: runtime route replies 400 NOT_A_RUNTIME → fall back too.
+  reset();
+  replies.runtime = { status: 400, body: JSON.stringify({ error: { code: "NOT_A_RUNTIME", message: "This is an Inspiration, not a Runtime." } }) };
+  replies.inspiration = { status: 200, body: JSON.stringify({ url: "https://d2.cloudgrid.io" }) };
+  await runVisibility(makeCtx({ entity_id: "e_not_rt" }), { visibility: "private" });
+  check("NOT_A_RUNTIME: runtime tried then inspiration fallback", runtimeCalls().length === 1 && inspirationCalls().length === 1);
+
   // 5. 'space' is inspiration-only → never touches the runtime route.
   reset();
   replies.inspiration = { status: 200, body: JSON.stringify({ url: "https://e.cloudgrid.io" }) };

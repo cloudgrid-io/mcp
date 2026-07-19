@@ -1622,9 +1622,10 @@ export async function runDownload(ctx, { id, version }) {
   };
 }
 
-// Change an inspiration's visibility. Authed, direct API — works on the hosted
-// edition where the CLI-wrapping share tool is unavailable. Defaults to the drop
-// made in this session, so "make it private" needs no ids.
+// Change an entity's visibility — inspiration OR runtime app/agent. Authed,
+// direct API — works on the hosted edition where the CLI-wrapping share tool is
+// unavailable. Kind-aware routing (see below). Defaults to the drop made in this
+// session, so "make it private" needs no ids.
 export async function runVisibility(ctx, { target, visibility, kind, org }) {
   const token = await ctx.getToken();
   if (!token) {
