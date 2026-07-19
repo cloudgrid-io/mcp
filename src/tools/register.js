@@ -288,7 +288,7 @@ export function registerTools(server, ctx) {
         // they validate: (1) the grid-picker "which grid?" ask (resolveGridOrAsk),
         // and (2) the signed-in CLI-fallback recovery.
         needs_grid: z.boolean().optional().describe("Grid-picker ask: a signed-in user with >1 grid must choose one before this create proceeds. Pass the chosen slug back in `grid`."),
-        needs_org: z.boolean().optional().describe("Alias of needs_grid (legacy org-picker widget)."),
+        needs_org: z.boolean().optional().describe("Alias of needs_grid (legacy picker alias)."),
         grids: z.array(z.object({
           slug: z.string(),
           name: z.string(),
@@ -302,7 +302,7 @@ export function registerTools(server, ctx) {
           role: z.string(),
           render_ready: z.boolean(),
           is_active: z.boolean(),
-        })).optional().describe("Alias of grids (legacy org-picker widget)."),
+        })).optional().describe("Alias of grids (legacy picker alias)."),
         via: z.string().optional().describe("Recovery marker: 'cli-fallback' when a signed-in create was published through the bundled CloudGrid CLI."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
@@ -906,7 +906,7 @@ export function registerTools(server, ctx) {
     {
       since: z.string().optional().describe("Only events newer than this, e.g. 24h, 7d."),
       limit: z.number().int().positive().max(200).optional().describe("Number of events. Default 50, max 200."),
-      org: z.string().optional().describe("Read another org's feed where you have access."),
+      org: z.string().optional().describe("Read another grid's feed where you have access."),
     },
     { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     cliTool(({ since, limit, org }) => {
