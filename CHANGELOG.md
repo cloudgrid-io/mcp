@@ -1,3 +1,7 @@
+## 0.20.19
+
+- Hard auth + grid gates on grid_deploy CREATE. No-auth create no longer silently publishes anonymously - it returns needs_auth (sign in vs publish anonymously) and stops. Authed multi-grid create returns needs_grid (pick a grid) as before, and playbook rule 7 now has the model establish the grid up front. Edits, anon:true, explicit-grid, and single-grid all bypass. New create-gates CI test.
+
 ## 0.20.18
 
 - Anonymous-plug fallback on a not-authenticated create: grid_deploy checks auth first; if the user is not signed in (or a create 401s), the model offers "sign in to your grid, or publish anonymously now (claimable later)?" instead of failing. Playbook rule 17 + create-time 401 guidance. One deploy verb, no new tool.
