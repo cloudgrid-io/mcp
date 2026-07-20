@@ -112,7 +112,7 @@ build` for you and serves the `dist/` output — you do NOT need to build first.
   `<url>/llms-full.txt` (full content), generated automatically.
 - This is a NEW deploy, so ASK the user who should be able to open it (private /
   a space / your grid / anyone with the link / anyone signed in) and set their
-  choice with `grid_set_sharing`. Do not pick the visibility for them.
+  choice with `grid_visibility`. Do not pick the visibility for them.
 
 To iterate, edit the content and re-plug the SAME entity (`target_entity_id`) so
 it updates the same URL.

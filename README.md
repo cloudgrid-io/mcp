@@ -80,7 +80,7 @@ posted). `CLOUDGRID_QA_IDLE_MS` overrides the abandoned-idle window (default
 | `grid_get_app_source` | `GET /api/v2/.../source` | Fetch a deployed entity's source (resolves entity_id from a URL). Read-only. |
 | `grid_login` | `GET /auth/login` | Start a CLI-free sign-in; returns a URL to open. |
 | `grid_login_status` | `GET /auth/status` | Finish the sign-in; saves the token to the shared CLI credentials. |
-| `grid_set_sharing` | `PATCH /api/v2/inspirations/<id>` | Change who can see a drop (private, space, authenticated, org, link). Needs sign-in. |
+| `grid_visibility` | `PATCH /api/v2/inspirations/<id>` | Change who can see a drop (private, space, authenticated, org, link). Needs sign-in. |
 | `grid_list_grids` | `GET /api/v2/orgs` | List the caller's grids. Read-only. |
 | `grid_start` | corpus | Orientation: the playbook + workflow index + live context. Call FIRST. Read-only. |
 | `grid_get_template` | corpus | Fetch a workflow / template / example / doc from the bundled corpus. Read-only. (`grid_fetch` is a kept deprecated alias.) |
@@ -116,8 +116,8 @@ CLI uses, so the two share one identity.
 | `grid_diagnose` | `grid doctor` | Run local diagnostics. Read-only. |
 | `grid_get_url` | `grid open --print` | Return the public URL. Does not open a browser. Read-only. |
 
-`grid_share` and `grid_set_sharing` overlap on purpose: `grid_share`
-wraps the CLI and defaults to `link`; `grid_set_sharing` is direct API, takes an
+`grid_share` and `grid_visibility` overlap on purpose: `grid_share`
+wraps the CLI and defaults to `link`; `grid_visibility` is direct API, takes an
 explicit scope, and defaults its target to the session's last drop -- it is the one
 the web edition gets.
 

@@ -51,7 +51,7 @@ try {
   }
   // Tool-name cleanup: the new clear primary names are present (both editions),
   // and the old direct-API names are kept as deprecated aliases.
-  for (const nm of ["grid_get_template", "grid_get_app_source", "grid_list_grids", "grid_copy_app", "grid_download_source", "grid_claim_anonymous_deploy", "grid_set_sharing"]) {
+  for (const nm of ["grid_get_template", "grid_get_app_source", "grid_list_grids", "grid_copy_app", "grid_download_source", "grid_claim_anonymous_deploy", "grid_visibility"]) {
     check(`exposes new name ${nm}`, names.includes(nm));
   }
   for (const nm of ["grid_fetch"]) {
@@ -63,7 +63,7 @@ try {
   check(`web: no org-as-a-noun prose (found: ${webVoiceLeaks.map((t) => t.name).join(", ") || "none"})`, webVoiceLeaks.length === 0);
 
   // 0.20.8 alias diet: dropped legacy aliases must NOT be advertised (web).
-  for (const nm of ["grid_source", "grid_list", "grid_fork", "grid_download", "grid_claim", "grid_visibility"]) {
+  for (const nm of ["grid_source", "grid_list", "grid_fork", "grid_download", "grid_claim"]) {
     check(`dropped alias ${nm} is no longer advertised`, !names.includes(nm));
   }
   // Server instructions must reach web clients (ChatGPT/claude.ai orientation).

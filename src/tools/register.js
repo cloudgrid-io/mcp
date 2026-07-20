@@ -296,7 +296,7 @@ export function registerTools(server, ctx) {
         console_url: z.string().optional().describe("Web authed inspiration create: URL to manage all apps in the grid."),
         current_visibility: z.string().optional().describe("Web authed inspiration create: the visibility set after publish (link)."),
         visibility_options: z.array(z.object({
-          value: z.string().describe("Visibility value to pass to grid_set_sharing."),
+          value: z.string().describe("Visibility value to pass to grid_visibility."),
           label: z.string().describe("Human-readable label."),
         })).optional().describe("Web authed inspiration create: available visibility levels."),
         // grid_deploy has ONE outputSchema but THREE response modes; the SDK renders
@@ -618,7 +618,7 @@ export function registerTools(server, ctx) {
   );
 
   reg(
-    "grid_set_sharing",
+    "grid_visibility",
     {
       description: "Change who can see a CloudGrid inspiration OR runtime app/agent: private, authenticated, grid (everyone in the grid), or link (anyone with the URL). `space` is inspiration-only. Use when the user wants to make something private, restrict who sees it, or open it up — including right after a drop, with no target id needed. Kind-aware: routes runtime apps/agents to the entities visibility surface and inspirations to the inspiration surface automatically. Defaults to the drop made in this session. Requires sign-in. Calls the API directly.",
       inputSchema: {
@@ -1194,4 +1194,8 @@ export function registerTools(server, ctx) {
   // Kept alias (local): grid_logs - muscle memory. The other legacy CLI-tool
   // aliases were dropped in 0.20.8 (see CHANGELOG).
   registerAlias("grid_logs", "grid_view_logs");
+  // grid_set_sharing → grid_visibility (2026-07-20, founder rename). Same handler
+  // and schema; the old name stays as a redirect-only deprecated alias so any
+  // client/agent still calling it keeps working while the model prefers the new.
+  registerAlias("grid_set_sharing", "grid_visibility");
 }

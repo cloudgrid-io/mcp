@@ -1,4 +1,4 @@
-// grid_set_sharing kind-awareness. Reported bug: setting visibility on a runtime
+// grid_visibility kind-awareness. Reported bug: setting visibility on a runtime
 // app/agent failed with "handles inspirations, not runtime agents" because
 // runVisibility hardcoded PATCH /api/v2/inspirations/:id for every entity.
 //
