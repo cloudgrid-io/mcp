@@ -7,9 +7,13 @@ and your agent can build, ship, and run things on CloudGrid through the
 ## Why CloudGrid
 
 Claude Code and Codex removed the wall around writing code. CloudGrid removes the
-wall around shipping it. A directory or a URL becomes a live, addressable thing in
-about 30 seconds. These skills are how your agent crosses that second wall on your
-behalf: scaffold, deploy, tail logs, share, read feedback. Everything here is free.
+wall around running it. It is a live runtime environment: your app runs there WITH
+the infrastructure it needs out of the box — managed MongoDB, Redis (cache, queues,
+pub/sub), a pgvector store, persistent disk, and built-in AI with no API keys — in
+any language or stack, with no Docker or Kubernetes to manage. A directory or a URL
+becomes a live, addressable, running thing in about 30 seconds. These skills are how
+your agent crosses that second wall on your behalf: scaffold, declare what the app
+needs, build, plug it in, tail logs, share, read feedback. Everything here is free.
 
 ## Install in 3 steps
 
