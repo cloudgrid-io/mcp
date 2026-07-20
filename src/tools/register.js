@@ -707,7 +707,7 @@ export function registerTools(server, ctx) {
     "grid_start",
     {
       description:
-        "Orient before building with CloudGrid — the live runtime environment where the user's apps run WITH the infrastructure they need (managed database, cache, storage, AI with no API keys), any language or stack. Call this FIRST when the user wants to build, create, make, deploy, publish, or generate something. Returns the CloudGrid playbook (operating rules + golden path) and the index of available workflows (presentation, …). After this, match the user's intent to a workflow and call grid_get_template to load it.",
+        "Orient before building with CloudGrid — the live runtime environment where the user's apps run WITH the infrastructure they need (managed database, cache, persistent disk, AI with no API keys), any language or stack. Call this FIRST when the user wants to build, create, make, deploy, publish, or generate something. Returns the CloudGrid playbook (operating rules + golden path) and the index of available workflows (presentation, …). After this, match the user's intent to a workflow and call grid_get_template to load it.",
       inputSchema: {},
       outputSchema: {
         playbook: z.string().describe("The operating rules and golden path for building with CloudGrid."),
