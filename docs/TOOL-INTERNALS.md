@@ -17,7 +17,7 @@ For the user-facing summary see the docs site's
 > `grid_fetch`→`grid_get_template`, `grid_source`→`grid_get_app_source`,
 > `grid_list`→`grid_list_grids`, `grid_fork`→`grid_copy_app`,
 > `grid_download`→`grid_download_source`, `grid_claim`→`grid_claim_anonymous_deploy`,
-> `grid_visibility`→`grid_set_sharing`, `grid_init`→`grid_create_project`,
+> `grid_set_sharing`→`grid_visibility` (re-renamed back 2026-07-20), `grid_init`→`grid_create_project`,
 > `grid_logs`→`grid_view_logs`, `grid_env`→`grid_set_env`,
 > `grid_secrets`→`grid_set_secret`, `grid_rollback`→`grid_rollback_deploy`,
 > `grid_versions`→`grid_list_versions`, `grid_open`→`grid_get_url`,

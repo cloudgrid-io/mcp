@@ -1398,7 +1398,7 @@ export async function runPlug(ctx, input, deps = {}) {
     ctx.state.lastDrop = {
       entity_id: data.entity_id ?? null,
       url: url ?? null,
-      // Kind lets grid_set_sharing route to the right visibility surface
+      // Kind lets grid_visibility route to the right visibility surface
       // (inspirations vs runtime entities) without a re-detect round-trip.
       kind: data.detection?.kind ?? data.kind ?? null,
       owner_token: useAnonWire ? (freshOwnerToken ?? ownerToken ?? null) : null,
@@ -1482,7 +1482,7 @@ export async function runPlug(ctx, input, deps = {}) {
 
   // Visibility is the user's choice — never set silently. On a NEW deploy,
   // surface the current visibility + the full option set and have the agent ASK
-  // the user, then apply their answer via grid_set_sharing. On an edit, leave the
+  // the user, then apply their answer via grid_visibility. On an edit, leave the
   // entity's existing visibility untouched (don't re-ask on every re-plug).
   if (!isEdit && data.entity_id) {
     const current = typeof data.visibility === "string" ? data.visibility : null;
@@ -1491,7 +1491,7 @@ export async function runPlug(ctx, input, deps = {}) {
     structured.visibility_options = Object.entries(VISIBILITY_LABELS).map(([v, l]) => ({ value: v, label: l }));
     lines.push(`Manage all your apps in your grid: ${CONSOLE_URL}`);
     lines.push(
-      `Now ASK the user who should be able to open this${current ? ` (currently ${VISIBILITY_LABELS[current] ?? current})` : ""}, then set their choice with grid_set_sharing — do not decide it for them. Options: ${
+      `Now ASK the user who should be able to open this${current ? ` (currently ${VISIBILITY_LABELS[current] ?? current})` : ""}, then set their choice with grid_visibility — do not decide it for them. Options: ${
         Object.entries(VISIBILITY_LABELS)
           .map(([v, l]) => `${v} (${l})`)
           .join("; ")

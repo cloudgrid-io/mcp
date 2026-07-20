@@ -20,7 +20,7 @@ const GRIDCTL = [
   "grid_get_app_source",
   "grid_login",
   "grid_login_status",
-  "grid_set_sharing",
+  "grid_visibility",
   "grid_list_grids",
   "grid_create_project",
   "grid_deploy",
@@ -48,16 +48,18 @@ const GRIDCTL = [
   "grid_note",
 ];
 
-// Kept aliases (0.20.8 alias diet): only the two with real muscle memory
-// survive. The other 16 legacy aliases were DROPPED - each alias schema was
-// pure ListTools context weight on every session.
+// Kept aliases (0.20.8 alias diet): only the ones with real muscle memory
+// survive; the rest were DROPPED (each alias schema was pure ListTools context
+// weight). grid_set_sharing is a KEPT alias — the tool was re-renamed back to
+// grid_visibility (2026-07-20 founder rename), old name kept for back-compat.
 const ALIASES = [
   "grid_fetch",
   "grid_logs",
+  "grid_set_sharing",
 ];
 const DROPPED_ALIASES = [
   "grid_source", "grid_list", "grid_fork", "grid_download", "grid_claim",
-  "grid_visibility", "grid_init", "grid_env", "grid_secrets", "grid_rollback",
+  "grid_init", "grid_env", "grid_secrets", "grid_rollback",
   "grid_versions", "grid_open", "grid_doctor", "grid_unplug", "grid_use",
   "grid_pickup",
 ];

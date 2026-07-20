@@ -204,7 +204,7 @@ try {
     check("new deploy → visibility is NOT set silently (no PATCH)", !patch);
     check("new deploy → reports the server's current visibility", w.structured.current_visibility === "org");
     check("new deploy → offers the full visibility option set", Array.isArray(w.structured.visibility_options) && ["private", "org", "space", "link"].every((v) => w.structured.visibility_options.some((o) => o.value === v)));
-    check("new deploy → instructs the agent to ASK then grid_set_sharing", /ASK the user who should be able to open this/.test(w.text) && /grid_set_sharing/.test(w.text));
+    check("new deploy → instructs the agent to ASK then grid_visibility", /ASK the user who should be able to open this/.test(w.text) && /grid_visibility/.test(w.text));
     check("web authed html create → says Your app is live", /Your app is live/.test(w.text));
   }
 
