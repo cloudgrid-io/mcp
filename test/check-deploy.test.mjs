@@ -34,6 +34,10 @@ let traceHits = 0;
 
 const isPlug = (u, m) => u.includes("/api/v2/plug") && m === "POST";
 const isTrace = (u) => /\/deploys\/d_[a-z0-9_]+/.test(u);
+const isEntityDeploys = (u) => /\/api\/v2\/entities\/[^/]+\/deploys(\?|$)/.test(u);
+// When set, GET /entities/:id/deploys returns this trace_id (the hosted
+// inline-create case where the plug 202 omits poll_url/trace_id).
+let entityDeploysTrace = null;
 
 globalThis.fetch = async (url, opts = {}) => {
   const u = String(url);
@@ -41,6 +45,10 @@ globalThis.fetch = async (url, opts = {}) => {
   fetchCalls.push({ url: u, method });
   if (isPlug(u, method)) {
     return new Response(JSON.stringify(plugReply.body), { status: plugReply.status, headers: { "content-type": "application/json" } });
+  }
+  if (isEntityDeploys(u)) {
+    const body = entityDeploysTrace ? { deploys: [{ trace_id: entityDeploysTrace, status: "building" }] } : { deploys: [] };
+    return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
   }
   if (isTrace(u)) {
     const rep = traceReplies[Math.min(traceHits, traceReplies.length - 1)];
@@ -50,7 +58,8 @@ globalThis.fetch = async (url, opts = {}) => {
   return new Response("{}", { status: 404, headers: { "content-type": "application/json" } });
 };
 
-const reset = () => { fetchCalls = []; plugReply = null; traceReplies = []; traceHits = 0; };
+const reset = () => { fetchCalls = []; plugReply = null; traceReplies = []; traceHits = 0; entityDeploysTrace = null; };
+const entityDeploysCalls = () => fetchCalls.filter((c) => isEntityDeploys(c.url));
 const BUILDING = { entity_id: "e1", slug: "app-1", grid: "acme", url: "https://app-1--acme.cloudgrid.io", status: "building", poll_url: "/deploys/d_app_abc123", trace_id: "d_app_abc123", detection: { kind: "app" } };
 
 try {
@@ -63,6 +72,19 @@ try {
   check("fast build: result says live (no Building line)", !/Building \(async\)/.test(live.text) && /Live|live/.test(live.text));
   check("fast build: structured.status is live", live.structured.status === "live");
   check("fast build: no poll_url left in structured", !live.structured.poll_url);
+
+  // ── runPlug: hosted inline-create → 202 has NULL poll_url/trace_id ─────────
+  // The confirm poll must still fire: resolve the trace from /entities/:id/deploys,
+  // then poll /deploys/<trace> to success. (Regression: the old gate required
+  // data.poll_url, so this path skipped confirmation entirely.)
+  reset();
+  plugReply = { status: 202, body: { ...BUILDING, poll_url: null, trace_id: null } };
+  entityDeploysTrace = "d_app_resolved9";
+  traceReplies = [{ body: { status: "building" } }, { body: { status: "success" } }];
+  const inline = await runPlug(makeCtx(), { artifact_files: [{ path: "index.js", content: "x" }], confirm_new_app: true });
+  check("null poll_url: resolved the trace via /entities/:id/deploys", entityDeploysCalls().length >= 1);
+  check("null poll_url: polled the resolved /deploys/<trace>", traceHits >= 1);
+  check("null poll_url: still confirms live in-call", inline.structured.status === "live");
 
   // ── runPlug: build outlives the budget → do-not-claim-live + right tool ────
   reset();
@@ -119,6 +141,13 @@ try {
   let noTarget = null;
   try { await runCheckDeploy(makeCtx(), {}); } catch (e) { noTarget = e; }
   check("check with nothing to check: clear error", noTarget !== null && /No build to check/.test(noTarget.message));
+
+  // grid_check_deploy with only an entity_id in session (no poll_url) → resolves + reports
+  reset();
+  entityDeploysTrace = "d_app_fromentity";
+  traceReplies = [{ body: { status: "success" } }];
+  const byEntity = await runCheckDeploy(makeCtx({ lastDrop: { entity_id: "e_rt", grid: "acme", url: "https://x--acme.cloudgrid.io" } }), {});
+  check("check by entity_id (null poll_url): resolves trace + reports live", byEntity.structured.live === true && entityDeploysCalls().length >= 1);
 
   console.log(failures === 0 ? "\nAll check-deploy checks passed." : `\n${failures} check(s) FAILED.`);
   process.exit(failures === 0 ? 0 : 1);

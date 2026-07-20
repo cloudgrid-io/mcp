@@ -1424,9 +1424,10 @@ export async function runPlug(ctx, input, deps = {}) {
   // budget. Fast builds come back "live" in this same tool call; a build that
   // outlives the budget returns "building" with explicit do-not-claim-live copy;
   // a failed build surfaces the platform's user-language error instead of a URL.
-  if ((data.status === "building" || data.poll_url) && data.poll_url && !useAnonWire) {
+  if ((data.status === "building" || data.poll_url) && !useAnonWire && (data.poll_url || data.entity_id)) {
     const verdict = await pollDeployTrace(ctx, {
       pollUrl: data.poll_url,
+      entityId: data.entity_id,
       grid: data.grid,
       budgetMs: ctx.deployPollBudgetMs ?? DEPLOY_POLL_BUDGET_MS,
       intervalMs: ctx.deployPollIntervalMs ?? DEPLOY_POLL_INTERVAL_MS,
@@ -1773,6 +1774,34 @@ const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
 // GET one deploy-trace snapshot. Returns { status, error } — status is the
 // server's word ("queued"/"building"/"success"/"failed"), error is the
 // user-language message when failed. Throws only on a non-OK HTTP response.
+// Resolve a pollable deploy target. The hosted inline-create 202 returns
+// poll_url:null and trace_id:null (the trace is minted async), so when we only
+// have an entity_id we look up its latest deploy — GET /entities/:id/deploys
+// exposes a real trace_id even when the plug response omitted it — and poll the
+// normal /deploys/<trace_id>. Returns a poll path, or null when there is no
+// trace yet (the caller retries within its budget). Never throws.
+async function resolvePollUrl(ctx, { pollUrl, entityId, grid }) {
+  if (pollUrl) return pollUrl;
+  if (!entityId) return null;
+  try {
+    const token = await ctx.getToken();
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const orgSlug = grid || (await ctx.getActiveGrid());
+    if (orgSlug) {
+      headers["X-CloudGrid-Grid"] = orgSlug;
+      headers["X-CloudGrid-Org"] = orgSlug;
+    }
+    const res = await fetch(`${API_BASE}/api/v2/entities/${encodeURIComponent(entityId)}/deploys?limit=1`, { headers });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const traceId = data?.deploys?.[0]?.trace_id;
+    return traceId ? `/deploys/${traceId}` : null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchDeployTrace(ctx, { pollUrl, grid }) {
   const token = await ctx.getToken();
   const headers = {};
@@ -1799,12 +1828,16 @@ async function fetchDeployTrace(ctx, { pollUrl, grid }) {
 // Poll until terminal or the budget runs out. Never throws — an unreachable
 // poll endpoint degrades to { status: "unknown" } and the caller keeps the
 // do-not-claim-live wording (the safe direction).
-export async function pollDeployTrace(ctx, { pollUrl, grid, budgetMs = DEPLOY_POLL_BUDGET_MS, intervalMs = DEPLOY_POLL_INTERVAL_MS }) {
+export async function pollDeployTrace(ctx, { pollUrl, entityId, grid, budgetMs = DEPLOY_POLL_BUDGET_MS, intervalMs = DEPLOY_POLL_INTERVAL_MS }) {
   const start = Date.now();
   let last = { status: "unknown", error: null };
   for (;;) {
     try {
-      last = await fetchDeployTrace(ctx, { pollUrl, grid });
+      // Resolve each iteration: on the hosted inline-create path poll_url is
+      // null and the trace may not exist for the first second or two, so keep
+      // trying to resolve it from the entity until it appears.
+      const target = await resolvePollUrl(ctx, { pollUrl, entityId, grid });
+      if (target) last = await fetchDeployTrace(ctx, { pollUrl: target, grid });
     } catch {
       // transient/unauthorized/network — keep last, retry within budget
     }
@@ -1819,13 +1852,21 @@ export async function pollDeployTrace(ctx, { pollUrl, grid, budgetMs = DEPLOY_PO
 // were missing — they had no way to confirm a runtime build came live and
 // blind-polled the public URL into 502s.
 export async function runCheckDeploy(ctx, { poll_url, grid } = {}) {
-  const pollUrl = poll_url || ctx.state.lastDrop?.poll_url;
-  if (!pollUrl) {
+  const gridSlug = grid || ctx.state.lastDrop?.grid;
+  const entityId = ctx.state.lastDrop?.entity_id;
+  // poll_url may be null on the hosted inline-create path — fall back to the
+  // session's entity_id and resolve the trace from /entities/:id/deploys.
+  const target = await resolvePollUrl(ctx, {
+    pollUrl: poll_url || ctx.state.lastDrop?.poll_url,
+    entityId,
+    grid: gridSlug,
+  });
+  if (!target) {
     throw new Error(
-      "No build to check. Pass poll_url from a grid_deploy result, or deploy something first in this session. (Instant inspiration deploys are live on return and have no poll_url.)",
+      "No build to check. Pass poll_url from a grid_deploy result, or deploy something first in this session. (Instant inspiration deploys are live on return and have no build to poll.)",
     );
   }
-  const verdict = await fetchDeployTrace(ctx, { pollUrl, grid: grid || ctx.state.lastDrop?.grid });
+  const verdict = await fetchDeployTrace(ctx, { pollUrl: target, grid: gridSlug });
   const url = ctx.state.lastDrop?.url;
   if (verdict.status === "success") {
     return {
