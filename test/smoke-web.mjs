@@ -54,7 +54,11 @@ try {
   for (const nm of ["grid_get_template", "grid_get_app_source", "grid_list_grids", "grid_copy_app", "grid_download_source", "grid_claim_anonymous_deploy", "grid_visibility"]) {
     check(`exposes new name ${nm}`, names.includes(nm));
   }
-  for (const nm of ["grid_fetch"]) {
+  // grid_set_sharing MUST be a live deprecated alias on the WEB edition too
+  // (grid_visibility is a both-editions tool): a hosted client with old
+  // muscle-memory keeps working. Regression guard — the alias was briefly
+  // registered below the local cutoff, so web dropped it.
+  for (const nm of ["grid_fetch", "grid_set_sharing"]) {
     check(`${nm} is a deprecated alias`, /Deprecated alias of grid_/.test((toolList.find((t) => t.name === nm)?.description) ?? ""));
   }
   // Voice guard (web edition): no org-as-a-noun prose in anything the model sees.
