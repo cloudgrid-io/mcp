@@ -14,6 +14,9 @@
 //
 // Run: PORT=8080 node src/web.js     Health: GET /healthz
 
+import { installProxy } from "./proxy.js";
+installProxy();
+
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import express from "express";

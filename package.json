@@ -53,12 +53,14 @@
     "test:fork": "node test/fork.test.mjs",
     "test:set-sharing": "node test/set-sharing.test.mjs",
     "test:check-deploy": "node test/check-deploy.test.mjs",
-    "test:staleness": "node test/staleness.test.mjs"
+    "test:staleness": "node test/staleness.test.mjs",
+    "test:proxy": "node test/proxy.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "express": "^4.22.2",
     "fflate": "^0.8.3",
+    "undici": "^8.7.0",
     "zod": "^3.23.0"
   },
   "license": "Apache-2.0",

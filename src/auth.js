@@ -45,7 +45,17 @@ export function buildLoginUrl(code) {
 // A 404 means the session for this code does not exist yet — the user has not
 // opened the sign-in URL — so it is reported as 'not_started', not an error.
 export async function pollStatusOnce(code) {
-  const res = await fetch(`${API_BASE}/auth/status?code=${encodeURIComponent(code)}`);
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/auth/status?code=${encodeURIComponent(code)}`);
+  } catch (err) {
+    const cause = err?.cause?.code || err?.cause?.message || err?.cause || err.message;
+    throw new Error(
+      `Can't reach api.cloudgrid.io (${cause}). ` +
+        `If you are behind a proxy, set HTTPS_PROXY; or use the hosted connector ` +
+        `https://mcp-connected.cloudgrid.io/mcp.`,
+    );
+  }
   if (res.status === 404) {
     return { status: "not_started" };
   }

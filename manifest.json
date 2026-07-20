@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "cloudgrid",
   "display_name": "CloudGrid",
-  "version": "0.20.27",
+  "version": "0.20.28",
   "description": "Build and run apps on CloudGrid — the live runtime that provides managed databases, cache, persistent disk, and AI (no API keys) out of the box. Full local MCP: orient, build, plug, and manage from the conversation.",
   "long_description": "CloudGrid is a live runtime environment: it runs the user's apps and provides the infrastructure modern apps need — managed MongoDB, Redis (cache/queues/pub-sub), a pgvector store, persistent disk, and built-in AI with no API keys — so you build the app, not the plumbing, in any language or stack with no Docker or Kubernetes to manage. This MCP gives Claude Desktop the full CloudGrid toolset: instant single-page publishes, full runtime-app deploys, logs, rollbacks, env vars, and secrets — all without leaving the conversation. The extension bundles everything; no terminal, no Node, no JSON config.",
   "author": {
