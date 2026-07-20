@@ -17,12 +17,12 @@ const check = (label, cond) => {
 // 1a. HTTPS_PROXY set → returns { proxyUrl, noProxy[] }
 {
   process.env.HTTPS_PROXY = "http://corp-proxy:8080";
-  process.env.NO_PROXY = "localhost,127.0.0.1,.internal.corp";
+  process.env.NO_PROXY = "localhost,127.0.0.1,.private.example.test";
   const { resolveProxy } = await import("../src/proxy.js");
   const r = resolveProxy();
   check("HTTPS_PROXY → proxyUrl", r.proxyUrl === "http://corp-proxy:8080");
   check("NO_PROXY → parsed list", Array.isArray(r.noProxy) && r.noProxy.length === 3);
-  check("NO_PROXY includes .internal.corp", r.noProxy.includes(".internal.corp"));
+  check("NO_PROXY includes .private.example.test", r.noProxy.includes(".private.example.test"));
   delete process.env.HTTPS_PROXY;
   delete process.env.NO_PROXY;
 }
@@ -71,13 +71,13 @@ const check = (label, cond) => {
 
 {
   process.env.HTTPS_PROXY = "http://proxy:8080";
-  process.env.NO_PROXY = "localhost,127.0.0.1,.internal.corp,api.example.com";
+  process.env.NO_PROXY = "localhost,127.0.0.1,.private.example.test,api.example.com";
   const { resolveProxy, shouldBypassProxy } = await import("../src/proxy.js");
   const cfg = resolveProxy();
 
   check("bypass: localhost", shouldBypassProxy("localhost", cfg.noProxy));
   check("bypass: 127.0.0.1", shouldBypassProxy("127.0.0.1", cfg.noProxy));
-  check("bypass: suffix .internal.corp", shouldBypassProxy("foo.internal.corp", cfg.noProxy));
+  check("bypass: suffix .private.example.test", shouldBypassProxy("foo.private.example.test", cfg.noProxy));
   check("bypass: exact api.example.com", shouldBypassProxy("api.example.com", cfg.noProxy));
   check("no bypass: api.cloudgrid.io", !shouldBypassProxy("api.cloudgrid.io", cfg.noProxy));
   check("bypass: wildcard *", (() => {
