@@ -100,6 +100,10 @@ jobs:
       # grid_check_deploy). Plus the boot staleness self-check. Mock fetch.
       - run: npm run test:check-deploy
       - run: npm run test:staleness
+      # Offline proxy support test: HTTPS_PROXY / NO_PROXY resolution, bypass
+      # matching, installProxy never-throw, and the pollStatusOnce error path
+      # surfaces err.cause + proxy/hosted hint.
+      - run: npm run test:proxy
       # Offline app-with-data test (0.9.0): the first runtime (DB-backed) build
       # path. Asserts the app-with-data workflow/template/example + persistent-apps
       # troubleshooting resolve via fetchCorpus and the real grid_fetch handler,
