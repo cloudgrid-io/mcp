@@ -19,6 +19,7 @@ import { randomUUID } from "node:crypto";
 import { createSessionLogger } from "./session-logger.js";
 import { createSink } from "./log-sink.js";
 import { INSTRUCTIONS_LOCAL } from "./playbook.js";
+import { checkForNewerVersion } from "./staleness.js";
 
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url)));
 
@@ -31,6 +32,24 @@ const ctx = {
   saveToken: async (jwt) => await writeCredentials(jwt),
   savedLocationNote: () => `Credentials saved to ${credentialsPath()}.`,
 };
+
+// Boot-time staleness self-check (local edition only — hosted auto-updates on
+// cutover). Fire-and-forget with a short timeout: offline or slow → stays null.
+// Surfaced in grid_start's live context so the model relays the reinstall note
+// in-session; also logged to stderr for the Desktop MCP log.
+ctx.staleness = null;
+checkForNewerVersion(version)
+  .then((info) => {
+    if (info?.behind) {
+      ctx.staleness = info;
+      console.error(
+        `cloudgrid-mcp: this MCP is v${info.current}; latest is v${info.latest}. ` +
+          `The .mcpb Desktop extension never auto-updates — reinstall the latest from ` +
+          `https://github.com/cloudgrid-io/mcp/releases/latest`,
+      );
+    }
+  })
+  .catch(() => {});
 
 // QA session log (dark by default: no CLOUDGRID_QA_SLACK_WEBHOOK → null → no-op).
 // The stdio process IS the session. user_request is forwarded by Claude Code via

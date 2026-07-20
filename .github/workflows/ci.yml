@@ -95,6 +95,11 @@ jobs:
       # to PATCH /inspirations/:id (org vocab), maps org<->grid, falls back on a
       # not-found, and keeps space inspiration-only. Mocks global fetch.
       - run: npm run test:set-sharing
+      # Confirm-before-claiming-live: runPlug polls the deploy trace (fast build ->
+      # live in-call; failed -> user-language error; slow -> do-not-claim-live +
+      # grid_check_deploy). Plus the boot staleness self-check. Mock fetch.
+      - run: npm run test:check-deploy
+      - run: npm run test:staleness
       # Offline app-with-data test (0.9.0): the first runtime (DB-backed) build
       # path. Asserts the app-with-data workflow/template/example + persistent-apps
       # troubleshooting resolve via fetchCorpus and the real grid_fetch handler,

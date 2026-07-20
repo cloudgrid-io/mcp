@@ -1401,6 +1401,10 @@ export async function runPlug(ctx, input, deps = {}) {
       // Kind lets grid_visibility route to the right visibility surface
       // (inspirations vs runtime entities) without a re-detect round-trip.
       kind: data.detection?.kind ?? data.kind ?? null,
+      // poll_url lets grid_check_deploy default to this session's build with
+      // no arguments ("is it live yet?" needs no ids).
+      poll_url: data.poll_url ?? null,
+      grid: data.grid ?? null,
       owner_token: useAnonWire ? (freshOwnerToken ?? ownerToken ?? null) : null,
     };
   }
@@ -1412,6 +1416,32 @@ export async function runPlug(ctx, input, deps = {}) {
     };
   } else if (!useAnonWire) {
     ctx.state.lastAnonClaim = null;
+  }
+
+  // Confirm-before-claiming-live: a runtime build is async (status "building" +
+  // poll_url). Rather than returning immediately — which trained models to
+  // promise URLs that then 502'd — poll the deploy trace server-side for a short
+  // budget. Fast builds come back "live" in this same tool call; a build that
+  // outlives the budget returns "building" with explicit do-not-claim-live copy;
+  // a failed build surfaces the platform's user-language error instead of a URL.
+  if ((data.status === "building" || data.poll_url) && data.poll_url && !useAnonWire) {
+    const verdict = await pollDeployTrace(ctx, {
+      pollUrl: data.poll_url,
+      grid: data.grid,
+      budgetMs: ctx.deployPollBudgetMs ?? DEPLOY_POLL_BUDGET_MS,
+      intervalMs: ctx.deployPollIntervalMs ?? DEPLOY_POLL_INTERVAL_MS,
+    });
+    if (verdict.status === "success") {
+      data.status = "live";
+      data.poll_url = undefined;
+    } else if (verdict.status === "failed") {
+      const msg = verdict.error || "The build failed.";
+      throw new Error(
+        `Deploy failed (trace ${data.trace_id ?? "n/a"}): ${msg} The URL is NOT live — do not give it to the user as working.`,
+      );
+    }
+    // Anything else (still building / poll unreachable): fall through to the
+    // building wording below — the do-not-claim-live path.
   }
 
   const structured = {
@@ -1456,10 +1486,16 @@ export async function runPlug(ctx, input, deps = {}) {
         ? `Building (async): ${url} — the update is deploying, not live yet.`
         : `Building (async): ${url} — the deploy is in progress, not live yet.`,
     );
+    // Point at a tool that exists on THIS edition. grid_status is CLI-wrapping,
+    // local-only — telling a hosted (ChatGPT/claude.ai) model to "run
+    // grid_status" dead-ends (observed live: a hosted session had no status
+    // tool and blind-polled the public URL into a 502). grid_check_deploy is
+    // direct-API and registered on both editions.
+    const checkHint = ctx.edition === "web" ? "grid_check_deploy" : "grid_check_deploy (or grid_status)";
     lines.push(
       data.poll_url
-        ? `Poll ${data.poll_url} or run grid_status until it is ready (trace ${data.trace_id ?? "n/a"}). Do not report it as live until then.`
-        : "Run grid_status until it is ready. Do not report it as live until then.",
+        ? `Call ${checkHint} until status is "success" (trace ${data.trace_id ?? "n/a"}). Do NOT tell the user it is live until then.`
+        : `Call ${checkHint} until it is ready. Do NOT tell the user it is live until then.`,
     );
   } else if (isEdit) {
     lines.push(`Updated in place: ${url}`);
@@ -1722,6 +1758,91 @@ export async function runVisibility(ctx, { target, visibility, kind, org }) {
   const msg = last?.data?.error?.message || last?.raw || `HTTP ${last?.res?.status}`;
   const hint = last?.data?.error?.details?.[0]?.hint;
   throw new Error(`Visibility change failed (HTTP ${last?.res?.status}): ${msg}${hint ? ` ${hint}` : ""}`);
+}
+
+// ── Deploy-trace polling (confirm-before-claiming-live) ─────────────────────
+// A runtime build is async: POST /api/v2/plug answers 202 { status: "building",
+// poll_url: "/deploys/<trace_id>" } and GET {API}/deploys/<trace_id> (org-authed)
+// reports { status, error } until a terminal "success" | "failed". Budget below
+// is deliberately under typical host tool timeouts; slower builds fall back to
+// the explicit do-not-claim-live wording + grid_check_deploy.
+const DEPLOY_POLL_BUDGET_MS = 45_000;
+const DEPLOY_POLL_INTERVAL_MS = 3_000;
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// GET one deploy-trace snapshot. Returns { status, error } — status is the
+// server's word ("queued"/"building"/"success"/"failed"), error is the
+// user-language message when failed. Throws only on a non-OK HTTP response.
+async function fetchDeployTrace(ctx, { pollUrl, grid }) {
+  const token = await ctx.getToken();
+  const headers = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const orgSlug = grid || (await ctx.getActiveGrid());
+  if (orgSlug) {
+    headers["X-CloudGrid-Grid"] = orgSlug;
+    headers["X-CloudGrid-Org"] = orgSlug;
+  }
+  const path = pollUrl.startsWith("http") ? pollUrl : `${API_BASE}${pollUrl.startsWith("/") ? "" : "/"}${pollUrl}`;
+  const res = await fetch(path, { headers });
+  const raw = await res.text();
+  let data = null;
+  try { data = JSON.parse(raw); } catch { /* handled below */ }
+  if (!res.ok) {
+    throw new Error(`Deploy status check failed (HTTP ${res.status}): ${data?.error?.message || data?.error || raw || res.status}`);
+  }
+  return {
+    status: data?.status ?? "unknown",
+    error: data?.error?.message_user || data?.error?.message || null,
+  };
+}
+
+// Poll until terminal or the budget runs out. Never throws — an unreachable
+// poll endpoint degrades to { status: "unknown" } and the caller keeps the
+// do-not-claim-live wording (the safe direction).
+export async function pollDeployTrace(ctx, { pollUrl, grid, budgetMs = DEPLOY_POLL_BUDGET_MS, intervalMs = DEPLOY_POLL_INTERVAL_MS }) {
+  const start = Date.now();
+  let last = { status: "unknown", error: null };
+  for (;;) {
+    try {
+      last = await fetchDeployTrace(ctx, { pollUrl, grid });
+    } catch {
+      // transient/unauthorized/network — keep last, retry within budget
+    }
+    if (last.status === "success" || last.status === "failed") return last;
+    if (Date.now() - start + intervalMs > budgetMs) return last;
+    await sleepMs(intervalMs);
+  }
+}
+
+// grid_check_deploy — one authed status check for an async build. Direct API,
+// both editions: this is the status verb hosted (ChatGPT/claude.ai) sessions
+// were missing — they had no way to confirm a runtime build came live and
+// blind-polled the public URL into 502s.
+export async function runCheckDeploy(ctx, { poll_url, grid } = {}) {
+  const pollUrl = poll_url || ctx.state.lastDrop?.poll_url;
+  if (!pollUrl) {
+    throw new Error(
+      "No build to check. Pass poll_url from a grid_deploy result, or deploy something first in this session. (Instant inspiration deploys are live on return and have no poll_url.)",
+    );
+  }
+  const verdict = await fetchDeployTrace(ctx, { pollUrl, grid: grid || ctx.state.lastDrop?.grid });
+  const url = ctx.state.lastDrop?.url;
+  if (verdict.status === "success") {
+    return {
+      text: `Live${url ? `: ${url}` : ""} — the build finished. Give the user the URL.`,
+      structured: { status: "success", live: true, ...(url ? { url } : {}) },
+    };
+  }
+  if (verdict.status === "failed") {
+    return {
+      text: `The build FAILED: ${verdict.error || "no reason reported"}. The URL is not live — do not give it to the user as working. Fix the app (or re-deploy) and try again.`,
+      structured: { status: "failed", live: false, ...(verdict.error ? { error: verdict.error } : {}) },
+    };
+  }
+  return {
+    text: `Still ${verdict.status === "unknown" ? "building (status unavailable)" : verdict.status} — NOT live yet. Do not tell the user it is live. Wait ~15s and call grid_check_deploy again.`,
+    structured: { status: verdict.status, live: false },
+  };
 }
 
 // Max HTML we'll return inline from runSource. Past this, we return the first

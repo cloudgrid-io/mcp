@@ -31,6 +31,9 @@ function makeCtx({ token = null, edition = "web" } = {}) {
     saveToken: async () => ({}),
     savedLocationNote: () => "",
     trustedServer: null,
+    // Tiny poll budgets: the confirm-before-live poll must not sleep in tests.
+    deployPollBudgetMs: 20,
+    deployPollIntervalMs: 5,
   };
 }
 
@@ -49,8 +52,11 @@ globalThis.fetch = async (url, opts = {}) => {
 };
 
 const lastCall = () => calls[calls.length - 1];
+// The confirm-before-live poll appends form-less GETs after a building plug —
+// artifact assertions must read the last call that actually carried FormData.
+const lastFormCall = () => [...calls].reverse().find((c) => c.form);
 const formField = (name) => {
-  const v = lastCall().form?.get(name);
+  const v = lastFormCall()?.form?.get(name);
   return typeof v === "string" ? v : v ? "<file>" : null;
 };
 
@@ -341,7 +347,7 @@ try {
     folderCtx.getActiveGrid = async () => "cg";
     replies = buildReply();
     await runPlug(folderCtx, { path: dir, hints: { kind: "app" }, grid: "cg" });
-    const folderArtifacts = await serializeArtifacts(lastCall().form);
+    const folderArtifacts = await serializeArtifacts(lastFormCall().form);
 
     const inlineCtx = makeCtx({ token: "jwt-rt", edition: "web" });
     inlineCtx.getActiveGrid = async () => "cg";
@@ -355,7 +361,7 @@ try {
       hints: { kind: "app" },
       grid: "cg",
     });
-    const inlineArtifacts = await serializeArtifacts(lastCall().form);
+    const inlineArtifacts = await serializeArtifacts(lastFormCall().form);
 
     check(
       "issue#48: artifact_files bundle == folder-walk bundle (same parts, order, bytes, type)",
@@ -379,7 +385,7 @@ try {
     check("issue#48: building response reports status building", rt.structured.status === "building");
     check("issue#48: building response surfaces the poll_url", rt.structured.poll_url === "https://api.cloudgrid.io/api/v2/runtimes/ent-rt/status");
     check("issue#48: building result does NOT claim Live", !/^Live:/m.test(rt.text) && !/Live:/.test(rt.text));
-    check("issue#48: building result says Building + points at poll", /Building \(async\)/.test(rt.text) && rt.text.includes("grid_status"));
+    check("issue#48: building result says Building + points at poll", /Building \(async\)/.test(rt.text) && rt.text.includes("grid_check_deploy"));
     check("issue#48: building result uses the server (flat-arch) url", rt.text.includes("https://af-probe2--cg.cloudgrid.io"));
 
     const { rmSync } = await import("node:fs");
