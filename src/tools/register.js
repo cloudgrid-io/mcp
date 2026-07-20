@@ -870,6 +870,12 @@ export function registerTools(server, ctx) {
   //    prompts and older docs. Every other legacy alias was dropped in 0.20.8 -
   //    16 alias schemas were pure ListTools context weight on every session.
   registerAlias("grid_fetch", "grid_get_template");
+  // grid_set_sharing → grid_visibility (2026-07-20, founder rename). Same handler
+  // and schema; old name kept as a redirect-only deprecated alias so any client
+  // still calling it works while the model prefers the new. MUST live here, above
+  // the local cutoff: grid_visibility is a both-editions tool, so the alias has
+  // to register on the web edition too (hosted callers keep back-compat).
+  registerAlias("grid_set_sharing", "grid_visibility");
 
   if (ctx.edition !== "local") return; // web edition stops here — no CLI tools
 
@@ -1194,8 +1200,4 @@ export function registerTools(server, ctx) {
   // Kept alias (local): grid_logs - muscle memory. The other legacy CLI-tool
   // aliases were dropped in 0.20.8 (see CHANGELOG).
   registerAlias("grid_logs", "grid_view_logs");
-  // grid_set_sharing → grid_visibility (2026-07-20, founder rename). Same handler
-  // and schema; the old name stays as a redirect-only deprecated alias so any
-  // client/agent still calling it keeps working while the model prefers the new.
-  registerAlias("grid_set_sharing", "grid_visibility");
 }
