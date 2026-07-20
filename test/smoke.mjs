@@ -21,6 +21,7 @@ const GRIDCTL = [
   "grid_login",
   "grid_login_status",
   "grid_visibility",
+  "grid_check_deploy",
   "grid_list_grids",
   "grid_create_project",
   "grid_deploy",

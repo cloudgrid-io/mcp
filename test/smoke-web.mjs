@@ -51,7 +51,7 @@ try {
   }
   // Tool-name cleanup: the new clear primary names are present (both editions),
   // and the old direct-API names are kept as deprecated aliases.
-  for (const nm of ["grid_get_template", "grid_get_app_source", "grid_list_grids", "grid_copy_app", "grid_download_source", "grid_claim_anonymous_deploy", "grid_visibility"]) {
+  for (const nm of ["grid_get_template", "grid_get_app_source", "grid_list_grids", "grid_copy_app", "grid_download_source", "grid_claim_anonymous_deploy", "grid_visibility", "grid_check_deploy"]) {
     check(`exposes new name ${nm}`, names.includes(nm));
   }
   // grid_set_sharing MUST be a live deprecated alias on the WEB edition too

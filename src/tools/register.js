@@ -26,7 +26,9 @@ import {
   runDownload,
   runVisibility,
   runSource,
+  runCheckDeploy,
 } from "./deploy.js";
+import { stalenessNote } from "../staleness.js";
 
 // Build the argv for grid_create_project → `grid new` (CLI >= 0.15.14; `init`
 // is a deprecated alias we no longer author). Modern shape: `new <slug>` with
@@ -643,6 +645,36 @@ export function registerTools(server, ctx) {
     },
   );
 
+  // Deploy-status check — both editions. The status verb hosted sessions were
+  // missing: grid_status wraps the CLI (local-only), so a ChatGPT/claude.ai
+  // session had NO way to confirm an async runtime build came live and
+  // blind-polled the public URL into 502s. Direct API, no CLI.
+  reg(
+    "grid_check_deploy",
+    {
+      description:
+        "Check whether an async runtime-app build has finished and the app is live. Call this after grid_deploy returns status \"building\" — repeat every ~15s until it reports success or failed, and do NOT tell the user the app is live until it does. Defaults to this session's last deploy; pass poll_url from a grid_deploy result to check another. Requires sign-in (builds are owned). Calls the API directly — works on every edition, including hosted.",
+      inputSchema: {
+        poll_url: z.string().optional().describe("The poll_url from a grid_deploy result. Defaults to this session's last deploy."),
+        grid: z.string().optional().describe("Grid of the entity. Defaults to the deploy's grid, then the active grid."),
+      },
+      outputSchema: {
+        status: z.string().describe("The build status: success | failed | building | queued | unknown."),
+        live: z.boolean().describe("True only when the build finished successfully and the URL serves."),
+        url: z.string().optional().describe("The live URL, when known."),
+        error: z.string().optional().describe("User-language failure reason, when the build failed."),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
+    },
+    async (input) => {
+      try {
+        return okResult(await runCheckDeploy(ctx, input || {}));
+      } catch (err) {
+        return fail(err.message);
+      }
+    },
+  );
+
   // Org listing — both editions.
   reg(
     "grid_list_grids",
@@ -724,6 +756,13 @@ export function registerTools(server, ctx) {
           .object({
             active_grid: z.string().nullable().describe("The user's active grid/org slug, or null."),
             signed_in: z.boolean().describe("Whether the current session is signed in."),
+            update_available: z
+              .object({
+                current: z.string().describe("This MCP's version."),
+                latest: z.string().describe("Latest published version."),
+              })
+              .optional()
+              .describe("Present when this local MCP is behind the latest release — relay the reinstall note to the user."),
           })
           .optional()
           .describe("Live context from the current session."),
@@ -744,17 +783,28 @@ export function registerTools(server, ctx) {
       } catch {
         activeGrid = null;
       }
+      // Staleness (local edition): populated fire-and-forget at boot. The
+      // .mcpb never auto-updates, so this is where silent rot becomes a
+      // one-line user action — the model relays the note in-session.
+      const stale = stalenessNote(ctx.staleness);
       const structured = {
         playbook: PLAYBOOK,
         workflows,
-        context: { active_grid: activeGrid, signed_in: signedIn },
+        context: {
+          active_grid: activeGrid,
+          signed_in: signedIn,
+          ...(ctx.staleness?.behind
+            ? { update_available: { current: ctx.staleness.current, latest: ctx.staleness.latest } }
+            : {}),
+        },
       };
       const wfLines = workflows.length
         ? workflows.map((w) => `  - ${w.name}: ${w.when || w.summary}`).join("\n")
         : "  (none available)";
       const text =
         `${PLAYBOOK}\n\nAvailable workflows:\n${wfLines}\n\n` +
-        `Next: match the intent to a workflow and call grid_get_template({kind:"workflow", name}).`;
+        `Next: match the intent to a workflow and call grid_get_template({kind:"workflow", name}).` +
+        (stale ? `\n\n${stale}` : "");
       return okResult({ text, structured });
     },
   );
