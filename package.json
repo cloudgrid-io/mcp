@@ -54,7 +54,8 @@
     "test:set-sharing": "node test/set-sharing.test.mjs",
     "test:check-deploy": "node test/check-deploy.test.mjs",
     "test:staleness": "node test/staleness.test.mjs",
-    "test:proxy": "node test/proxy.test.mjs"
+    "test:proxy": "node test/proxy.test.mjs",
+    "test:system-ca": "node test/system-ca.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

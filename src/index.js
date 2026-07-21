@@ -5,8 +5,8 @@
 // Desktop). Full toolset, including the CLI-wrapping tools. Identity comes from
 // the shared ~/.cloudgrid/credentials file, so it interoperates with the CLI.
 
-import { installProxy } from "./proxy.js";
-installProxy();
+import { installTrustStore } from "./system-ca.js";
+installTrustStore();
 
 import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";

@@ -13,6 +13,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, writeFile, chmod, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { isCertError } from "./system-ca.js";
 
 // Base for server-to-API calls. On a hosted deployment this is the in-cluster
 // service address (CLOUDGRID_API_URL), which is fast but NOT reachable by a browser.
@@ -41,6 +42,33 @@ export function buildLoginUrl(code) {
   return `${PUBLIC_API_BASE}/auth/login?code=${encodeURIComponent(code)}`;
 }
 
+const CERT_ERROR_GUIDANCE =
+  "TLS certificate validation failed. This machine has a TLS-inspecting " +
+  "proxy or a custom root CA that is not in the OS trust store. The MCP " +
+  "trusts the system certificate store automatically, so if you still see " +
+  "this error the intercepting CA's root certificate is not installed in " +
+  "your OS trust store.\n\n" +
+  "To resolve this:\n" +
+  "- Install the root CA into your OS trust store (macOS Keychain, Windows " +
+  "Certificate Manager, or /usr/local/share/ca-certificates on Linux), or\n" +
+  "- Set NODE_EXTRA_CA_CERTS=/path/to/root-ca.pem before launching the MCP, or\n" +
+  "- Use the hosted MCP connector: https://mcp-connected.cloudgrid.io/mcp";
+
+function throwCertError() {
+  const err = new Error(CERT_ERROR_GUIDANCE);
+  err.certError = true;
+  throw err;
+}
+
+export async function checkApiConnectivity() {
+  try {
+    await fetch(`${API_BASE}/auth/status?code=connectivity-probe`);
+  } catch (err) {
+    if (isCertError(err)) throwCertError();
+    throw err;
+  }
+}
+
 // One poll. Returns { status: 'not_started' | 'pending' | 'authenticated' | 'expired', jwt? }.
 // A 404 means the session for this code does not exist yet — the user has not
 // opened the sign-in URL — so it is reported as 'not_started', not an error.
@@ -49,6 +77,7 @@ export async function pollStatusOnce(code) {
   try {
     res = await fetch(`${API_BASE}/auth/status?code=${encodeURIComponent(code)}`);
   } catch (err) {
+    if (isCertError(err)) throwCertError();
     const cause = err?.cause?.code || err?.cause?.message || err?.cause || err.message;
     throw new Error(
       `Can't reach api.cloudgrid.io (${cause}). ` +
