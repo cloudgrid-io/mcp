@@ -3,7 +3,7 @@
 // Extracted verbatim from src/tools.js (refactor: split tools.js into modules).
 
 import { z } from "zod";
-import { newLoginCode, buildLoginUrl, pollStatusOnce } from "../auth.js";
+import { newLoginCode, buildLoginUrl, pollStatusOnce, checkApiConnectivity } from "../auth.js";
 import { PLAYBOOK, fetchCorpus, listWorkflows } from "../playbook.js";
 import {
   APPS_WIDGETS_ENABLED,
@@ -557,6 +557,11 @@ export function registerTools(server, ctx) {
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
     async () => {
+      try {
+        await checkApiConnectivity();
+      } catch (err) {
+        if (err.certError) return fail(err.message);
+      }
       const code = newLoginCode();
       ctx.state.pendingLoginCode = code;
       const url = buildLoginUrl(code);
