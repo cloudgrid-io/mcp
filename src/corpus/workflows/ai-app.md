@@ -41,9 +41,17 @@ Persistent apps are owned entities.
 
 ## 3. Scaffold
 
-`grid_create_project` an app `<name>`. It scaffolds the project folder and writes a `cloudgrid.yaml` with an EMPTY
-`services: {}`. No server entity exists yet — the first `grid plug` auto-creates
-it from the manifest (honoring its `name:`) and writes `.cloudgrid/link.json`.
+`grid_create_project` an app `<name>`. It scaffolds the project folder, a
+`cloudgrid.yaml`, and a starter `web` service. No server entity exists yet — the
+first `grid plug` auto-creates it from the manifest (honoring its `name:`) and
+writes `.cloudgrid/link.json`.
+
+The starter files are throwaway — the `ai-app` template (step 4) is the source
+of truth. **The template is plain JavaScript.** The `nextjs` scaffold, on the
+other hand, writes a TypeScript starter (`tsconfig.json`, `app/layout.tsx`,
+`app/page.tsx`). Before applying the template, delete the scaffolded
+`tsconfig.json` and `app/*.tsx`, then write the template's `.js` files. Never
+leave both `.tsx` and `.js` for the same route — that breaks `next build`.
 
 You then do two things: (a) write the app under **`services/web/`**, and (b) fill
 in `cloudgrid.yaml` to the shape below (`services.web` type `nextjs` + `needs: {
