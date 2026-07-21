@@ -1,6 +1,12 @@
 // System CA trust tests.
 // Exercises buildCaBundle, installTrustStore, isCertError, and the cert-error
-// login preflight against a self-signed HTTPS server. Run: node test/system-ca.test.mjs
+// login preflight against a self-signed HTTPS server.
+//
+// Version-aware: on Node >=22.15 (tls.setDefaultCACertificates available),
+// asserts that installTrustStore makes self-signed fetches succeed. On older
+// Node, asserts graceful no-op (no throw, CA not trusted — expected).
+//
+// Run: node test/system-ca.test.mjs
 
 import { execSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -10,10 +16,15 @@ import https from "node:https";
 import tls from "node:tls";
 import { createRequire } from "node:module";
 
+const HAS_CA_API = typeof tls.setDefaultCACertificates === "function";
+
 let failures = 0;
 const check = (label, cond) => {
   console.log(`${cond ? "ok  " : "FAIL"} ${label}`);
   if (!cond) failures++;
+};
+const skip = (label) => {
+  console.log(`skip ${label}`);
 };
 
 // ── Generate a self-signed CA + leaf cert at runtime ────────────────────────
@@ -155,7 +166,7 @@ const baseUrl = `https://127.0.0.1:${port}`;
   check("plain fetch error is a cert error", isCertError(caughtErr));
 }
 
-// ── 5. Succeeds after installTrustStore with the CA ─────────────────────────
+// ── 5. installTrustStore + fetch: version-aware ─────────────────────────────
 
 {
   const savedExtra = process.env.NODE_EXTRA_CA_CERTS;
@@ -166,36 +177,55 @@ const baseUrl = `https://127.0.0.1:${port}`;
   const { installTrustStore } = await import(url.href);
   installTrustStore();
 
-  // GET request (sign-in status poll shape)
-  let getRes;
-  try {
-    getRes = await fetch(`${baseUrl}/auth/status?code=test`);
-  } catch (err) {
-    check("GET after installTrustStore: no error", false);
-    console.log("  GET error:", err.message, err.cause?.code);
-  }
-  if (getRes) {
-    check("GET after installTrustStore: 200", getRes.status === 200);
-    const body = await getRes.json();
-    check("GET response body is correct", body.status === "not_started");
-  }
+  if (HAS_CA_API) {
+    // Node >=22.15: installTrustStore sets the process-wide CA via
+    // tls.setDefaultCACertificates — built-in fetch trusts our self-signed cert.
 
-  // POST request (deploy / API call shape)
-  let postRes;
-  try {
-    postRes = await fetch(baseUrl + "/api/v2/plug", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ test: true }),
-    });
-  } catch (err) {
-    check("POST after installTrustStore: no error", false);
-    console.log("  POST error:", err.message, err.cause?.code);
-  }
-  if (postRes) {
-    check("POST after installTrustStore: 200", postRes.status === 200);
-    const body = await postRes.json();
-    check("POST response body is correct", body.ok === true && body.method === "POST");
+    // GET request (sign-in status poll shape)
+    let getRes;
+    try {
+      getRes = await fetch(`${baseUrl}/auth/status?code=test`);
+    } catch (err) {
+      check("GET after installTrustStore: no error", false);
+      console.log("  GET error:", err.message, err.cause?.code);
+    }
+    if (getRes) {
+      check("GET after installTrustStore: 200", getRes.status === 200);
+      const body = await getRes.json();
+      check("GET response body is correct", body.status === "not_started");
+    }
+
+    // POST request (deploy / API call shape)
+    let postRes;
+    try {
+      postRes = await fetch(baseUrl + "/api/v2/plug", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ test: true }),
+      });
+    } catch (err) {
+      check("POST after installTrustStore: no error", false);
+      console.log("  POST error:", err.message, err.cause?.code);
+    }
+    if (postRes) {
+      check("POST after installTrustStore: 200", postRes.status === 200);
+      const body = await postRes.json();
+      check("POST response body is correct", body.ok === true && body.method === "POST");
+    }
+  } else {
+    // Node <22.15: installTrustStore is a graceful no-op — no setDefaultCACertificates.
+    // Self-signed fetch still fails (expected), and isCertError classifies it.
+    skip("GET/POST after installTrustStore (Node <22.15 — no setDefaultCACertificates)");
+
+    let caughtErr;
+    try {
+      await fetch(`${baseUrl}/auth/status?code=test`);
+    } catch (err) {
+      caughtErr = err;
+    }
+    const { isCertError } = await import(url.href);
+    check("Node <22.15: self-signed fetch still fails after installTrustStore", !!caughtErr);
+    check("Node <22.15: error is classified as cert error", isCertError(caughtErr));
   }
 
   if (savedExtra === undefined) delete process.env.NODE_EXTRA_CA_CERTS;
@@ -204,7 +234,7 @@ const baseUrl = `https://127.0.0.1:${port}`;
 
 // ── 6. pollStatusOnce + checkApiConnectivity against the fake server ────────
 
-{
+if (HAS_CA_API) {
   const savedApiUrl = process.env.CLOUDGRID_API_URL;
   process.env.CLOUDGRID_API_URL = baseUrl;
 
@@ -212,8 +242,6 @@ const baseUrl = `https://127.0.0.1:${port}`;
   authUrl.searchParams.set("t", "system-ca");
   const { pollStatusOnce, checkApiConnectivity } = await import(authUrl.href);
 
-  // checkApiConnectivity should succeed (the server is up and we trust its CA
-  // from the installTrustStore call in test 5)
   let connectivityOk = false;
   try {
     await checkApiConnectivity();
@@ -223,8 +251,6 @@ const baseUrl = `https://127.0.0.1:${port}`;
   }
   check("checkApiConnectivity succeeds against fake server", connectivityOk);
 
-  // pollStatusOnce should return not_started (404 maps to not_started, 200
-  // returns the JSON body — our fake returns { status: "not_started" })
   let pollResult;
   try {
     pollResult = await pollStatusOnce("test-code");
@@ -235,6 +261,8 @@ const baseUrl = `https://127.0.0.1:${port}`;
 
   if (savedApiUrl === undefined) delete process.env.CLOUDGRID_API_URL;
   else process.env.CLOUDGRID_API_URL = savedApiUrl;
+} else {
+  skip("pollStatusOnce + checkApiConnectivity against fake server (Node <22.15)");
 }
 
 // ── 7. Proxy composition: ProxyAgent carries the CA ─────────────────────────
@@ -244,31 +272,40 @@ const baseUrl = `https://127.0.0.1:${port}`;
   process.env.HTTPS_PROXY = "http://proxy.test:8080";
   process.env.NODE_EXTRA_CA_CERTS = caPath;
 
-  const require = createRequire(import.meta.url);
-  const undici = require("undici");
-
-  const caUrl = new URL("../src/system-ca.js", import.meta.url);
-  caUrl.searchParams.set("t", "proxy-compose");
-  const { buildCaBundle, installTrustStore } = await import(caUrl.href);
-  const ca = buildCaBundle();
-
-  // Instead of calling installTrustStore (which would break our existing
-  // working dispatcher), assert the ProxyAgent can be constructed with TLS opts
-  let agent;
-  let constructed = false;
+  let undiciLoaded = false;
+  let undici;
   try {
-    agent = new undici.ProxyAgent({
-      uri: "http://proxy.test:8080",
-      requestTls: { ca },
-      proxyTls: { ca },
-    });
-    constructed = true;
-  } catch (err) {
-    console.log("  ProxyAgent construction error:", err.message);
+    const require = createRequire(import.meta.url);
+    undici = require("undici");
+    undiciLoaded = true;
+  } catch {
+    // undici failed to load — skip proxy construction test
   }
-  check("ProxyAgent with requestTls.ca + proxyTls.ca constructs", constructed);
-  if (agent) {
-    try { agent.close(); } catch { /* ignore */ }
+
+  if (undiciLoaded) {
+    const caUrl = new URL("../src/system-ca.js", import.meta.url);
+    caUrl.searchParams.set("t", "proxy-compose");
+    const { buildCaBundle } = await import(caUrl.href);
+    const ca = buildCaBundle();
+
+    let agent;
+    let constructed = false;
+    try {
+      agent = new undici.ProxyAgent({
+        uri: "http://proxy.test:8080",
+        requestTls: { ca },
+        proxyTls: { ca },
+      });
+      constructed = true;
+    } catch (err) {
+      console.log("  ProxyAgent construction error:", err.message);
+    }
+    check("ProxyAgent with requestTls.ca + proxyTls.ca constructs", constructed);
+    if (agent) {
+      try { agent.close(); } catch { /* ignore */ }
+    }
+  } else {
+    skip("ProxyAgent construction (undici not loadable on this Node version)");
   }
 
   delete process.env.HTTPS_PROXY;

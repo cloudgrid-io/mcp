@@ -1,11 +1,15 @@
-// System CA trust for Node's global fetch (undici).
+// System CA trust for Node's global fetch.
 //
 // Node's built-in fetch uses Node's bundled Mozilla CA list and ignores the OS
 // trust store. On machines with a TLS-inspecting proxy or a custom/corporate
 // root CA (installed in the OS keychain but not in Node's bundle), every HTTPS
 // call fails with UNABLE_TO_GET_ISSUER_CERT_LOCALLY. This module builds a
 // unified CA bundle (Node defaults + OS store + NODE_EXTRA_CA_CERTS) and
-// installs it as the global undici dispatcher, composing with proxy support.
+// installs it process-wide via tls.setDefaultCACertificates (Node >=22.15).
+//
+// On older Node (< 22.15) it is a graceful no-op — NODE_EXTRA_CA_CERTS is
+// still honored natively when set at launch, and the login preflight surfaces
+// the hosted-connector fallback on cert errors.
 //
 // Fully guarded: on any failure this is a silent no-op. Never throws at startup.
 
@@ -90,23 +94,36 @@ export function buildCaBundle() {
 export function installTrustStore() {
   try {
     const ca = buildCaBundle();
+
+    // Primary mechanism (Node >=22.15): set the process-wide default CA list.
+    // This covers Node's built-in fetch and all TLS connections — no userland
+    // undici dispatcher needed for the non-proxy case.
+    if (ca && typeof tls.setDefaultCACertificates === "function") {
+      tls.setDefaultCACertificates(ca);
+    }
+
+    // Proxy composition: Node's built-in fetch ignores HTTPS_PROXY, so when a
+    // proxy is configured we still need undici's ProxyAgent as the global
+    // dispatcher. The ProxyAgent carries the CA bundle in its TLS options.
+    // Guarded: if undici fails to load (unexpected, since we pin a compatible
+    // version, but guard anyway), proxy is a silent no-op.
     const cfg = resolveProxy();
-
-    const require = createRequire(import.meta.url);
-    const { setGlobalDispatcher, ProxyAgent, Agent } = require("undici");
-
     if (cfg) {
-      setGlobalDispatcher(
-        new ProxyAgent({
-          uri: cfg.proxyUrl,
-          noProxy: cfg.noProxy.join(","),
-          ...(ca ? { requestTls: { ca }, proxyTls: { ca } } : {}),
-        }),
-      );
-    } else if (ca) {
-      setGlobalDispatcher(new Agent({ connect: { ca } }));
+      try {
+        const require = createRequire(import.meta.url);
+        const { setGlobalDispatcher, ProxyAgent } = require("undici");
+        setGlobalDispatcher(
+          new ProxyAgent({
+            uri: cfg.proxyUrl,
+            noProxy: cfg.noProxy.join(","),
+            ...(ca ? { requestTls: { ca }, proxyTls: { ca } } : {}),
+          }),
+        );
+      } catch {
+        // undici unavailable or API mismatch — proxy degrades silently.
+      }
     }
   } catch {
-    // Silent: undici unavailable or API unsupported. Never break startup.
+    // Never break startup.
   }
 }
