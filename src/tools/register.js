@@ -934,7 +934,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_create_project",
-    "Scaffold a new CloudGrid app or agent folder (cloudgrid.yaml + a web service), optionally pre-declaring resources. Wraps `grid new` (scaffolds locally; no server entity until you grid_deploy).",
+    "Scaffold a new CloudGrid app or agent folder (cloudgrid.yaml + a web service), optionally pre-declaring resources. Wraps `grid new` (scaffolds locally; no server entity until you grid_deploy). Language note: the nextjs starter is TypeScript (writes tsconfig.json + app/*.tsx), but CloudGrid templates are plain JavaScript. When you fill a template, treat the template's files as the source of truth — delete the scaffolded tsconfig.json and app/*.tsx, then write the template's .js files. Never leave both .tsx and .js for the same route.",
     {
       kind: z.enum(["app", "agent"]).describe("Entity kind. 'agent' scaffolds an agent: block."),
       name: z.string().describe("Slug: 3-40 lowercase alphanumerics and hyphens."),
