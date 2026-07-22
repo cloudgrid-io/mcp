@@ -24,7 +24,7 @@ const GRIDCTL = [
   "grid_check_deploy",
   "grid_list_grids",
   "grid_create_project",
-  "grid_deploy",
+  "grid_plug",
   "grid_view_logs",
   "grid_share",
   "grid_feedback",
@@ -53,10 +53,13 @@ const GRIDCTL = [
 // survive; the rest were DROPPED (each alias schema was pure ListTools context
 // weight). grid_set_sharing is a KEPT alias — the tool was re-renamed back to
 // grid_visibility (2026-07-20 founder rename), old name kept for back-compat.
+// grid_deploy is a KEPT alias — the tool was renamed to grid_plug (canonical
+// verb); "deploy" survives as an intent keyword in grid_plug's description.
 const ALIASES = [
   "grid_fetch",
   "grid_logs",
   "grid_set_sharing",
+  "grid_deploy",
 ];
 const DROPPED_ALIASES = [
   "grid_source", "grid_list", "grid_fork", "grid_download", "grid_claim",
@@ -107,10 +110,10 @@ check(
 const serverInstructions = client.getInstructions?.() ?? "";
 check("server sends MCP instructions", serverInstructions.length > 50);
 check("instructions claim the share-a-link intent", /share it with friends|make it live/.test(serverInstructions));
-const deployDesc = tools.find((t) => t.name === "grid_deploy")?.description ?? "";
-check("grid_deploy description claims share-with-friends phrases", /share it with friends/.test(deployDesc));
+const deployDesc = tools.find((t) => t.name === "grid_plug")?.description ?? "";
+check("grid_plug description claims share-with-friends phrases", /share it with friends/.test(deployDesc));
 
-// grid_drop is GONE — folded into grid_deploy (the one deploy/publish verb).
+// grid_drop is GONE — folded into grid_plug (the one deploy/publish verb).
 check("grid_drop is no longer advertised", !nameSet.has("grid_drop"));
 
 // Voice guard (founder directive: the product noun is GRID). Walk every
@@ -151,19 +154,22 @@ check(
   cloudgridVerbLeaks.length === 0,
 );
 
-// grid_deploy is the unified direct-API create/re-plug verb (spec v2 §3) and the
+// grid_plug is the unified direct-API create/re-plug verb (spec v2 §3) and the
 // single deploy/publish verb — it absorbed the drop single-file publish via the
-// inline `html` param. It was renamed from grid_plug; the deprecated grid_plug
-// alias has been removed (corpus migrated). Local edition: `html` + `path` +
-// `artifact_files` + `target_entity_id`; the old CLI-wrap `target` param is gone.
-const plugTool = tools.find((t) => t.name === "grid_deploy");
+// inline `html` param. It was renamed from grid_deploy (canonical verb is now
+// `plug`); grid_deploy is kept as a deprecated back-compat alias. Local edition:
+// `html` + `path` + `artifact_files` + `target_entity_id`; the old CLI-wrap
+// `target` param is gone.
+const plugTool = tools.find((t) => t.name === "grid_plug");
 const plugProps = plugTool?.inputSchema?.properties ?? {};
 check("deploy has `html` single-file param (absorbed from drop)", "html" in plugProps);
 check("deploy has `filename` param", "filename" in plugProps);
 check("local deploy has `path` param", "path" in plugProps);
 check("deploy has `artifact_files` param", "artifact_files" in plugProps);
 check("deploy has `target_entity_id` param", "target_entity_id" in plugProps);
-check("grid_plug alias removed (migrated to grid_deploy)", !nameSet.has("grid_plug"));
+check("grid_plug is the primary tool (canonical verb)", nameSet.has("grid_plug"));
+check("grid_deploy kept as deprecated alias of grid_plug", nameSet.has("grid_deploy") &&
+  /Deprecated alias of grid_plug/.test(tools.find((t) => t.name === "grid_deploy")?.description ?? ""));
 check("plug has `owner_token` param", "owner_token" in plugProps);
 check("plug has `anon` param", "anon" in plugProps);
 check("plug dropped the CLI-wrap `target` param", !("target" in plugProps));

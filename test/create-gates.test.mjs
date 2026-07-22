@@ -1,4 +1,4 @@
-// Create-path hard gates on grid_deploy (0.20.19):
+// Create-path hard gates on grid_plug (0.20.19):
 //   - AUTH gate: a create with no token and no anon:true must return needs_auth
 //     (sign-in vs anonymous) and NEVER silently ride the anon wire.
 //   - GRID gate: an authed create with >1 grid and no chosen grid must return
@@ -13,11 +13,11 @@ import { registerTools } from "../src/tools.js";
 let failures = 0;
 const check = (label, cond) => { console.log(`${cond ? "ok  " : "FAIL"} ${label}`); if (!cond) failures++; };
 
-// Minimal server shim: capture the registered grid_deploy handler.
+// Minimal server shim: capture the registered grid_plug handler.
 function captureDeploy(ctx) {
   let handler = null;
   const server = {
-    registerTool: (name, _cfg, h) => { if (name === "grid_deploy") handler = h; },
+    registerTool: (name, _cfg, h) => { if (name === "grid_plug") handler = h; },
     tool: () => {},
     registerResource: () => {},
   };

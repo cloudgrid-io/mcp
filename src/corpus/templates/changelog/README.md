@@ -3,7 +3,7 @@
 A single self-contained HTML changelog / release-notes page: reverse-chronological versioned entries, each with a date and tagged change items (added / fixed / changed / removed).
 
 Static inspiration — a single self-contained `index.html` (inline CSS and JS,
-no external CDNs). It deploys instantly via `grid_deploy` and works on every
+no external CDNs). It deploys instantly via `grid_plug` and works on every
 CloudGrid edition, including hosted.
 
 ## Fill it in

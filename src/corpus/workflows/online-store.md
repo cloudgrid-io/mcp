@@ -96,7 +96,7 @@ This is a blueprint — the structure guide is the deliverable, not copy-paste c
 
 ## 7. Deploy (async)
 
-Deploy the folder with `grid_deploy`. A **runtime deploy is ASYNC**: the first
+Deploy the folder with `grid_plug`. A **runtime deploy is ASYNC**: the first
 response is `status: "building"`, NOT a live URL yet.
 - Poll `grid_status` (or the returned poll_url) until the entity is live.
 - Surface a liveness signal while it builds — never a bare silent wait.
@@ -105,7 +105,7 @@ response is `status: "building"`, NOT a live URL yet.
 ## 8. Wire the Stripe webhook + return the live URL
 
 1. Register `<live-url>/api/webhook` as a webhook endpoint in the Stripe
-   dashboard, copy its `whsec_…` secret into the vault, and re-`grid_deploy` the
+   dashboard, copy its `whsec_…` secret into the vault, and re-`grid_plug` the
    SAME entity if you changed the `vault:` mapping (same URL).
 2. Give the user the live store URL — that is the deliverable. To iterate, re-plug
    the SAME entity so it updates the same URL.

@@ -4,8 +4,8 @@ when: multi-page documentation SITE, developer docs portal, knowledge base, help
 needs: none
 deploy: static build
 editions: local
-capabilities_note: a built, multi-page static documentation site (Astro Starlight) — sidebar nav, client-side search, and llms.txt / llms-full.txt generated on every build. No infrastructure (no needs:). Because it BUILDS from multiple files, it deploys async and needs the local edition; the hosted MCP cannot build it. Served at the entity root via grid_deploy.
-summary: Scaffold an Astro Starlight docs site from the docs-app template, fill in the content, build it, deploy the folder with grid_deploy (async → poll to a live URL), then ask the user what visibility they want. llms.txt / llms-full.txt are generated automatically.
+capabilities_note: a built, multi-page static documentation site (Astro Starlight) — sidebar nav, client-side search, and llms.txt / llms-full.txt generated on every build. No infrastructure (no needs:). Because it BUILDS from multiple files, it deploys async and needs the local edition; the hosted MCP cannot build it. Served at the entity root via grid_plug.
+summary: Scaffold an Astro Starlight docs site from the docs-app template, fill in the content, build it, deploy the folder with grid_plug (async → poll to a live URL), then ask the user what visibility they want. llms.txt / llms-full.txt are generated automatically.
 ---
 
 # Workflow: docs-app
@@ -98,7 +98,7 @@ looks for `services/site/` and fails with "Service directory not found". No
 
 ## 6. Build + deploy (async)
 
-Deploy the folder with `grid_deploy`. The platform (Cloud Build) runs `npm run
+Deploy the folder with `grid_plug`. The platform (Cloud Build) runs `npm run
 build` for you and serves the `dist/` output — you do NOT need to build first. A build deploy is **ASYNC**: the first response is
 `status: "building"` with a `poll_url` / entity, NOT a live URL yet.
 - Poll `grid_status` (or the returned poll_url) until the entity is live.

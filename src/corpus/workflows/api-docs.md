@@ -4,7 +4,7 @@ when: API documentation, API reference, endpoint docs, REST API docs, method/par
 needs: none
 deploy: inspiration
 editions: all
-capabilities_note: static — no infrastructure. Publishes as an inspiration (instant, works on hosted) via grid_deploy.
+capabilities_note: static — no infrastructure. Publishes as an inspiration (instant, works on hosted) via grid_plug.
 summary: Fetch the api-docs template, fill it with the user's endpoints, deploy it, and return the live share URL.
 ---
 

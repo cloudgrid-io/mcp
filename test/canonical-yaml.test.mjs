@@ -62,8 +62,8 @@ check("doc §7 keeps only a one-line historical #1527 note (now fixed)",
   /#1527/.test(doc) && /(fixed|obsolete|historical)/i.test(doc));
 check("doc §7: needs: and requires: together are rejected",
   /(reject|one or the other)/i.test(doc));
-check("doc §7: single HTML page → inspiration (grid_deploy) / services: → runtime",
-  /inspiration/i.test(doc) && /grid_deploy/.test(doc) && /runtime/i.test(doc) && /local edition/i.test(doc));
+check("doc §7: single HTML page → inspiration (grid_plug) / services: → runtime",
+  /inspiration/i.test(doc) && /grid_plug/.test(doc) && /runtime/i.test(doc) && /local edition/i.test(doc));
 
 // ── 3. GUARD: the DB example uses active needs: {database: true}, NO requires: ─
 // Extract fenced code blocks and, for the ones that are cloudgrid.yaml manifests,

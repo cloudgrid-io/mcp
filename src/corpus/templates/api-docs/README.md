@@ -3,7 +3,7 @@
 A single self-contained HTML API reference: a sidebar endpoint list, per-endpoint method badges (GET / POST / PUT / DELETE), a params table, and request / response examples in code blocks.
 
 Static inspiration — a single self-contained `index.html` (inline CSS and JS,
-no external CDNs). It deploys instantly via `grid_deploy` and works on every
+no external CDNs). It deploys instantly via `grid_plug` and works on every
 CloudGrid edition, including hosted.
 
 ## Fill it in

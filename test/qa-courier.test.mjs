@@ -1,6 +1,6 @@
-// Offline unit test for the QA "model-as-courier" capture (grid_deploy carries
+// Offline unit test for the QA "model-as-courier" capture (grid_plug carries
 // the user's request + a self-reported build note into the QA session log).
-// Drives the REAL registered grid_deploy handler (via registerTools + a fake
+// Drives the REAL registered grid_plug handler (via registerTools + a fake
 // server) with a mocked plug API and a stub sink, and asserts what the flushed
 // QA log carries. Run: node test/qa-courier.test.mjs
 //
@@ -80,12 +80,12 @@ try {
   installFetch();
 
   // ── Task 1: the courier args reach the QA log ──────────────────────────────
-  await test("grid_deploy lifts user_request + session_note into the flushed QA log", async () => {
+  await test("grid_plug lifts user_request + session_note into the flushed QA log", async () => {
     const sink = stubSink();
     const ctx = makeCtx({ sink });
     const server = makeToolServer();
     registerTools(server, ctx);
-    await server.handlers.grid_deploy({
+    await server.handlers.grid_plug({
       html: "<h1>x</h1>",
       anon: true,
       user_request: "build me a scheduler",
@@ -107,7 +107,7 @@ try {
     const ctx = makeCtx({ sink });
     const server = makeToolServer();
     registerTools(server, ctx);
-    await server.handlers.grid_deploy({
+    await server.handlers.grid_plug({
       html: "<h1>x</h1>",
       anon: true,
       user_request: "build me a scheduler",
@@ -128,7 +128,7 @@ try {
     const ctx = makeCtx({ sink, loggerOpts: { userRequest: "from-env" } });
     const server = makeToolServer();
     registerTools(server, ctx);
-    await server.handlers.grid_deploy({
+    await server.handlers.grid_plug({
       html: "<h1>x</h1>",
       anon: true,
       user_request: "build me a scheduler",
@@ -148,14 +148,14 @@ try {
     const ctx = makeCtx({ sink });
     const server = makeToolServer();
     registerTools(server, ctx);
-    await server.handlers.grid_deploy({ html: "<h1>x</h1>", anon: true });
+    await server.handlers.grid_plug({ html: "<h1>x</h1>", anon: true });
     await settle();
     assert.equal(sink.sent.length, 1, "the live deploy flushed once");
     assert.equal(ctx.logger.flushed, true, "logger is flushed after a live deploy");
     const res = await server.handlers.grid_note({ summary: "a late note that will be dropped" });
     const text = res.content?.[0]?.text || "";
     assert.match(text, /already posted/);
-    assert.match(text, /session_note on your next grid_deploy/);
+    assert.match(text, /session_note on your next grid_plug/);
     await settle();
     assert.equal(sink.sent.length, 1, "grid_note after flush adds no second post");
     assert.doesNotMatch(sink.sent[0].text, /a late note that will be dropped/);
@@ -170,7 +170,7 @@ try {
     registerTools(server, ctx);
     const noteRes = await server.handlers.grid_note({ summary: "Built a scheduler page." });
     assert.match(noteRes.content?.[0]?.text || "", /Noted\./);
-    await server.handlers.grid_deploy({ html: "<h1>x</h1>", anon: true });
+    await server.handlers.grid_plug({ html: "<h1>x</h1>", anon: true });
     await settle();
     assert.equal(sink.sent.length, 1);
     assert.match(sink.sent[0].text, /llm_report \(self-reported\): Built a scheduler page\./);
@@ -186,7 +186,7 @@ try {
     registerTools(server, ctx);
     const USER_MARK = "ZZUSERREQMARKER0xCAFE";
     const NOTE_MARK = "ZZSESSIONNOTEMARKER0xBEEF";
-    await server.handlers.grid_deploy({
+    await server.handlers.grid_plug({
       html: "<h1>x</h1>",
       anon: true,
       user_request: USER_MARK,
@@ -203,11 +203,11 @@ try {
 
   // Disclosure parity: user_request's schema description must tell the model the
   // value is recorded (session_note already says "Recorded for CloudGrid QA").
-  await test("grid_deploy user_request description discloses recording", async () => {
+  await test("grid_plug user_request description discloses recording", async () => {
     const ctx = makeCtx({ withLogger: false });
     const server = makeToolServer();
     registerTools(server, ctx);
-    const desc = server.configs.grid_deploy?.inputSchema?.user_request?.description || "";
+    const desc = server.configs.grid_plug?.inputSchema?.user_request?.description || "";
     assert.match(desc, /Recorded for CloudGrid QA/);
   });
 
@@ -218,7 +218,7 @@ try {
     const ctx = makeCtx({ sink });
     const server = makeToolServer();
     registerTools(server, ctx);
-    const res = await server.handlers.grid_deploy({ html: "<h1>x</h1>", anon: true });
+    const res = await server.handlers.grid_plug({ html: "<h1>x</h1>", anon: true });
     const text = res.content?.[0]?.text || "";
     assert.doesNotMatch(text, /grid_note/);
   });

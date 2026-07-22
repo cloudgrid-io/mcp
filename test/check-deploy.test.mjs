@@ -1,6 +1,6 @@
 // Confirm-before-claiming-live (async runtime builds).
 //
-// Reported live (hosted): grid_deploy returned "building" and the session had
+// Reported live (hosted): grid_plug returned "building" and the session had
 // NO status tool — the model blind-polled the public URL into 502s and either
 // over-claimed ("your app is live") or abandoned. Two fixes under test:
 //   1. runPlug polls the deploy trace server-side for a short budget: fast

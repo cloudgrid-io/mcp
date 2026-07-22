@@ -4,7 +4,7 @@ when: product launch page, launch announcement, new product page, we just launch
 needs: none
 deploy: inspiration
 editions: all
-capabilities_note: static — no infrastructure. Publishes as an inspiration (instant, works on hosted) via grid_deploy.
+capabilities_note: static — no infrastructure. Publishes as an inspiration (instant, works on hosted) via grid_plug.
 summary: Fetch the product-launch template, fill it with the user's product/launch content, deploy it, and return the live share URL.
 ---
 

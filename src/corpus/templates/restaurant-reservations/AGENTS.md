@@ -180,7 +180,7 @@ build is **asynchronous**.
    auth). Non-secret config (publishable keys, feature flags) → `grid_set_env`.
 5. (Optional) `grid dev` — runs Next.js locally with `DATABASE_MONGODB_URL` and
    vault vars injected against dev Mongo. Seed `menu`, test a booking.
-6. `grid_deploy` — builds + deploys `services/web/`. **Async**: the first
+6. `grid_plug` — builds + deploys `services/web/`. **Async**: the first
    response is `status: building`, not a URL. Poll `grid_status` (or the
    returned poll URL) until live; surface a liveness signal while it builds
    (never a bare silent wait). Only then return the **live app URL** (not the

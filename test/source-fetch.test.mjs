@@ -443,10 +443,10 @@ try {
       /grid_get_app_source[\s\S]*target_entity_id[\s\S]*Do not ask the user to paste/.test(startText),
   );
 
-  // grid_deploy (primary) description carries the source-first clause.
+  // grid_plug (primary) description carries the source-first clause.
   check(
-    "grid_deploy description mentions grid_get_app_source",
-    /call grid_get_app_source first, then deploy with target_entity_id/.test(server.descriptions.grid_deploy),
+    "grid_plug description mentions grid_get_app_source",
+    /call grid_get_app_source first, then deploy with target_entity_id/.test(server.descriptions.grid_plug),
   );
 
   // ── Edition-aware edit flow (spec §6): the playbook carries EACH branch ──────
@@ -467,10 +467,10 @@ try {
     /not_owner/.test(startText) && /grid_copy_app/.test(startText),
   );
 
-  // grid_deploy description advertises grid+slug as an alternative re-plug handle.
+  // grid_plug description advertises grid+slug as an alternative re-plug handle.
   check(
-    "grid_deploy description mentions grid+slug re-plug handle",
-    /grid\s*\+\s*slug/.test(server.descriptions.grid_deploy),
+    "grid_plug description mentions grid+slug re-plug handle",
+    /grid\s*\+\s*slug/.test(server.descriptions.grid_plug),
   );
   // grid_get_app_source (renamed from grid_source) description advertises
   // URL→entity_id resolution + edition metadata. The grid_source alias was

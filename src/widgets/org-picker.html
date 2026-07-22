@@ -75,7 +75,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
           if (input.artifact_files) args.artifact_files = input.artifact_files;
           if (input.target_entity_id) args.target_entity_id = input.target_entity_id;
           args.grid = slug;
-          window.openai.callTool("grid_deploy", args).then(function () {
+          window.openai.callTool("grid_plug", args).then(function () {
             // The host will render the new result with the live-result card.
           }).catch(function () {
             for (var m = 0; m < all.length; m++) all[m].classList.remove("loading");
