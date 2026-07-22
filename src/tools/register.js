@@ -77,33 +77,18 @@ export function registerTools(server, ctx) {
     }
   };
 
-  // Every primary tool records its shape here so a deprecated alias can be
-  // registered under an OLD name with the same handler + schema but a
-  // redirect-only, keyword-free description (so the model never mis-selects it).
-  const registered = {};
+  // Every tool registers under its canonical grid_* name ONLY. Deprecated
+  // aliases were removed entirely (founder directive, 2026-07-22): each alias
+  // doubled the ListTools surface for pure clutter, clients enumerate tools
+  // dynamically, and the renames' old names (grid_deploy, grid_set_sharing,
+  // grid_copy_app, grid_claim_anonymous_deploy, grid_download_source,
+  // grid_fetch, grid_logs) are gone rather than advertised as redirects.
   const reg = (name, config, handler) => {
-    registered[name] = { kind: "reg", config, handler };
     server.registerTool(name, config, withCapture(name, handler));
   };
 
   const regTool = (name, description, schema, annotations, handler) => {
-    registered[name] = { kind: "tool", description, schema, annotations, handler };
     server.tool(name, description, schema, annotations, withCapture(name, handler));
-  };
-
-  // Register OLD tool names as deprecated aliases of their new (clearer) names.
-  // Same handler/schema; description is redirect-only so it never wins selection.
-  // Skips silently if the primary isn't registered in this edition (e.g. a
-  // CLI-only tool on the web edition).
-  const registerAlias = (oldName, newName) => {
-    const r = registered[newName];
-    if (!r) return;
-    const redirect = `Deprecated alias of ${newName}. Always call ${newName} instead; this name is kept for backward compatibility.`;
-    if (r.kind === "reg") {
-      server.registerTool(oldName, { ...r.config, description: redirect }, withCapture(oldName, r.handler));
-    } else {
-      server.tool(oldName, redirect, r.schema, r.annotations, withCapture(oldName, r.handler));
-    }
   };
 
   // ── Widget resources (web edition, ChatGPT Apps SDK) ──────────────────────
@@ -430,11 +415,9 @@ export function registerTools(server, ctx) {
       }
   };
   reg("grid_plug", plugConfig, plugHandler);
-  // `grid_deploy` is kept as a deprecated back-compat alias that redirects to
-  // grid_plug (for any client still calling the old name). It is keyword-free so
-  // the model never selects it — "deploy"/"publish"/"ship"/"make live" live in
-  // grid_plug's own description, so deploy-intent routing lands on grid_plug.
-  registerAlias("grid_deploy", "grid_plug");
+  // NOTE: no `grid_deploy` alias — the tool is grid_plug only. "deploy"/
+  // "publish"/"ship"/"make live" live in grid_plug's description, so
+  // deploy-intent routing lands there without a second listed name.
 
   // ── grid_fork / grid_remix / grid_download — direct-API copy/source verbs ──────
   // fork = same-grid byte-carrying copy; remix = cross-grid copy with secrets
@@ -972,26 +955,6 @@ export function registerTools(server, ctx) {
     },
   );
 
-  // ── Kept alias (both editions): grid_fetch has real muscle memory in saved
-  //    prompts and older docs. Every other legacy alias was dropped in 0.20.8 -
-  //    16 alias schemas were pure ListTools context weight on every session.
-  registerAlias("grid_fetch", "grid_get_template");
-  // grid_set_sharing → grid_visibility (2026-07-20, founder rename). Same handler
-  // and schema; old name kept as a redirect-only deprecated alias so any client
-  // still calling it works while the model prefers the new. MUST live here, above
-  // the local cutoff: grid_visibility is a both-editions tool, so the alias has
-  // to register on the web edition too (hosted callers keep back-compat).
-  registerAlias("grid_set_sharing", "grid_visibility");
-  // Copy/adopt verbs renamed to match the CLI (fork / remix / pickup / download).
-  // Old names kept as redirect-only deprecated aliases; all both-editions tools,
-  // so they must register above the local cutoff for hosted back-compat.
-  // grid_claim_anonymous_deploy → grid_pickup drops the "claim" naming; claiming
-  // an anonymous drop is now grid_pickup with a claim_token (mirrors the CLI's
-  // `grid pickup --claim-token`).
-  registerAlias("grid_copy_app", "grid_fork");
-  registerAlias("grid_claim_anonymous_deploy", "grid_pickup");
-  registerAlias("grid_download_source", "grid_download");
-
   if (ctx.edition !== "local") return; // web edition stops here — no CLI tools
 
   // ── CLI-wrapping tools (local edition only) ───────────────────────────────
@@ -1310,9 +1273,4 @@ export function registerTools(server, ctx) {
     }),
   );
 
-  // ── Deprecated aliases (tool-name cleanup): OLD CLI-tool names kept callable
-  //    (local edition) as redirect-only aliases of their new, clearer names.
-  // Kept alias (local): grid_logs - muscle memory. The other legacy CLI-tool
-  // aliases were dropped in 0.20.8 (see CHANGELOG).
-  registerAlias("grid_logs", "grid_view_logs");
 }

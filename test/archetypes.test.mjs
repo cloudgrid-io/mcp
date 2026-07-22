@@ -2,7 +2,7 @@
 // ai-app. Both are DB-backed runtime builds (like app-with-data) authored in
 // cloudgrid-io/skills and snapshotted into src/corpus/. Asserts, for each:
 //   1. The workflow/template/example resolve via the REAL fetchCorpus seam AND
-//      the REAL registered grid_fetch handler.
+//      the REAL registered grid_get_template handler.
 //   2. The intent shows up in the grid_start workflows menu.
 //   3. The template is internally consistent: active canonical needs: (no active
 //      requires:, never needs:+requires: together), correct service type, reads
@@ -85,7 +85,7 @@ function inStartMenu(name) {
 
 async function fetchResolves(kind, name) {
   const direct = fetchCorpus(kind, name);
-  const viaHandler = await server.handlers.grid_fetch({ kind, name });
+  const viaHandler = await server.handlers.grid_get_template({ kind, name });
   const text = viaHandler?.content?.[0]?.text ?? "";
   return (
     typeof direct === "string" &&

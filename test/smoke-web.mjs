@@ -46,20 +46,17 @@ try {
   const names = toolList.map((t) => t.name).sort();
   console.log("web tools:", names.join(", "));
   // New grid_* names (direct-API + Agent Core) on the authed web edition.
-  for (const t of ["grid_plug", "grid_login", "grid_login_status", "grid_start", "grid_fetch", "grid_report"]) {
+  for (const t of ["grid_plug", "grid_login", "grid_login_status", "grid_start", "grid_report"]) {
     check(`exposes ${t}`, names.includes(t));
   }
-  // Tool-name cleanup: the new clear primary names are present (both editions),
-  // and the old direct-API names are kept as deprecated aliases.
+  // Tool-name cleanup: the canonical primary names are present (both editions).
   for (const nm of ["grid_get_template", "grid_get_app_source", "grid_list_grids", "grid_fork", "grid_remix", "grid_download", "grid_pickup", "grid_visibility", "grid_check_deploy"]) {
     check(`exposes new name ${nm}`, names.includes(nm));
   }
-  // grid_set_sharing MUST be a live deprecated alias on the WEB edition too
-  // (grid_visibility is a both-editions tool): a hosted client with old
-  // muscle-memory keeps working. Regression guard — the alias was briefly
-  // registered below the local cutoff, so web dropped it.
-  for (const nm of ["grid_fetch", "grid_set_sharing"]) {
-    check(`${nm} is a deprecated alias`, /Deprecated alias of grid_/.test((toolList.find((t) => t.name === nm)?.description) ?? ""));
+  // ALL deprecated aliases are gone (founder directive 2026-07-22): canonical
+  // names only, no redirect duplicates in ListTools.
+  for (const nm of ["grid_fetch", "grid_set_sharing", "grid_deploy", "grid_copy_app", "grid_claim_anonymous_deploy", "grid_download_source"]) {
+    check(`removed alias ${nm} is not advertised`, !names.includes(nm));
   }
   // Voice guard (web edition): no org-as-a-noun prose in anything the model sees.
   const ORG_PROSE_W = /\b(?:your|active|the user's[\w' ]*?) org\b|\borg (?:name|membership|memberships)\b|\borg's\b|\bthe org is\b|\brole in the org\b|\borganization\b/i;
@@ -94,10 +91,10 @@ try {
   // grid_plug is the one deploy/publish verb on the web edition (spec v2 — the
   // unified direct-API create/re-plug verb): the inline `html` single-file path
   // + `artifact_files`, no local `path`. grid_drop is gone (folded in); the
-  // canonical verb is `plug`, with grid_deploy kept as a deprecated alias.
+  // canonical verb is `plug` — no grid_deploy alias (removed with all aliases).
   check("web does NOT expose grid_drop (folded into grid_plug)", !names.includes("grid_drop"));
-  check("web exposes grid_plug (canonical) + grid_deploy alias",
-    names.includes("grid_plug") && names.includes("grid_deploy"));
+  check("web exposes grid_plug (canonical), no grid_deploy",
+    names.includes("grid_plug") && !names.includes("grid_deploy"));
   const plugTool = toolList.find((t) => t.name === "grid_plug");
   const plugProps = plugTool?.inputSchema?.properties ?? {};
   check("web deploy does NOT have `path` param", !("path" in plugProps));

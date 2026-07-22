@@ -304,7 +304,7 @@ test("benign non-grid_plug error is recorded but does NOT flush; later grid_plug
   const sink = stubSink();
   const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink, ctx: makeCtx(), now: () => 0 });
   // routine failure during exploration — must not freeze capture
-  await logger.recordCall("grid_fetch", { kind: "workflow", name: "nope" }, { content: [{ type: "text", text: "no such workflow" }], isError: true }, 10);
+  await logger.recordCall("grid_get_template", { kind: "workflow", name: "nope" }, { content: [{ type: "text", text: "no such workflow" }], isError: true }, 10);
   await new Promise((r) => setImmediate(r));
   assert.equal(logger.calls[0].outcome, "error");
   assert.equal(sink.sent.length, 0); // benign error did NOT flush/freeze
@@ -313,7 +313,7 @@ test("benign non-grid_plug error is recorded but does NOT flush; later grid_plug
   await new Promise((r) => setImmediate(r));
   assert.equal(sink.sent.length, 1);
   assert.match(sink.sent[0].text, /reason: live/);
-  assert.match(sink.sent[0].text, /grid_fetch/); // the earlier error is in the trail
+  assert.match(sink.sent[0].text, /grid_get_template/); // the earlier error is in the trail
 });
 
 test("flush never throws when the sink rejects", async () => {
@@ -417,7 +417,7 @@ test("withCapture records a thrown handler as error, not ok (FIX 3)", async () =
   assert.equal(rec.outcome, "error");
 });
 
-test("grid_start and grid_fetch route through the capture shim (FIX 4)", async () => {
+test("grid_start and grid_get_template route through the capture shim (FIX 4)", async () => {
   const recorded = [];
   const server = makeToolServer();
   const ctx = {
@@ -429,13 +429,13 @@ test("grid_start and grid_fetch route through the capture shim (FIX 4)", async (
     logger: { recordCall: (name) => { recorded.push(name); }, setNarrative() {} },
   };
   registerTools(server, ctx);
-  assert.ok(typeof server.handlers.grid_fetch === "function");
+  assert.ok(typeof server.handlers.grid_get_template === "function");
   assert.ok(typeof server.handlers.grid_start === "function");
   await server.handlers.grid_start({});
-  await server.handlers.grid_fetch({ kind: "workflow", name: "nope" });
+  await server.handlers.grid_get_template({ kind: "workflow", name: "nope" });
   await new Promise((r) => setImmediate(r));
   assert.ok(recorded.includes("grid_start"), "grid_start was captured");
-  assert.ok(recorded.includes("grid_fetch"), "grid_fetch was captured");
+  assert.ok(recorded.includes("grid_get_template"), "grid_get_template was captured");
 });
 
 test("grid_note records a self-report narrative and never errors", async () => {

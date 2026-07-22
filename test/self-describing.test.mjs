@@ -4,11 +4,11 @@
 // capabilities (Superpowers-style `when:` matching). Asserts:
 //   1. Each of the 6 workflows carries the enriched frontmatter fields
 //      (when / needs / deploy / editions / capabilities_note) and they parse.
-//   2. grid_fetch("doc","capability-map") resolves and returns the index
+//   2. grid_get_template("doc","capability-map") resolves and returns the index
 //      (intent→template table + the full needs: vocabulary).
 //   3. Each static template dir has a reference cloudgrid.yaml (type: static)
 //      and an index.md that mentions it; the fillable HTML is still what
-//      grid_fetch("template", …) returns (index.html wins — no regression).
+//      grid_get_template("template", …) returns (index.html wins — no regression).
 //   4. app-with-data yaml declares the canonical active needs: {database: true}
 //      and NO active requires: (the deprecated v1 alias).
 //   5. GUARD: no template cloudgrid.yaml has an active needs: AND requires:
@@ -78,7 +78,7 @@ for (const name of STATIC_WORKFLOWS) {
 // ── 2. Capability map fetches as a doc ──────────────────────────────────────
 {
   const cap = fetchCorpus("doc", "capability-map");
-  check("grid_fetch(doc, capability-map) resolves", typeof cap === "string" && cap.length > 500);
+  check("grid_get_template(doc, capability-map) resolves", typeof cap === "string" && cap.length > 500);
   check("capability-map has the intent→template table", /Intent[\s\S]*Template[\s\S]*Deploy/.test(cap));
   check("capability-map lists all 6 templates",
     ["landing-page", "web-app", "dashboard", "report", "presentation", "app-with-data"]
@@ -106,7 +106,7 @@ for (const dir of STATIC_DIRS) {
     existsSync(CORPUS + base + "index.md") && /cloudgrid\.yaml/.test(read(base + "index.md")));
   // No regression: template fetch still returns the fillable HTML.
   const fetched = fetchCorpus("template", dir);
-  check(`${dir} grid_fetch(template) still returns HTML (index.html wins)`,
+  check(`${dir} grid_get_template(template) still returns HTML (index.html wins)`,
     typeof fetched === "string" && fetched.trimStart().startsWith("<"));
 }
 

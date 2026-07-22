@@ -161,13 +161,13 @@ check(
     /LOCAL edition/.test(startText),
 );
 
-// ── 6. grid_fetch handler returns the workflow/template/example content ──
-const wfRes = await server.handlers.grid_fetch({ kind: "workflow", name: "app-with-data" });
-const tplRes = await server.handlers.grid_fetch({ kind: "template", name: "app-with-data" });
-const exRes = await server.handlers.grid_fetch({ kind: "example", name: "app-with-data" });
-check("grid_fetch workflow app-with-data is not an error", wfRes?.isError !== true && (wfRes?.content?.[0]?.text ?? "").length > 100);
-check("grid_fetch template app-with-data is not an error", tplRes?.isError !== true && (tplRes?.content?.[0]?.text ?? "").length > 100);
-check("grid_fetch example app-with-data is not an error", exRes?.isError !== true && (exRes?.content?.[0]?.text ?? "").length > 100);
+// ── 6. grid_get_template handler returns the workflow/template/example content ──
+const wfRes = await server.handlers.grid_get_template({ kind: "workflow", name: "app-with-data" });
+const tplRes = await server.handlers.grid_get_template({ kind: "template", name: "app-with-data" });
+const exRes = await server.handlers.grid_get_template({ kind: "example", name: "app-with-data" });
+check("grid_get_template workflow app-with-data is not an error", wfRes?.isError !== true && (wfRes?.content?.[0]?.text ?? "").length > 100);
+check("grid_get_template template app-with-data is not an error", tplRes?.isError !== true && (tplRes?.content?.[0]?.text ?? "").length > 100);
+check("grid_get_template example app-with-data is not an error", exRes?.isError !== true && (exRes?.content?.[0]?.text ?? "").length > 100);
 
 if (failures > 0) {
   console.log(`\n${failures} app-with-data check(s) FAILED.`);
