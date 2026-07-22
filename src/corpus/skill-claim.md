@@ -69,5 +69,5 @@ new_expires_at, role_granted: "owner", ... }`.
 ## Notes
 
 - One pickup claims one entity. To claim several, repeat with each entity id + token.
-- The MCP `grid_claim_anonymous_deploy` tool does this for you, and remembers the entity id +
+- The MCP `grid_pickup` tool does this for you, and remembers the entity id +
   token from the last anonymous drop so you can claim with no arguments.

@@ -1635,6 +1635,41 @@ export async function runFork(ctx, { id, into_org_slug, name, source_version_id 
   };
 }
 
+// Remix: cross-grid "make my own copy". Unlike fork (same-grid, byte-carrying),
+// remix mints a NEW entity in ANY grid the caller can build in, keeps lineage
+// back to the source, and strips the source's secrets/connection credentials —
+// the remixer supplies their own before plugging. Hits POST
+// /api/v2/runtimes/:id/remix.
+export async function runRemix(ctx, { id, into_org_slug, name, source_version_id }) {
+  const data = await authedApiCall(ctx, {
+    method: "POST",
+    pathName: `/api/v2/runtimes/${encodeURIComponent(id)}/remix`,
+    body: {
+      ...(into_org_slug ? { into_org_slug } : {}),
+      ...(name ? { name } : {}),
+      ...(source_version_id ? { source_version_id } : {}),
+    },
+    verb: "Remix",
+  });
+  const gridSlug = data?.grid_slug ?? data?.org?.slug ?? null;
+  const lines = [
+    `Remixed: ${data?.name ?? id} (entity_id=${data?.entity_id ?? "?"})${gridSlug ? ` in grid ${gridSlug}` : ""}`,
+    `Lineage: forked_from=${data?.forked_from ?? "?"}. Secrets were not copied — set your own before you plug.`,
+  ];
+  return {
+    text: lines.join("\n"),
+    structured: {
+      entity_id: data?.entity_id ?? null,
+      name: data?.name ?? null,
+      kind: data?.kind ?? null,
+      grid_slug: gridSlug,
+      forked_from: data?.forked_from ?? null,
+      forked_from_version_id: data?.forked_from_version_id ?? null,
+      current_version_id: data?.current_version_id ?? null,
+    },
+  };
+}
+
 // Download: signed, time-limited (15-minute) source-bundle URLs. No entity is
 // created and no registry state changes.
 export async function runDownload(ctx, { id, version }) {
