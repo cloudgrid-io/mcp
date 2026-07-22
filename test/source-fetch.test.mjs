@@ -463,8 +463,8 @@ try {
     /multi-file/.test(startText) && /source_download_url/.test(startText) && /local edition/.test(startText) && /CLI/.test(startText),
   );
   check(
-    "playbook: not-owner fork branch — replug:false / not_owner → grid_copy_app",
-    /not_owner/.test(startText) && /grid_copy_app/.test(startText),
+    "playbook: not-owner fork branch — replug:false / not_owner → grid_fork",
+    /not_owner/.test(startText) && /grid_fork/.test(startText),
   );
 
   // grid_plug description advertises grid+slug as an alternative re-plug handle.

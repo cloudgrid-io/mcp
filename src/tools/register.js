@@ -23,6 +23,7 @@ import {
   runClaim,
   runPlug,
   runFork,
+  runRemix,
   runDownload,
   runVisibility,
   runSource,
@@ -134,19 +135,22 @@ export function registerTools(server, ctx) {
 
   // ── Direct-API tools (both editions) ──────────────────────────────────────
 
-  // Claim — both editions.
+  // Pickup — both editions. Adopts an entity into the signed-in account's active
+  // grid (ownership transfer via POST /api/v2/entities/:id/pickup). Pass an
+  // anonymous drop's owner token as `claim_token` to take over something you
+  // dropped anonymously — that path replaces the old standalone "claim" verb.
   reg(
-    "grid_claim_anonymous_deploy",
+    "grid_pickup",
     {
-      description: "Claim an anonymous drop into the signed-in account, so it becomes owned and stops expiring on the anonymous schedule. Use after the user signs in to keep something they dropped anonymously. The public URL does not change. The claim token IS the drop's owner_token (one bearer capability for both edit and claim — anonymous edits refresh it, so always use the newest). Requires sign-in (grid_login). Calls the API directly.",
+      description: "Pick up (adopt) an entity into the signed-in account's active grid — an ownership transfer, keeping the same public URL. Use it to take over an entity you have access to, or to keep an anonymous drop you created: pass the drop's `claim_token` and it becomes owned and stops expiring on the anonymous schedule. Requires sign-in (grid_login). Calls the API directly, so it works on every edition. (This is the direct-API adopt; on the local edition grid_edit_existing_app additionally downloads the source and links the folder for editing.)",
       inputSchema: {
-        claim_token: z.string().optional().describe("The claim/owner token from an anonymous drop (owner_token in the drop result; also embedded in claim_url)."),
-        claim_url: z.string().optional().describe("The claim_url from an anonymous drop; the token is read from it."),
-        entity_id: z.string().optional().describe("The entity id of the anonymous drop to claim. Defaults to this session's last anonymous drop."),
+        entity_id: z.string().optional().describe("The entity id to pick up. Defaults to this session's last anonymous drop."),
+        claim_token: z.string().optional().describe("For an anonymous drop: its owner token (the owner_token in the drop result, also embedded in claim_url). Passing it takes over that drop."),
+        claim_url: z.string().optional().describe("Alternative to claim_token for an anonymous drop — the claim_url from the drop result; the token is read from it."),
       },
       outputSchema: {
-        claimed: z.number().describe("Number of drops claimed."),
-        urls: z.array(z.string()).describe("URLs of the claimed drops."),
+        claimed: z.number().describe("Number of entities picked up."),
+        urls: z.array(z.string()).describe("Public URLs of the picked-up entities."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
@@ -432,17 +436,20 @@ export function registerTools(server, ctx) {
   // grid_plug's own description, so deploy-intent routing lands on grid_plug.
   registerAlias("grid_deploy", "grid_plug");
 
-  // ── grid_copy_app / grid_download_source — direct-API verbs (spec v2 §5–6) ──────
+  // ── grid_fork / grid_remix / grid_download — direct-API copy/source verbs ──────
+  // fork = same-grid byte-carrying copy; remix = cross-grid copy with secrets
+  // stripped; download = signed source-bundle URLs. All direct-API (both editions).
   reg(
-    "grid_copy_app",
+    "grid_fork",
     {
       description:
-        "Start a NEW entity from an existing runtime (copy-on-write, lineage recorded). Lands in the " +
-        "source's home grid by default; cross-grid only for system templates or forkable:'public' sources. " +
-        "Requires sign-in. Kind-aware: forks a runtime (app/agent) OR an inspiration — " +
-        "tries POST /api/v2/runtimes/:id/fork and falls back to /api/v2/inspirations/:id/fork.",
+        "Fork an entity: start a NEW entity from an existing one (copy-on-write, lineage recorded), carrying " +
+        "the source bytes. Lands in the source's home grid by default; cross-grid only for system templates " +
+        "or forkable:'public' sources — for a general cross-grid copy use grid_remix instead. Requires sign-in. " +
+        "Kind-aware: forks a runtime (app/agent) OR an inspiration — tries POST /api/v2/runtimes/:id/fork and " +
+        "falls back to /api/v2/inspirations/:id/fork.",
       inputSchema: {
-        id: z.string().describe("The source runtime: a canonical UUID or <grid-slug>/<entity-slug>."),
+        id: z.string().describe("The source entity: a canonical UUID or <grid-slug>/<entity-slug>."),
         into_org_slug: z.string().optional().describe("Destination grid slug. Required only when you belong to more than one grid."),
         name: z.string().optional().describe("Slug for the new entity. Omit to derive one from the source."),
         source_version_id: z.string().optional().describe("Fork an older version instead of HEAD, e.g. v_a1b2c3d."),
@@ -469,12 +476,49 @@ export function registerTools(server, ctx) {
   );
 
   reg(
-    "grid_download_source",
+    "grid_remix",
     {
       description:
-        "Fetch the source bundle last deployed for a runtime: one signed, time-limited (15-minute) read URL " +
-        "per service tarball. No entity is created and no registry state changes. Requires sign-in. Calls " +
-        "GET /api/v2/runtimes/:id/source directly.",
+        "Remix an app: make your own copy of any app you can SEE (link/public/authenticated, or a grid you " +
+        "belong to) into ANY grid you can build in — cross-grid is allowed. Mints a NEW entity with lineage " +
+        "back to the source, WITHOUT the source's secrets or connection credentials (set your own before you " +
+        "plug). Distinct from grid_fork, which is same-grid and byte-carrying. Requires sign-in. Calls POST " +
+        "/api/v2/runtimes/:id/remix.",
+      inputSchema: {
+        id: z.string().describe("The source app: a canonical UUID or <grid-slug>/<entity-slug>."),
+        into_org_slug: z.string().optional().describe("Grid to create your copy in. Required only when you belong to more than one grid."),
+        name: z.string().optional().describe("Slug for your copy. Omit to derive one from the source."),
+        source_version_id: z.string().optional().describe("Remix an older version instead of HEAD, e.g. v_a1b2c3d."),
+      },
+      outputSchema: {
+        entity_id: z.string().nullable().describe("Your copy's entity id."),
+        name: z.string().nullable().describe("Your copy's slug."),
+        kind: z.string().nullable().describe("app | agent."),
+        grid_slug: z.string().nullable().describe("The grid your copy landed in."),
+        forked_from: z.string().nullable().describe("Source entity_id."),
+        forked_from_version_id: z.string().nullable().describe("Source version, when a specific one was remixed."),
+        current_version_id: z.string().nullable().describe("Your copy's current version id."),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+    },
+    async (input) => {
+      try {
+        if (!input?.id) return fail("`id` is required (a canonical UUID or <grid-slug>/<entity-slug>).");
+        return okResult(await runRemix(ctx, input));
+      } catch (err) {
+        return fail(err.message);
+      }
+    },
+  );
+
+  reg(
+    "grid_download",
+    {
+      description:
+        "Download an entity's source: the bundle last deployed for a runtime, as one signed, time-limited " +
+        "(15-minute) read URL per service tarball. No entity is created and no registry state changes (unlike " +
+        "grid_pickup/grid_fork/grid_remix, which adopt or copy). Requires sign-in. Calls GET " +
+        "/api/v2/runtimes/:id/source directly.",
       inputSchema: {
         id: z.string().describe("The runtime to download: a canonical UUID or <grid-slug>/<entity-slug>."),
         version: z.string().optional().describe("Download an older version's bundle instead of HEAD, e.g. v_a1b2c3d."),
@@ -511,7 +555,7 @@ export function registerTools(server, ctx) {
         "(replug/fork), and replug_handle — read those to decide whether to edit in place (single-HTML + " +
         "capabilities.replug), fall back for a multi-file app/agent (use source_download_url + the local " +
         "edition/CLI), or offer a fork when it isn't yours. For multi-file or runtime (app/agent) source " +
-        "bundles, use grid_download_source (signed tarball URLs). Reads the HTML from the API server-side; " +
+        "bundles, use grid_download (signed tarball URLs). Reads the HTML from the API server-side; " +
         "read-only, creates nothing.",
       inputSchema: {
         entity_id: z.string().optional().describe("The drop's durable id. Defaults to this session's last drop."),
@@ -938,6 +982,15 @@ export function registerTools(server, ctx) {
   // the local cutoff: grid_visibility is a both-editions tool, so the alias has
   // to register on the web edition too (hosted callers keep back-compat).
   registerAlias("grid_set_sharing", "grid_visibility");
+  // Copy/adopt verbs renamed to match the CLI (fork / remix / pickup / download).
+  // Old names kept as redirect-only deprecated aliases; all both-editions tools,
+  // so they must register above the local cutoff for hosted back-compat.
+  // grid_claim_anonymous_deploy → grid_pickup drops the "claim" naming; claiming
+  // an anonymous drop is now grid_pickup with a claim_token (mirrors the CLI's
+  // `grid pickup --claim-token`).
+  registerAlias("grid_copy_app", "grid_fork");
+  registerAlias("grid_claim_anonymous_deploy", "grid_pickup");
+  registerAlias("grid_download_source", "grid_download");
 
   if (ctx.edition !== "local") return; // web edition stops here — no CLI tools
 

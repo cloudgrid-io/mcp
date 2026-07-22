@@ -14,9 +14,10 @@ const GRIDCTL = [
   "grid_start",
   "grid_get_template",
   "grid_report",
-  "grid_claim_anonymous_deploy",
-  "grid_copy_app",
-  "grid_download_source",
+  "grid_pickup",
+  "grid_fork",
+  "grid_remix",
+  "grid_download",
   "grid_get_app_source",
   "grid_login",
   "grid_login_status",
@@ -60,12 +61,17 @@ const ALIASES = [
   "grid_logs",
   "grid_set_sharing",
   "grid_deploy",
+  "grid_copy_app",
+  "grid_claim_anonymous_deploy",
+  "grid_download_source",
 ];
+// NOTE: grid_fork, grid_download, and grid_pickup were once dropped short
+// aliases, but are now CANONICAL primary tools (copy/adopt verb rename) — so
+// they are no longer in this list.
 const DROPPED_ALIASES = [
-  "grid_source", "grid_list", "grid_fork", "grid_download", "grid_claim",
+  "grid_source", "grid_list", "grid_claim",
   "grid_init", "grid_env", "grid_secrets", "grid_rollback",
   "grid_versions", "grid_open", "grid_doctor", "grid_unplug", "grid_use",
-  "grid_pickup",
 ];
 
 const transport = new StdioClientTransport({ command: "node", args: ["src/index.js"] });
