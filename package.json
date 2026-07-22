@@ -59,7 +59,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "express": "^4.22.2",
+    "express": "^5.2.1",
     "fflate": "^0.8.3",
     "undici": "^6.27.0",
     "zod": "^3.23.0"
