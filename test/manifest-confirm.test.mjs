@@ -1,5 +1,5 @@
 // Offline test for manifest-aware confirm: a CREATE whose source already carries
-// a cloudgrid.yaml is a pre-configured runtime app — grid_deploy returns a
+// a cloudgrid.yaml is a pre-configured runtime app — grid_plug returns a
 // structured needs_confirmation response instead of silently auto-creating, and
 // proceeds only once confirm_new_app:true is passed.
 // Run: node test/manifest-confirm.test.mjs
@@ -43,7 +43,7 @@ await test("detects a cloudgrid.yaml on disk for a path source", () => {
   assert.equal(m.name, "vaad-budget");
 });
 
-// ── B2: confirm gate in the grid_deploy create branch ─────────────────────────
+// ── B2: confirm gate in the grid_plug create branch ─────────────────────────
 // Fake MCP server: capture registered handlers by name (mirrors grid-picker test).
 function makeServer() {
   const handlers = {};
@@ -90,7 +90,7 @@ try {
     calls.length = 0;
     const server = makeServer();
     registerTools(server, makeCtx({ token: "jwt", activeOrg: "atomic", edition: "web" }));
-    const res = await server.handlers.grid_deploy({ artifact_files: [{ path: "cloudgrid.yaml", content: YAML }, { path: "app/page.js", content: "x" }] });
+    const res = await server.handlers.grid_plug({ artifact_files: [{ path: "cloudgrid.yaml", content: YAML }, { path: "app/page.js", content: "x" }] });
     assert.equal(res.structuredContent?.needs_confirmation, true);
     assert.equal(res.structuredContent?.manifest_detected, true);
     assert.match(res.content[0].text, /vaad-budget|new .*app|confirm_new_app/i);
@@ -98,13 +98,13 @@ try {
   });
 
   await test("grid+slug re-plug handle does NOT trigger the new-app confirm", async () => {
-    // grid_deploy also re-plugs via the grid+slug handle (replug_handle), resolved
+    // grid_plug also re-plugs via the grid+slug handle (replug_handle), resolved
     // inside runPlug. A create-shaped call carrying both must be treated like an
     // edit — the manifest gate must NOT short-circuit even with a cloudgrid.yaml.
     calls.length = 0;
     const server = makeServer();
     registerTools(server, makeCtx({ token: "jwt", activeOrg: "atomic", edition: "web" }));
-    const res = await server.handlers.grid_deploy({ grid: "atomic", slug: "vaad-budget", artifact_files: [{ path: "cloudgrid.yaml", content: YAML }] });
+    const res = await server.handlers.grid_plug({ grid: "atomic", slug: "vaad-budget", artifact_files: [{ path: "cloudgrid.yaml", content: YAML }] });
     assert.notEqual(res.structuredContent?.needs_confirmation, true);
     assert.ok(calls.some((c) => c.url.includes("/api/v2/plug")), "should publish (re-plug), not gate");
   });
@@ -115,7 +115,7 @@ try {
     calls.length = 0;
     const server = makeServer();
     registerTools(server, makeCtx({ token: "jwt", activeOrg: "atomic", edition: "web" }));
-    const res = await server.handlers.grid_deploy({ confirm_new_app: true, grid: "atomic", artifact_files: [{ path: "cloudgrid.yaml", content: YAML }] });
+    const res = await server.handlers.grid_plug({ confirm_new_app: true, grid: "atomic", artifact_files: [{ path: "cloudgrid.yaml", content: YAML }] });
     assert.notEqual(res.structuredContent?.needs_confirmation, true);
     assert.ok(calls.some((c) => c.url.includes("/api/v2/plug")), "should publish once confirmed");
   });

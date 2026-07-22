@@ -67,7 +67,7 @@ vault:
 ## Deploy (async, local edition)
 
 `grid_create_project` first (creates the entity + link.json), write the app under
-`services/web/`, set the vault secrets with `grid_set_secret`, `grid_deploy`
+`services/web/`, set the vault secrets with `grid_set_secret`, `grid_plug`
 (async — poll `grid_status` to a live URL), then register the `/api/webhook`
 URL in Stripe, configure the Billing Portal, and re-plug. Re-plug the same entity
 to update the same URL.

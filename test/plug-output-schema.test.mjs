@@ -62,15 +62,15 @@ try {
 
   // Discovery caches the per-tool output validator (as any real client does).
   const { tools } = await client.listTools();
-  const plug = tools.find((t) => t.name === "grid_deploy");
-  check("grid_deploy is registered with an outputSchema", Boolean(plug?.outputSchema));
+  const plug = tools.find((t) => t.name === "grid_plug");
+  check("grid_plug is registered with an outputSchema", Boolean(plug?.outputSchema));
 
   // ── Mode 2 (the reported bug): picker result must NOT throw -32602 ──────────
   let threwCode = null;
   let res = null;
   try {
     res = await client.callTool({
-      name: "grid_deploy",
+      name: "grid_plug",
       arguments: { html: "<h1>hi</h1>", hints: { kind: "inspiration" } },
     });
   } catch (err) {

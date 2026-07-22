@@ -190,13 +190,13 @@ export class SessionLogger {
         error_reason: errorReason,
         duration_ms: durationMs,
       });
-      // Only a deploy failure (grid_deploy) is the QA "failure" trigger. Other
+      // Only a deploy failure (grid_plug) is the QA "failure" trigger. Other
       // tools' fail() results are recorded but must not flush/freeze the session
       // (grid_fetch typo, login-status "none", etc. are routine, not terminal).
       const s = result?.structuredContent;
-      if (name === "grid_deploy" && outcome === "error") {
+      if (name === "grid_plug" && outcome === "error") {
         this.flush("error").catch(() => {});
-      } else if (name === "grid_deploy" && (s?.url || s?.poll_url)) {
+      } else if (name === "grid_plug" && (s?.url || s?.poll_url)) {
         this.flush("live").catch(() => {});
       } else {
         this._resetIdle();

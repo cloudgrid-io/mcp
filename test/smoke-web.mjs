@@ -46,7 +46,7 @@ try {
   const names = toolList.map((t) => t.name).sort();
   console.log("web tools:", names.join(", "));
   // New grid_* names (direct-API + Agent Core) on the authed web edition.
-  for (const t of ["grid_deploy", "grid_login", "grid_login_status", "grid_start", "grid_fetch", "grid_report"]) {
+  for (const t of ["grid_plug", "grid_login", "grid_login_status", "grid_start", "grid_fetch", "grid_report"]) {
     check(`exposes ${t}`, names.includes(t));
   }
   // Tool-name cleanup: the new clear primary names are present (both editions),
@@ -91,13 +91,14 @@ try {
   );
   check("does NOT expose CLI-only grid_init", !names.includes("grid_init"));
 
-  // grid_deploy is the one deploy/publish verb on the web edition (spec v2 — the
+  // grid_plug is the one deploy/publish verb on the web edition (spec v2 — the
   // unified direct-API create/re-plug verb): the inline `html` single-file path
-  // + `artifact_files`, no local `path`. grid_drop is gone (folded in); the old
-  // grid_plug name is removed (renamed to grid_deploy).
-  check("web does NOT expose grid_drop (folded into grid_deploy)", !names.includes("grid_drop"));
-  check("grid_plug alias removed (migrated to grid_deploy)", !names.includes("grid_plug"));
-  const plugTool = toolList.find((t) => t.name === "grid_deploy");
+  // + `artifact_files`, no local `path`. grid_drop is gone (folded in); the
+  // canonical verb is `plug`, with grid_deploy kept as a deprecated alias.
+  check("web does NOT expose grid_drop (folded into grid_plug)", !names.includes("grid_drop"));
+  check("web exposes grid_plug (canonical) + grid_deploy alias",
+    names.includes("grid_plug") && names.includes("grid_deploy"));
+  const plugTool = toolList.find((t) => t.name === "grid_plug");
   const plugProps = plugTool?.inputSchema?.properties ?? {};
   check("web deploy does NOT have `path` param", !("path" in plugProps));
   check("web deploy has `html` single-file param", "html" in plugProps);
@@ -107,7 +108,7 @@ try {
   check("web deploy has `owner_token` param", "owner_token" in plugProps);
 
   const drop = await client.callTool({
-    name: "grid_deploy",
+    name: "grid_plug",
     arguments: { html: "<h1>web edition smoke</h1>", anon: true },
   });
   const text = drop.content?.[0]?.text ?? "";

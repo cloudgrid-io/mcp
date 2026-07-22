@@ -81,7 +81,7 @@ const samplePayload = {
   user_request: "build me a scheduler",
   calls: [
     { at: "10:22:07", name: "grid_init", args: { template: "python" }, outcome: "ok", key: null, duration_ms: 1200 },
-    { at: "10:22:41", name: "grid_deploy", args: { dir: "." }, outcome: "ok", key: "url=https://x--cg.cloudgrid.io status=live", duration_ms: 28500 },
+    { at: "10:22:41", name: "grid_plug", args: { dir: "." }, outcome: "ok", key: "url=https://x--cg.cloudgrid.io status=live", duration_ms: 28500 },
   ],
   llm_report: null,
 };
@@ -96,7 +96,7 @@ test("renderLogText carries header, request, calls, reason", () => {
   assert.match(txt, /transport: stdio/);
   assert.match(txt, /user_request: build me a scheduler/);
   assert.match(txt, /grid_init/);
-  assert.match(txt, /grid_deploy/);
+  assert.match(txt, /grid_plug/);
   assert.match(txt, /url=https:\/\/x--cg\.cloudgrid\.io/);
 });
 test("renderLogText prints not-provided when user_request absent", () => {
@@ -193,9 +193,9 @@ test("scrubArgs drops grid_claim claim_url and claim_token", async () => {
   assert.equal(logger.calls[0].args.claim_token, "[omitted]");
 });
 
-test("scrubArgs drops grid_deploy html/cloudgrid_yaml but keeps grid/filename/target_entity_id", async () => {
+test("scrubArgs drops grid_plug html/cloudgrid_yaml but keeps grid/filename/target_entity_id", async () => {
   const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink: stubSink(), ctx: makeCtx(), now: () => 0 });
-  await logger.recordCall("grid_deploy", {
+  await logger.recordCall("grid_plug", {
     grid: "cg", filename: "index.html", target_entity_id: "e_1",
     html: "<html>secret markup with sk-ABCDdef0123456789ABCD</html>",
     cloudgrid_yaml: "env:\n  KEY: sk-ABCDdef0123456789ABCD",
@@ -242,29 +242,29 @@ test("setNarrative scrubs before capping so a token straddling the 4000 boundary
 
 test("recordCall marks error outcome on isError result", async () => {
   const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink: stubSink(), ctx: makeCtx(), now: () => 0 });
-  await logger.recordCall("grid_deploy", {}, { content: [{ type: "text", text: "boom" }], isError: true }, 50);
+  await logger.recordCall("grid_plug", {}, { content: [{ type: "text", text: "boom" }], isError: true }, 50);
   assert.equal(logger.calls[0].outcome, "error");
 });
 
 test("recordCall captures the error reason (fail-result text AND thrown errorMessage)", async () => {
   const l1 = new SessionLogger({ transport: "stdio", sessionId: "e1", sink: stubSink(), ctx: makeCtx(), now: () => 0 });
-  await l1.recordCall("grid_deploy", {}, { content: [{ type: "text", text: "SCOPE_INVALID: scope=personal" }], isError: true }, 20);
+  await l1.recordCall("grid_plug", {}, { content: [{ type: "text", text: "SCOPE_INVALID: scope=personal" }], isError: true }, 20);
   assert.equal(l1.calls[0].error_reason, "SCOPE_INVALID: scope=personal");
   const l2 = new SessionLogger({ transport: "stdio", sessionId: "e2", sink: stubSink(), ctx: makeCtx(), now: () => 0 });
-  await l2.recordCall("grid_deploy", {}, { isError: true, errorMessage: "Could not reach CloudGrid at https://api.cloudgrid.io" }, 20);
+  await l2.recordCall("grid_plug", {}, { isError: true, errorMessage: "Could not reach CloudGrid at https://api.cloudgrid.io" }, 20);
   assert.match(l2.calls[0].error_reason, /Could not reach CloudGrid/);
 });
 
 test("error reason is secret-scrubbed", async () => {
   const l = new SessionLogger({ transport: "stdio", sessionId: "e3", sink: stubSink(), ctx: makeCtx(), now: () => 0 });
-  await l.recordCall("grid_deploy", {}, { isError: true, errorMessage: "bad token sk-ant-api03-SECRETSECRETSECRETSECRETSECRETSECRET-abcdAA rejected" }, 20);
+  await l.recordCall("grid_plug", {}, { isError: true, errorMessage: "bad token sk-ant-api03-SECRETSECRETSECRETSECRETSECRETSECRET-abcdAA rejected" }, 20);
   assert.doesNotMatch(l.calls[0].error_reason, /SECRETSECRET/);
   assert.match(l.calls[0].error_reason, /REDACTED/);
 });
 
-test("recordCall extracts grid_deploy url/status into key", async () => {
+test("recordCall extracts grid_plug url/status into key", async () => {
   const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink: stubSink(), ctx: makeCtx(), now: () => 0 });
-  await logger.recordCall("grid_deploy", {}, { content: [], structuredContent: { url: "https://x--cg.cloudgrid.io", status: "live", entity_id: "e_1" } }, 100);
+  await logger.recordCall("grid_plug", {}, { content: [], structuredContent: { url: "https://x--cg.cloudgrid.io", status: "live", entity_id: "e_1" } }, 100);
   assert.match(logger.calls[0].key, /url=https:\/\/x--cg\.cloudgrid\.io/);
   assert.match(logger.calls[0].key, /status=live/);
 });
@@ -282,10 +282,10 @@ test("flush sends once with rendered text + filename", async () => {
   assert.match(sink.sent[0].summary, /claude-code/);
 });
 
-test("recordCall auto-flushes with reason live on a grid_deploy url", async () => {
+test("recordCall auto-flushes with reason live on a grid_plug url", async () => {
   const sink = stubSink();
   const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink, ctx: makeCtx(), now: () => 0 });
-  await logger.recordCall("grid_deploy", {}, { content: [], structuredContent: { url: "https://x--cg.cloudgrid.io", status: "live" } }, 100);
+  await logger.recordCall("grid_plug", {}, { content: [], structuredContent: { url: "https://x--cg.cloudgrid.io", status: "live" } }, 100);
   await new Promise((r) => setImmediate(r)); // let the fire-and-forget flush settle
   assert.equal(sink.sent.length, 1);
   assert.match(sink.sent[0].text, /reason: live/);
@@ -294,13 +294,13 @@ test("recordCall auto-flushes with reason live on a grid_deploy url", async () =
 test("recordCall auto-flushes with reason error on isError", async () => {
   const sink = stubSink();
   const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink, ctx: makeCtx(), now: () => 0 });
-  await logger.recordCall("grid_deploy", {}, { content: [{ type: "text", text: "boom" }], isError: true }, 100);
+  await logger.recordCall("grid_plug", {}, { content: [{ type: "text", text: "boom" }], isError: true }, 100);
   await new Promise((r) => setImmediate(r));
   assert.equal(sink.sent.length, 1);
   assert.match(sink.sent[0].text, /reason: error/);
 });
 
-test("benign non-grid_deploy error is recorded but does NOT flush; later grid_deploy live flushes and carries the trail", async () => {
+test("benign non-grid_plug error is recorded but does NOT flush; later grid_plug live flushes and carries the trail", async () => {
   const sink = stubSink();
   const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink, ctx: makeCtx(), now: () => 0 });
   // routine failure during exploration — must not freeze capture
@@ -309,7 +309,7 @@ test("benign non-grid_deploy error is recorded but does NOT flush; later grid_de
   assert.equal(logger.calls[0].outcome, "error");
   assert.equal(sink.sent.length, 0); // benign error did NOT flush/freeze
   // the real deploy still triggers the live flush later
-  await logger.recordCall("grid_deploy", {}, { content: [], structuredContent: { url: "https://x--cg.cloudgrid.io", status: "live" } }, 100);
+  await logger.recordCall("grid_plug", {}, { content: [], structuredContent: { url: "https://x--cg.cloudgrid.io", status: "live" } }, 100);
   await new Promise((r) => setImmediate(r));
   assert.equal(sink.sent.length, 1);
   assert.match(sink.sent[0].text, /reason: live/);

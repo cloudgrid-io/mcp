@@ -83,7 +83,7 @@ export const CLI_TOOL_VERBS = {
   // alias, which the tool argv still uses for old-CLI compat). The guard
   // checks the HELP listing, so it tracks the advertised name.
   grid_create_project:     ["new"],
-  // grid_deploy is NOT here: grid_deploy is now a direct-API tool
+  // grid_plug is NOT here: grid_plug is now a direct-API tool
   // (POST /api/v2/plug, spec v2 §3), not a CLI wrapper.
   grid_view_logs:     ["logs"],
   grid_share:    ["visibility"],

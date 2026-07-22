@@ -125,7 +125,7 @@ are wired in dev too — and send a test message before deploying. Don't require
 
 ## 7. Deploy (async)
 
-Deploy the folder with `grid_deploy`. A **runtime deploy is ASYNC**: the first
+Deploy the folder with `grid_plug`. A **runtime deploy is ASYNC**: the first
 response is `status: "building"` with a `poll_url` / entity, NOT a live URL yet.
 - Poll `grid_status` (or the returned poll_url) until the entity is live.
 - Surface a liveness signal while it builds — never a bare silent wait.

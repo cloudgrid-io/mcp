@@ -1,4 +1,4 @@
-// Zip deploys (local edition): grid_deploy's `path` accepts a .zip archive.
+// Zip deploys (local edition): grid_plug's `path` accepts a .zip archive.
 //
 // Because the platform's multi-file INSPIRATION create persists only the
 // primary HTML (inline-create issue, 2026-07-17), a manifest-less multi-file

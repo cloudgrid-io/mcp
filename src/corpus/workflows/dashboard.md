@@ -4,7 +4,7 @@ when: dashboard, metrics, KPIs, stats page, status board, charts, analytics view
 needs: none
 deploy: inspiration
 editions: all
-capabilities_note: static — no infrastructure, data is baked into the page. Publishes as an inspiration (instant, works on hosted) via grid_deploy.
+capabilities_note: static — no infrastructure, data is baked into the page. Publishes as an inspiration (instant, works on hosted) via grid_plug.
 summary: Fetch the dashboard template, fill it with the user's metrics and inline charts, deploy it, and return the live share URL.
 ---
 

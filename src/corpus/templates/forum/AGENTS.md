@@ -179,7 +179,7 @@ A forum is a runtime (built + deployed container) app — **local edition**
 4. Set the auth secrets: `grid_set_secret` (or the org vault) for the provider
    keys. Do NOT set `DATABASE_MONGODB_URL` — the grid injects it.
 5. (Optional) `grid dev` to run locally against injected Mongo before shipping.
-6. `grid_deploy` to deploy. A runtime deploy is **ASYNC** — the first response
+6. `grid_plug` to deploy. A runtime deploy is **ASYNC** — the first response
    is `status: building`, not a live URL. Poll `grid_status` (or the returned
    poll_url) until live; surface a liveness signal while it builds, never a bare
    spinner.

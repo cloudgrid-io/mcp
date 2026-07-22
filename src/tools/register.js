@@ -167,7 +167,7 @@ export function registerTools(server, ctx) {
   // acknowledgement.
   regTool(
     "grid_note",
-    "Optionally leave a one-paragraph summary of what you built this session and why. Call it BEFORE a deploy, or in a session that ends without one — a successful deploy has already posted the QA log, so pass grid_deploy's session_note instead. Recorded for CloudGrid QA. No side effects.",
+    "Optionally leave a one-paragraph summary of what you built this session and why. Call it BEFORE a deploy, or in a session that ends without one — a successful deploy has already posted the QA log, so pass grid_plug's session_note instead. Recorded for CloudGrid QA. No side effects.",
     { summary: z.string().describe("A short plain-language summary of what was built and why.") },
     { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     async (input) => {
@@ -176,16 +176,16 @@ export function registerTools(server, ctx) {
       // call, so a note arriving now records nothing. Say so rather than lie.
       if (ctx.logger?.flushed === true) {
         return okResult({
-          text: "This session's QA log has already posted. Pass session_note on your next grid_deploy instead.",
+          text: "This session's QA log has already posted. Pass session_note on your next grid_plug instead.",
         });
       }
       return okResult({ text: "Noted." });
     },
   );
 
-  // ── grid_deploy — the unified create/re-plug verb (spec v2 §3) ────────────
-  // Direct-API on BOTH editions (POST /api/v2/plug). Replaces the former
-  // CLI-wrapping grid_deploy: create and re-plug are one verb, keyed by
+  // ── grid_plug — the unified create/re-plug verb (spec v2 §3) ────────────
+  // Direct-API on BOTH editions (POST /api/v2/plug). The former CLI-wrapping
+  // deploy tool is gone: create and re-plug are one verb, keyed by
   // target_entity_id, and work identically on the hosted transport.
   const plugInputSchema = {
     html: z.string().optional().describe(
@@ -253,7 +253,7 @@ export function registerTools(server, ctx) {
     ),
     confirm_new_app: z.boolean().optional().describe(
       "Set true to confirm deploying a source that already contains a cloudgrid.yaml as a NEW runtime app. " +
-      "On a create, if the source has a cloudgrid.yaml and this is not set, grid_deploy returns needs_confirmation " +
+      "On a create, if the source has a cloudgrid.yaml and this is not set, grid_plug returns needs_confirmation " +
       "so you can ask the user first (or use target_entity_id to re-plug an existing entity).",
     ),
     user_request: z.string().optional().describe(
@@ -265,9 +265,10 @@ export function registerTools(server, ctx) {
     ),
   };
 
-  // grid_deploy is the create/re-plug verb (renamed from the former `plug` tool;
-  // the deprecated alias was removed once the corpus migrated to grid_deploy).
-  // MCP-tool name only — the CLI verb `grid plug` is unchanged.
+  // grid_plug is the create/re-plug verb. `grid_deploy` is kept as a deprecated
+  // back-compat alias (registered right after the primary below); the canonical
+  // name is grid_plug, and "deploy" survives only as an intent keyword in this
+  // tool's description. MCP-tool name only — the CLI verb `grid plug` is unchanged.
   const plugConfig = {
       description:
         "Plug an app, website, game, or single HTML page into CloudGrid — the live runtime that runs it and provides its infrastructure — and get a live public URL. " +
@@ -302,13 +303,13 @@ export function registerTools(server, ctx) {
           value: z.string().describe("Visibility value to pass to grid_visibility."),
           label: z.string().describe("Human-readable label."),
         })).optional().describe("Web authed inspiration create: available visibility levels."),
-        // grid_deploy has ONE outputSchema but THREE response modes; the SDK renders
+        // grid_plug has ONE outputSchema but THREE response modes; the SDK renders
         // this schema with additionalProperties:false and the client rejects any
         // undeclared key (MCP -32602). Declare the two non-deploy-result modes so
         // they validate: (1) the grid-picker "which grid?" ask (resolveGridOrAsk),
         // and (2) the signed-in CLI-fallback recovery.
         needs_grid: z.boolean().optional().describe("Grid-picker ask: a signed-in user with >1 grid must choose one before this create proceeds. Pass the chosen slug back in `grid`."),
-        needs_auth: z.boolean().optional().describe("Auth gate: a NEW deploy was attempted while not signed in. Ask the user to sign in (grid_login) to publish to their grid, OR re-call grid_deploy with anon: true to publish anonymously (claimable later). Do not proceed silently."),
+        needs_auth: z.boolean().optional().describe("Auth gate: a NEW deploy was attempted while not signed in. Ask the user to sign in (grid_login) to publish to their grid, OR re-call grid_plug with anon: true to publish anonymously (claimable later). Do not proceed silently."),
         needs_org: z.boolean().optional().describe("Alias of needs_grid (legacy picker alias)."),
         grids: z.array(z.object({
           slug: z.string(),
@@ -366,7 +367,7 @@ export function registerTools(server, ctx) {
               text:
                 `This folder is a CloudGrid runtime app — it already has a cloudgrid.yaml` +
                 (manifest.name ? ` for "${manifest.name}"` : "") + `${svc}. ` +
-                `Deploy it as a NEW app on the grid? If yes, re-call grid_deploy with confirm_new_app: true. ` +
+                `Deploy it as a NEW app on the grid? If yes, re-call grid_plug with confirm_new_app: true. ` +
                 `To update an existing app instead, pass its target_entity_id.`,
               structured: {
                 needs_confirmation: true,
@@ -387,7 +388,7 @@ export function registerTools(server, ctx) {
                 "You're not signed in. To publish this I can either:\n" +
                 "  1. Sign you in to publish to your grid — run grid_login (opens your browser), then I'll deploy.\n" +
                 "  2. Publish it anonymously right now — it goes live immediately with a claim link so you can save it to your account later.\n" +
-                "Which would you like? (For anonymous, re-call grid_deploy with anon: true.)",
+                "Which would you like? (For anonymous, re-call grid_plug with anon: true.)",
               structured: { needs_auth: true },
             });
           }
@@ -424,7 +425,12 @@ export function registerTools(server, ctx) {
         return fail(err.message);
       }
   };
-  reg("grid_deploy", plugConfig, plugHandler);
+  reg("grid_plug", plugConfig, plugHandler);
+  // `grid_deploy` is kept as a deprecated back-compat alias that redirects to
+  // grid_plug (for any client still calling the old name). It is keyword-free so
+  // the model never selects it — "deploy"/"publish"/"ship"/"make live" live in
+  // grid_plug's own description, so deploy-intent routing lands on grid_plug.
+  registerAlias("grid_deploy", "grid_plug");
 
   // ── grid_copy_app / grid_download_source — direct-API verbs (spec v2 §5–6) ──────
   reg(
@@ -527,7 +533,7 @@ export function registerTools(server, ctx) {
           reason: z.string().optional().describe("Why an action is unavailable, e.g. not_owner."),
         }).optional().describe("Resolved via the pickup contract: what the caller may do with this entity."),
         replug_handle: z.object({
-          target_entity_id: z.string().optional().describe("Pass as grid_deploy's target_entity_id to re-plug in place."),
+          target_entity_id: z.string().optional().describe("Pass as grid_plug's target_entity_id to re-plug in place."),
           grid: z.string().optional().describe("The entity's home grid slug."),
           slug: z.string().optional().describe("The entity's grid-scoped slug."),
         }).optional().describe("Resolved via the pickup contract: the durable re-plug handle."),
@@ -658,9 +664,9 @@ export function registerTools(server, ctx) {
     "grid_check_deploy",
     {
       description:
-        "Check whether an async runtime-app build has finished and the app is live. Call this after grid_deploy returns status \"building\" — repeat every ~15s until it reports success or failed, and do NOT tell the user the app is live until it does. Defaults to this session's last deploy; pass poll_url from a grid_deploy result to check another. Requires sign-in (builds are owned). Calls the API directly — works on every edition, including hosted.",
+        "Check whether an async runtime-app build has finished and the app is live. Call this after grid_plug returns status \"building\" — repeat every ~15s until it reports success or failed, and do NOT tell the user the app is live until it does. Defaults to this session's last deploy; pass poll_url from a grid_plug result to check another. Requires sign-in (builds are owned). Calls the API directly — works on every edition, including hosted.",
       inputSchema: {
-        poll_url: z.string().optional().describe("The poll_url from a grid_deploy result. Defaults to this session's last deploy."),
+        poll_url: z.string().optional().describe("The poll_url from a grid_plug result. Defaults to this session's last deploy."),
         grid: z.string().optional().describe("Grid of the entity. Defaults to the deploy's grid, then the active grid."),
       },
       outputSchema: {
@@ -863,7 +869,7 @@ export function registerTools(server, ctx) {
           .describe("Short summary of what failed (required). Do not paste the whole conversation here."),
         context: z
           .object({
-            tool: z.string().optional().describe("The CloudGrid tool that failed, e.g. grid_deploy."),
+            tool: z.string().optional().describe("The CloudGrid tool that failed, e.g. grid_plug."),
             inputs: z.any().optional().describe("The failing inputs (e.g. the HTML/args). Keep it minimal; secrets are scrubbed."),
             grid: z.string().optional().describe("The grid/org slug involved, if any."),
             original_request: z.string().optional().describe("What the user asked for, in one line."),
@@ -939,7 +945,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_create_project",
-    "Scaffold a new CloudGrid app or agent folder (cloudgrid.yaml + a web service), optionally pre-declaring resources. Wraps `grid new` (scaffolds locally; no server entity until you grid_deploy). Language note: the nextjs starter is TypeScript (writes tsconfig.json + app/*.tsx), but CloudGrid templates are plain JavaScript. When you fill a template, treat the template's files as the source of truth — delete the scaffolded tsconfig.json and app/*.tsx, then write the template's .js files. Never leave both .tsx and .js for the same route.",
+    "Scaffold a new CloudGrid app or agent folder (cloudgrid.yaml + a web service), optionally pre-declaring resources. Wraps `grid new` (scaffolds locally; no server entity until you grid_plug). Language note: the nextjs starter is TypeScript (writes tsconfig.json + app/*.tsx), but CloudGrid templates are plain JavaScript. When you fill a template, treat the template's files as the source of truth — delete the scaffolded tsconfig.json and app/*.tsx, then write the template's .js files. Never leave both .tsx and .js for the same route.",
     {
       kind: z.enum(["app", "agent"]).describe("Entity kind. 'agent' scaffolds an agent: block."),
       name: z.string().describe("Slug: 3-40 lowercase alphanumerics and hyphens."),
@@ -954,7 +960,7 @@ export function registerTools(server, ctx) {
     cliTool((input) => buildCreateProjectArgs(input), { cwdParam: true }),
   );
 
-  // NOTE: grid_deploy is no longer CLI-wrapping — the unified direct-API verb
+  // NOTE: grid_plug is no longer CLI-wrapping — the unified direct-API verb
   // (create + re-plug via POST /api/v2/plug) is registered above for BOTH
   // editions, per spec v2 §3.
 

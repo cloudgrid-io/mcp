@@ -77,7 +77,7 @@ curl -sS -X POST https://api.cloudgrid.io/api/v2/plug \
 The response includes `url` (the live link — use it verbatim), `entity_id`,
 `owner_token` (keep both to update the page later), and `claim_url` (sign in
 before it expires to keep it). This is what the `cloudgrid:plug` skill and the
-`grid_deploy` MCP tool (inline `html` param) do for you. It is anonymous and serves
+`grid_plug` MCP tool (inline `html` param) do for you. It is anonymous and serves
 inspirations only; a full app needs the signed-in `plug` flow above.
 
 ## Update your drop in place

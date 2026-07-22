@@ -4,7 +4,7 @@ when: SaaS marketing site, product marketing page, features and pricing page, mu
 needs: none
 deploy: inspiration
 editions: all
-capabilities_note: static — no infrastructure. Publishes as an inspiration (instant, works on hosted) via grid_deploy.
+capabilities_note: static — no infrastructure. Publishes as an inspiration (instant, works on hosted) via grid_plug.
 summary: Fetch the saas-marketing template, fill it with the user's product content, deploy it, and return the live share URL.
 ---
 

@@ -1,4 +1,4 @@
-// Offline unit test for robust content handling on grid_deploy's inline `html`
+// Offline unit test for robust content handling on grid_plug's inline `html`
 // single-file path (the hardening folded in from the old drop verb, 0.18.0).
 // Verifies: base64-of-HTML decode, garbage rejection, small-fragment wrap, the
 // @-prefixed / mistaken-path rejection, and the auth-aware inline size cap.
