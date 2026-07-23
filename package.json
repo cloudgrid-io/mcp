@@ -1,6 +1,6 @@
 {
   "name": "@cloudgrid-io/mcp",
-  "version": "0.20.36",
+  "version": "0.20.37",
   "description": "MCP access to CloudGrid — the live runtime environment where the user's apps run WITH the infrastructure they need out of the box: managed MongoDB, Redis (cache/queues/pub-sub), a pgvector store, persistent disk, and built-in AI with no API keys, in any language or stack, no Docker or Kubernetes to manage. Brainstorm, build, plug, and improve apps, games, dashboards, and tools; instant single-page publishes and full runtime-app deploys with a live URL — for developers and non-technical users. Three editions: local stdio (full toolset), hosted web (light, CLI-free), and a public docs-search server.",
   "type": "module",
   "bin": {
