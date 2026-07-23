@@ -276,13 +276,17 @@ export function registerTools(server, ctx) {
         "If you need to edit a page but don't have its HTML, call grid_get_app_source first, then deploy with " +
         "target_entity_id. " +
         // Suggestion 1: steer multi-file runtime apps to the CLI up front — inline
-        // copying truncates large lockfiles/binaries and silently fails the build.
+        // copying truncates large lockfiles/binaries and silently fails the build —
+        // but only where the CLI is actually signed in (see the login caveat).
         "RELIABILITY: `html` and `artifact_files` are sent INLINE (copied through this call), which can " +
         "truncate large files (lockfiles, binaries) on a multi-file app. For a real framework (Next.js, etc.), " +
-        "a lockfile, or binary assets — and for re-plugging an existing runtime app — prefer the local CLI, " +
-        "which reads from disk: `npx -y @cloudgrid-io/cli plug` in the app folder (pick it up first with " +
-        "`npx -y @cloudgrid-io/cli pickup <grid>/<slug> --force` if you don't have it locally). Reserve inline " +
-        "for a single page or a few small text files. (CloudGrid calls this operation 'plug'.)",
+        "a lockfile, or binary assets — and for re-plugging an existing runtime app — the disk-based CLI is more " +
+        "reliable: `npx -y @cloudgrid-io/cli plug` in the app folder. BUT it only works where the CLI is already " +
+        "signed in — a terminal or Claude Code that ran `grid login` once. Do NOT attempt `grid login` inside a " +
+        "chat sandbox: its login is a long poll and the sandbox is ephemeral, so it will not complete. If you can " +
+        "only deploy inline here and would have to omit large files, do NOT drop them silently — tell the user " +
+        "and offer to run the full deploy from Claude Code or a terminal (same entity_id). Reserve inline for a " +
+        "single page or a few small text files. (CloudGrid calls this operation 'plug'.)",
       inputSchema: plugInputSchema,
       outputSchema: {
         entity_id: z.string().optional().describe("Globally unique — pass back as target_entity_id to re-plug."),

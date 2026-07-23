@@ -1507,11 +1507,20 @@ export async function runPlug(ctx, input, deps = {}) {
     if (looksRuntime) {
       const gridSlug = data.grid ?? grid ?? null;
       const eid = data.entity_id ?? targetEntityId ?? null;
+      // The disk CLI is the reliable route for a multi-file app — BUT it only
+      // works where the CLI is already SIGNED IN: a terminal or Claude Code
+      // where `grid login` was run once. Do NOT tell the agent to `grid login`
+      // inside an ephemeral chat sandbox — that login is a long-lived poll (up
+      // to 5 min) and the sandbox is time-bounded + non-persistent, so it won't
+      // complete or won't survive to the next command (observed live). If this
+      // was inline-only, the fix is to move to a signed-in shell OR ask the
+      // user — never silently drop large files.
+      const replug = eid
+        ? `npx -y @cloudgrid-io/cli plug --existing ${eid}${gridSlug ? ` --grid ${gridSlug}` : ""} --verbose`
+        : "npx -y @cloudgrid-io/cli plug";
       cliSteer =
-        "For a multi-file app the local CLI is more reliable — it reads from disk, so lockfiles and binaries can't truncate the way inline copying can. " +
-        (eid
-          ? `If you have the folder: \`cd <app> && npx -y @cloudgrid-io/cli plug\`. If not, pick it up first: \`npx -y @cloudgrid-io/cli pickup ${gridSlug ? `${gridSlug}/` : ""}<slug> --force\` then \`cd <slug> && npx -y @cloudgrid-io/cli plug\`. Or re-plug directly: \`npx -y @cloudgrid-io/cli plug --existing ${eid}${gridSlug ? ` --grid ${gridSlug}` : ""} --verbose\`.`
-          : "Prefer `npx -y @cloudgrid-io/cli plug` from the app folder over inlining files.");
+        "Heads-up: this went in INLINE. For a multi-file app the disk-based CLI is more reliable (lockfiles/binaries can't truncate), but it must run where the CLI is already signed in — a terminal or Claude Code that has done `grid login` once. Do NOT try `grid login` inside a chat sandbox: its login poll is long-lived and the sandbox is ephemeral, so it won't stick. " +
+        `If you had to leave any files out to make this inline deploy safe, tell the user — offer the complete deploy from Claude Code or a terminal (\`${replug}\`), or confirm they accept the reduced version. Do not drop files silently.`;
     }
   }
 
