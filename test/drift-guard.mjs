@@ -47,25 +47,29 @@ const REQUIRED_SUBCOMMANDS = {
 // ── Parse the Commands section from --help ──────────────────────────────────
 
 function parseVerbs(helpText) {
-  // Two Commands layouts appear:
-  //  - top-level `grid --help`: 2-space group headers ("  Basic", "  Advanced")
-  //    with verbs nested at 4 spaces ("    init  ...").
-  //  - subcommand help (`grid get --help`): plain commander, subcommands at 2
-  //    spaces ("  grids  ...").
-  // Verbs/subcommands are lowercase; group headers are Capitalized. Match a
-  // lowercase word at 2–4 leading spaces — this catches both verb layouts while
-  // skipping the Capitalized group headers and the deeper (~37-space)
-  // continuation/description lines.
+  // Two help layouts appear:
+  //  - top-level `grid --help`: verbs sit under Capitalized section headers
+  //    ("Golden path:", "Core:", "More:") indented EXACTLY 4 spaces
+  //    ("    new  ...", "    pickup  ..."). There is no "Commands:" header, and
+  //    the yaml-cheatsheet prose ("  services:", "  needs:") is at 2 spaces while
+  //    description continuations are deeply indented — so a 4-space anchor
+  //    captures verbs and skips both.
+  //  - subcommand help (`grid get --help`): plain commander with a "Commands:"
+  //    section and subcommands at 2 spaces ("  grids  ...").
+  // Union both rules; verbs/subcommands are lowercase, headers are Capitalized.
   const verbs = new Set();
   let inCommands = false;
   for (const line of helpText.split("\n")) {
-    if (/^\s*Commands:/.test(line)) {
-      inCommands = true;
-      continue;
+    // Rule A — top-level: exactly 4 leading spaces then a lowercase verb.
+    const top = line.match(/^ {4}([a-z][\w-]*)\b/);
+    if (top) verbs.add(top[1]);
+    // Rule B — commander subcommand help: a "Commands:" section, subcommands at
+    // 2–4 spaces.
+    if (/^\s*Commands:/.test(line)) { inCommands = true; continue; }
+    if (inCommands) {
+      const sub = line.match(/^ {2,4}([a-z][\w-]*)/);
+      if (sub) verbs.add(sub[1]);
     }
-    if (!inCommands) continue;
-    const m = line.match(/^ {2,4}([a-z][\w-]*)/);
-    if (m) verbs.add(m[1]);
   }
   return verbs;
 }

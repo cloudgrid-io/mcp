@@ -1438,7 +1438,8 @@ export async function runPlug(ctx, input, deps = {}) {
     } else if (verdict.status === "failed") {
       const msg = verdict.error || "The build failed.";
       throw new Error(
-        `Deploy failed (trace ${data.trace_id ?? "n/a"}): ${msg} The URL is NOT live — do not give it to the user as working.`,
+        `Deploy failed (trace ${data.trace_id ?? "n/a"}): ${msg} The URL is NOT live — do not give it to the user as working.` +
+          formatFailureDetail(verdict),
       );
     }
     // Anything else (still building / poll unreachable): fall through to the
@@ -1452,6 +1453,7 @@ export async function runPlug(ctx, input, deps = {}) {
     ...(url ? { url } : {}),
     ...(data.poll_url ? { poll_url: data.poll_url } : {}),
     status: data.status ?? (isEdit ? "updated" : "created"),
+    source: hasPath ? "path" : hasHtml && !hasArtifacts ? "html" : "artifact_files",
     ...(data.claim_url ? { claim_url: data.claim_url } : {}),
     ...(data.claim_message ? { claim_message: data.claim_message } : {}),
     // Spec v2 omits owner_token from the output block — a spec bug (the anon
@@ -1480,6 +1482,39 @@ export async function runPlug(ctx, input, deps = {}) {
     detectedKind !== "agent" &&
     (inlineHtmlBytes != null || detectedKind === "inspiration");
 
+  // ── Source-transport disclosure (always) + CLI steer for multi-file apps ─────
+  // Two transports with very different reliability: INLINE (`html`/`artifact_files`
+  // — the source is copied THROUGH the tool call, so a large file like a lockfile
+  // or a binary can silently truncate and fail the build) vs DISK (`path`, or the
+  // CLI's folder plug — read straight from disk, no transcription risk). State
+  // which one ran so a watching user can see it, and for a multi-file inline
+  // deploy steer to the CLI, which reads from disk and cannot truncate.
+  const artifactCount = Array.isArray(artifacts) ? artifacts.length : 0;
+  let sourceLine;
+  let cliSteer = null;
+  if (hasPath) {
+    sourceLine = `Source: local folder \`${effectivePath}\`, read from disk (no truncation risk).`;
+  } else if (hasHtml && !hasArtifacts) {
+    sourceLine = "Source: inline `html` — a single self-contained document sent through the tool call.";
+  } else {
+    const kb = Math.round(artifacts.reduce((n, a) => n + (a.buffer?.byteLength ?? 0), 0) / 1024);
+    sourceLine = `Source: inline \`artifact_files\` — ${artifactCount} file${artifactCount === 1 ? "" : "s"}, ~${kb} KB copied through the tool call.`;
+    // A multi-file app (a real framework, a lockfile, or binary assets) is exactly
+    // where inline copying truncates. Steer to the CLI's disk-based plug.
+    const looksRuntime =
+      artifactCount > 1 ||
+      artifacts.some((a) => /(^|\/)(cloudgrid\.ya?ml|package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$/i.test(a.path || ""));
+    if (looksRuntime) {
+      const gridSlug = data.grid ?? grid ?? null;
+      const eid = data.entity_id ?? targetEntityId ?? null;
+      cliSteer =
+        "For a multi-file app the local CLI is more reliable — it reads from disk, so lockfiles and binaries can't truncate the way inline copying can. " +
+        (eid
+          ? `If you have the folder: \`cd <app> && npx -y @cloudgrid-io/cli plug\`. If not, pick it up first: \`npx -y @cloudgrid-io/cli pickup ${gridSlug ? `${gridSlug}/` : ""}<slug> --force\` then \`cd <slug> && npx -y @cloudgrid-io/cli plug\`. Or re-plug directly: \`npx -y @cloudgrid-io/cli plug --existing ${eid}${gridSlug ? ` --grid ${gridSlug}` : ""} --verbose\`.`
+          : "Prefer `npx -y @cloudgrid-io/cli plug` from the app folder over inlining files.");
+    }
+  }
+
   const lines = [];
   if (isBuilding) {
     lines.push(
@@ -1507,6 +1542,10 @@ export async function runPlug(ctx, input, deps = {}) {
   } else {
     lines.push(`Live: ${url}`);
   }
+  // Suggestion 3: always disclose the transport; Suggestion 1: steer multi-file
+  // inline deploys to the CLI's disk-based plug.
+  lines.push(sourceLine);
+  if (cliSteer) lines.push(cliSteer);
   if (data.entity_id) {
     lines.push(
       `Re-plug handle: entity_id=${data.entity_id} — persist it (with the url) and pass it back as target_entity_id to update this entity later.`,
@@ -1854,10 +1893,39 @@ async function fetchDeployTrace(ctx, { pollUrl, grid }) {
   if (!res.ok) {
     throw new Error(`Deploy status check failed (HTTP ${res.status}): ${data?.error?.message || data?.error || raw || res.status}`);
   }
+  // Surface the real build failure, not just the generic floor message. A failed
+  // deploy trace carries a structured DeployEventError: message_user (the floor),
+  // build_log_excerpt.text (a sanitized ~50-line Cloud Build log tail — what the
+  // CLI's --verbose prints), a Cloud Build console_url, and suggested_fixes. Pull
+  // the log tail + first fix so grid_check_deploy stops dead-ending on "check the
+  // build logs" with no logs.
+  const e = data?.error && typeof data.error === "object" ? data.error : null;
+  const excerpt = e?.build_log_excerpt && typeof e.build_log_excerpt === "object" ? e.build_log_excerpt : null;
+  const logTail = (typeof excerpt?.text === "string" && excerpt.text.trim()) || (typeof excerpt?.summary === "string" && excerpt.summary.trim()) || null;
+  const fix = Array.isArray(e?.suggested_fixes) && typeof e.suggested_fixes[0]?.summary === "string"
+    ? e.suggested_fixes[0].summary
+    : (typeof e?.ai_explanation?.message_user === "string" ? e.ai_explanation.message_user : null);
   return {
     status: data?.status ?? "unknown",
-    error: data?.error?.message_user || data?.error?.message || null,
+    error: e?.message_user || e?.message || null,
+    logTail: logTail || null,
+    consoleUrl: (typeof excerpt?.console_url === "string" && excerpt.console_url) || null,
+    fix: fix || null,
   };
+}
+
+// Cap the log tail we echo into a tool result — enough to see the real error
+// (a few dozen lines) without flooding the model's context.
+const BUILD_LOG_TAIL_MAX = 1600;
+function formatFailureDetail({ logTail, consoleUrl, fix } = {}) {
+  const parts = [];
+  if (logTail) {
+    const t = logTail.length > BUILD_LOG_TAIL_MAX ? "…\n" + logTail.slice(-BUILD_LOG_TAIL_MAX) : logTail;
+    parts.push(`Build log (tail):\n${t}`);
+  }
+  if (fix) parts.push(`Suggested fix: ${fix}`);
+  if (consoleUrl) parts.push(`Full log: ${consoleUrl}`);
+  return parts.length ? "\n" + parts.join("\n") : "";
 }
 
 // Poll until terminal or the budget runs out. Never throws — an unreachable
@@ -1911,8 +1979,16 @@ export async function runCheckDeploy(ctx, { poll_url, grid } = {}) {
   }
   if (verdict.status === "failed") {
     return {
-      text: `The build FAILED: ${verdict.error || "no reason reported"}. The URL is not live — do not give it to the user as working. Fix the app (or re-deploy) and try again.`,
-      structured: { status: "failed", live: false, ...(verdict.error ? { error: verdict.error } : {}) },
+      text: `The build FAILED: ${verdict.error || "no reason reported"}. The URL is not live — do not give it to the user as working. Fix the app (or re-deploy) and try again.` +
+        formatFailureDetail(verdict),
+      structured: {
+        status: "failed",
+        live: false,
+        ...(verdict.error ? { error: verdict.error } : {}),
+        ...(verdict.logTail ? { build_log_tail: verdict.logTail } : {}),
+        ...(verdict.fix ? { suggested_fix: verdict.fix } : {}),
+        ...(verdict.consoleUrl ? { build_log_url: verdict.consoleUrl } : {}),
+      },
     };
   }
   return {

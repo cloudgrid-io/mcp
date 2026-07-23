@@ -274,7 +274,15 @@ export function registerTools(server, ctx) {
           ? " or `artifact_files` — a multi-file app inline. "
           : ", `path` — a local folder/file, or `artifact_files` — inline files. ") +
         "If you need to edit a page but don't have its HTML, call grid_get_app_source first, then deploy with " +
-        "target_entity_id. (CloudGrid calls this operation 'plug'.)",
+        "target_entity_id. " +
+        // Suggestion 1: steer multi-file runtime apps to the CLI up front — inline
+        // copying truncates large lockfiles/binaries and silently fails the build.
+        "RELIABILITY: `html` and `artifact_files` are sent INLINE (copied through this call), which can " +
+        "truncate large files (lockfiles, binaries) on a multi-file app. For a real framework (Next.js, etc.), " +
+        "a lockfile, or binary assets — and for re-plugging an existing runtime app — prefer the local CLI, " +
+        "which reads from disk: `npx -y @cloudgrid-io/cli plug` in the app folder (pick it up first with " +
+        "`npx -y @cloudgrid-io/cli pickup <grid>/<slug> --force` if you don't have it locally). Reserve inline " +
+        "for a single page or a few small text files. (CloudGrid calls this operation 'plug'.)",
       inputSchema: plugInputSchema,
       outputSchema: {
         entity_id: z.string().optional().describe("Globally unique — pass back as target_entity_id to re-plug."),
@@ -283,6 +291,7 @@ export function registerTools(server, ctx) {
         url: z.string().optional().describe("Canonical serving URL (stable across re-plugs; server-composed, flat-arch-aware)."),
         poll_url: z.string().optional().describe("Deploy status path while building (runtimes only)."),
         status: z.string().optional().describe("live | building | created | updated …"),
+        source: z.string().optional().describe("Transport used for this deploy: `path` (disk), `html`, or `artifact_files` (inline). Inline copies risk truncation on large files."),
         claim_url: z.string().optional().describe("Anon create only: sign-in link to claim ownership."),
         claim_message: z.string().optional().describe("Anon create only: the claim nudge to relay."),
         owner_token: z.string().optional().describe("Anonymous drops: the bearer owner token (re-plug + claim). Re-minted on every anonymous edit — persist the newest."),
@@ -701,6 +710,9 @@ export function registerTools(server, ctx) {
         live: z.boolean().describe("True only when the build finished successfully and the URL serves."),
         url: z.string().optional().describe("The live URL, when known."),
         error: z.string().optional().describe("User-language failure reason, when the build failed."),
+        build_log_tail: z.string().optional().describe("Sanitized tail of the Cloud Build log (the real error), when the build failed."),
+        suggested_fix: z.string().optional().describe("A suggested fix for the failure, when the platform provides one."),
+        build_log_url: z.string().optional().describe("Cloud Build console URL for the full log, when available."),
       },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     },
