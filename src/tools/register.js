@@ -20,11 +20,9 @@ import {
   resolveGridOrAsk,
   detectSourceManifest,
   runReport,
-  runClaim,
+  runPull,
   runPlug,
-  runFork,
-  runRemix,
-  runDownload,
+  runPickup,
   runVisibility,
   runSource,
   runCheckDeploy,
@@ -120,28 +118,68 @@ export function registerTools(server, ctx) {
 
   // ── Direct-API tools (both editions) ──────────────────────────────────────
 
-  // Pickup — both editions. Adopts an entity into the signed-in account's active
-  // grid (ownership transfer via POST /api/v2/entities/:id/pickup). Pass an
-  // anonymous drop's owner token as `claim_token` to take over something you
-  // dropped anonymously — that path replaces the old standalone "claim" verb.
+  // ── Copy / adopt verbs (both editions) — mirror the CLI: ──────────────────
+  //   grid_pickup = make YOUR OWN COPY (git-fork style) → POST /runtimes/:id/remix
+  //   grid_pull   = continue/edit the SAME entity in place (push access needed)
+  //                 → POST /entities/:id/pickup
+  // (The CLI verbs `download`, `fork`, `remix`, `link` were retired; no MCP tool
+  // targets them.)
+
+  // grid_pickup — make your own copy of any app you can see.
   reg(
     "grid_pickup",
     {
-      description: "Pick up (adopt) an entity into the signed-in account's active grid — an ownership transfer, keeping the same public URL. Use it to take over an entity you have access to, or to keep an anonymous drop you created: pass the drop's `claim_token` and it becomes owned and stops expiring on the anonymous schedule. Requires sign-in (grid_login). Calls the API directly, so it works on every edition. (This is the direct-API adopt; on the local edition grid_edit_existing_app additionally downloads the source and links the folder for editing.)",
+      description: "Pick up an app: make your OWN COPY of any app you can see (like a git fork) into a grid you can build in. It mints a NEW entity with lineage back to the source and WITHOUT the source's secrets (set your own before you plug). Plugging your copy creates/updates YOUR entity — the original is never touched. Requires sign-in. To edit the ORIGINAL entity in place (as its owner or a collaborator), use grid_pull instead.",
       inputSchema: {
-        entity_id: z.string().optional().describe("The entity id to pick up. Defaults to this session's last anonymous drop."),
-        claim_token: z.string().optional().describe("For an anonymous drop: its owner token (the owner_token in the drop result, also embedded in claim_url). Passing it takes over that drop."),
-        claim_url: z.string().optional().describe("Alternative to claim_token for an anonymous drop — the claim_url from the drop result; the token is read from it."),
+        id: z.string().describe("The source app to copy: a canonical UUID or <grid-slug>/<entity-slug>."),
+        into_org_slug: z.string().optional().describe("Grid to create your copy in. Required only when you belong to more than one grid."),
+        name: z.string().optional().describe("Slug for your copy. Omit to derive one from the source."),
+        source_version_id: z.string().optional().describe("Copy an older version instead of HEAD, e.g. v_a1b2c3d."),
       },
       outputSchema: {
-        claimed: z.number().describe("Number of entities picked up."),
-        urls: z.array(z.string()).describe("Public URLs of the picked-up entities."),
+        entity_id: z.string().nullable().describe("Your copy's entity id — pass as grid_plug's target_entity_id to update it."),
+        name: z.string().nullable().describe("Your copy's slug."),
+        kind: z.string().nullable().describe("app | agent."),
+        grid_slug: z.string().nullable().describe("The grid your copy landed in."),
+        forked_from: z.string().nullable().describe("Source entity_id (lineage)."),
+        forked_from_version_id: z.string().nullable().describe("Source version, when a specific one was copied."),
+        current_version_id: z.string().nullable().describe("Your copy's current version id."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
     async (input) => {
       try {
-        return okResult(await runClaim(ctx, input || {}));
+        if (!input?.id) return fail("`id` is required (a canonical UUID or <grid-slug>/<entity-slug>).");
+        return okResult(await runPickup(ctx, input));
+      } catch (err) {
+        return fail(err.message);
+      }
+    },
+  );
+
+  // grid_pull — continue/edit the SAME entity in place (push access required).
+  reg(
+    "grid_pull",
+    {
+      description: "Pull an app to continue/edit it IN PLACE — like `git clone` of the SAME entity: your next grid_plug (with its target_entity_id) updates that entity, and the team sees the new version. Requires PUSH ACCESS: you must own it or be a collaborator. If you can only view it, you CANNOT edit or plug it — say so and tell the user they can make their own copy with grid_pickup, or request collaborator access with the CLI `grid collab <entity>` (rolling out soon). Passing an anonymous drop's `claim_token` claims it into your account. Requires sign-in. Calls the API directly (both editions).",
+      inputSchema: {
+        entity_id: z.string().optional().describe("The entity id to pull. Defaults to this session's last anonymous drop."),
+        claim_token: z.string().optional().describe("Anonymous drop only: its owner token — claims that drop into your account (ownership transfer)."),
+        claim_url: z.string().optional().describe("Alternative to claim_token for an anonymous drop — the claim_url; the token is read from it."),
+      },
+      outputSchema: {
+        entity_id: z.string().optional().describe("The entity you pulled."),
+        slug: z.string().optional().describe("Its slug."),
+        grid: z.string().nullable().optional().describe("Its grid."),
+        url: z.string().optional().describe("Its public URL."),
+        owner_is_you: z.boolean().optional().describe("True if you own it."),
+        can_edit: z.boolean().optional().describe("True if you can plug/update it (owner or collaborator). False = view-only."),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+    },
+    async (input) => {
+      try {
+        return okResult(await runPull(ctx, input || {}));
       } catch (err) {
         return fail(err.message);
       }
@@ -432,111 +470,6 @@ export function registerTools(server, ctx) {
   // "publish"/"ship"/"make live" live in grid_plug's description, so
   // deploy-intent routing lands there without a second listed name.
 
-  // ── grid_fork / grid_remix / grid_download — direct-API copy/source verbs ──────
-  // fork = same-grid byte-carrying copy; remix = cross-grid copy with secrets
-  // stripped; download = signed source-bundle URLs. All direct-API (both editions).
-  reg(
-    "grid_fork",
-    {
-      description:
-        "Fork an entity: start a NEW entity from an existing one (copy-on-write, lineage recorded), carrying " +
-        "the source bytes. Lands in the source's home grid by default; cross-grid only for system templates " +
-        "or forkable:'public' sources — for a general cross-grid copy use grid_remix instead. Requires sign-in. " +
-        "Kind-aware: forks a runtime (app/agent) OR an inspiration — tries POST /api/v2/runtimes/:id/fork and " +
-        "falls back to /api/v2/inspirations/:id/fork.",
-      inputSchema: {
-        id: z.string().describe("The source entity: a canonical UUID or <grid-slug>/<entity-slug>."),
-        into_org_slug: z.string().optional().describe("Destination grid slug. Required only when you belong to more than one grid."),
-        name: z.string().optional().describe("Slug for the new entity. Omit to derive one from the source."),
-        source_version_id: z.string().optional().describe("Fork an older version instead of HEAD, e.g. v_a1b2c3d."),
-      },
-      outputSchema: {
-        entity_id: z.string().nullable().describe("The new entity's id."),
-        name: z.string().nullable().describe("The new entity's slug."),
-        kind: z.string().nullable().describe("app | agent | inspiration."),
-        grid_slug: z.string().nullable().describe("The grid the fork landed in."),
-        forked_from: z.string().nullable().describe("Source entity_id."),
-        forked_from_version_id: z.string().nullable().describe("Source version, when a specific one was forked."),
-        current_version_id: z.string().nullable().describe("The fork's current version id."),
-      },
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
-    },
-    async (input) => {
-      try {
-        if (!input?.id) return fail("`id` is required (a canonical UUID or <grid-slug>/<entity-slug>).");
-        return okResult(await runFork(ctx, input));
-      } catch (err) {
-        return fail(err.message);
-      }
-    },
-  );
-
-  reg(
-    "grid_remix",
-    {
-      description:
-        "Remix an app: make your own copy of any app you can SEE (link/public/authenticated, or a grid you " +
-        "belong to) into ANY grid you can build in — cross-grid is allowed. Mints a NEW entity with lineage " +
-        "back to the source, WITHOUT the source's secrets or connection credentials (set your own before you " +
-        "plug). Distinct from grid_fork, which is same-grid and byte-carrying. Requires sign-in. Calls POST " +
-        "/api/v2/runtimes/:id/remix.",
-      inputSchema: {
-        id: z.string().describe("The source app: a canonical UUID or <grid-slug>/<entity-slug>."),
-        into_org_slug: z.string().optional().describe("Grid to create your copy in. Required only when you belong to more than one grid."),
-        name: z.string().optional().describe("Slug for your copy. Omit to derive one from the source."),
-        source_version_id: z.string().optional().describe("Remix an older version instead of HEAD, e.g. v_a1b2c3d."),
-      },
-      outputSchema: {
-        entity_id: z.string().nullable().describe("Your copy's entity id."),
-        name: z.string().nullable().describe("Your copy's slug."),
-        kind: z.string().nullable().describe("app | agent."),
-        grid_slug: z.string().nullable().describe("The grid your copy landed in."),
-        forked_from: z.string().nullable().describe("Source entity_id."),
-        forked_from_version_id: z.string().nullable().describe("Source version, when a specific one was remixed."),
-        current_version_id: z.string().nullable().describe("Your copy's current version id."),
-      },
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
-    },
-    async (input) => {
-      try {
-        if (!input?.id) return fail("`id` is required (a canonical UUID or <grid-slug>/<entity-slug>).");
-        return okResult(await runRemix(ctx, input));
-      } catch (err) {
-        return fail(err.message);
-      }
-    },
-  );
-
-  reg(
-    "grid_download",
-    {
-      description:
-        "Download an entity's source: the bundle last deployed for a runtime, as one signed, time-limited " +
-        "(15-minute) read URL per service tarball. No entity is created and no registry state changes (unlike " +
-        "grid_pickup/grid_fork/grid_remix, which adopt or copy). Requires sign-in. Calls GET " +
-        "/api/v2/runtimes/:id/source directly.",
-      inputSchema: {
-        id: z.string().describe("The runtime to download: a canonical UUID or <grid-slug>/<entity-slug>."),
-        version: z.string().optional().describe("Download an older version's bundle instead of HEAD, e.g. v_a1b2c3d."),
-      },
-      outputSchema: {
-        entity_id: z.string().nullable().describe("The runtime's entity id."),
-        name: z.string().nullable().describe("The runtime's slug."),
-        services: z.record(z.string()).describe("Service name → signed read URL (valid ~15 minutes)."),
-        domain: z.string().nullable().optional().describe("The runtime's domain, if any."),
-      },
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
-    },
-    async (input) => {
-      try {
-        if (!input?.id) return fail("`id` is required (a canonical UUID or <grid-slug>/<entity-slug>).");
-        return okResult(await runDownload(ctx, input));
-      } catch (err) {
-        return fail(err.message);
-      }
-    },
-  );
-
   // Source — both editions. Fetches a drop's current deployed HTML inline so an
   // agent that lost the content can edit it and re-plug in place.
   reg(
@@ -550,9 +483,9 @@ export function registerTools(server, ctx) {
         "entity_id via the pickup contract and also returns the entity's kind, single_html, capabilities " +
         "(replug/fork), and replug_handle — read those to decide whether to edit in place (single-HTML + " +
         "capabilities.replug), fall back for a multi-file app/agent (use source_download_url + the local " +
-        "edition/CLI), or offer a fork when it isn't yours. For multi-file or runtime (app/agent) source " +
-        "bundles, use grid_download (signed tarball URLs). Reads the HTML from the API server-side; " +
-        "read-only, creates nothing.",
+        "edition/CLI), or offer a copy (grid_pickup) when it isn't yours. For a multi-file or runtime " +
+        "(app/agent) source, use source_download_url, or grid_pull to get the files and link the folder. " +
+        "Reads the HTML from the API server-side; read-only, creates nothing.",
       inputSchema: {
         entity_id: z.string().optional().describe("The drop's durable id. Defaults to this session's last drop."),
         url: z.string().optional().describe("The public URL of the drop (e.g. https://<grid>.cloudgrid.io/<slug>). Defaults to this session's last drop URL."),
@@ -1130,23 +1063,27 @@ export function registerTools(server, ctx) {
     cliTool(({ grid }) => ["describe", "grid", grid, "--json"]),
   );
 
+  // Local (CLI-wrapping) counterpart of the direct-API grid_pull: downloads the
+  // source + cloudgrid.yaml and links the folder, so the next `grid plug` updates
+  // the SAME entity in place. Wraps `grid pull` (NOT `grid pickup` — pickup now
+  // makes a separate copy). Push access required; a view-only entity can't be
+  // pulled — use grid_pickup to copy it, or `grid collab` to request access.
   regTool(
     "grid_edit_existing_app",
-    "Download an entity's source + cloudgrid.yaml and link the folder to it. Overwrites with --force. Wraps `grid pickup`.",
+    "Continue/edit an EXISTING entity locally: download its source + cloudgrid.yaml and link the folder so your next `grid plug` updates it IN PLACE. Requires push access (owner or collaborator). Wraps `grid pull`. To make your own separate copy instead, use grid_pickup.",
     {
-      name: z.string().describe("Entity slug or id to pick up."),
-      target_dir: z.string().optional().describe("Directory to pick up into (relative to cwd). Defaults to the entity name."),
+      name: z.string().describe("Entity slug or id to pull."),
+      target_dir: z.string().optional().describe("Directory to pull into (relative to cwd). Defaults to the entity name."),
       grid: z.string().optional().describe("Grid to resolve the entity in. Defaults to the active grid."),
-      version: z.string().optional().describe("Pick up an older version's source instead of HEAD."),
-      force: z.boolean().optional().describe("Pick up into a non-empty directory."),
+      version: z.string().optional().describe("Pull an older version's source instead of HEAD."),
+      force: z.boolean().optional().describe("Pull into a non-empty directory."),
       no_bind: z.boolean().optional().describe("Download source only — skip cloudgrid.yaml and the link."),
       cwd: z.string().optional().describe("Working directory the CLI runs in. The download lands here; pass an explicit, writable directory."),
     },
     { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     cliTool(({ name, target_dir, grid, version, force, no_bind }) => {
-      const args = ["pickup", name];
+      const args = ["pull", name];
       if (target_dir) args.push(target_dir);
-      // CLI 0.12's pickup exposes `--grid <slug>` (was legacy `--org`).
       if (grid) args.push("--grid", grid);
       if (version) args.push("--version", version);
       if (force) args.push("--force");
