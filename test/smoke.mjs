@@ -50,28 +50,18 @@ const GRIDCTL = [
   "grid_note",
 ];
 
-// Kept aliases (0.20.8 alias diet): only the ones with real muscle memory
-// survive; the rest were DROPPED (each alias schema was pure ListTools context
-// weight). grid_set_sharing is a KEPT alias — the tool was re-renamed back to
-// grid_visibility (2026-07-20 founder rename), old name kept for back-compat.
-// grid_deploy is a KEPT alias — the tool was renamed to grid_plug (canonical
-// verb); "deploy" survives as an intent keyword in grid_plug's description.
-const ALIASES = [
-  "grid_fetch",
-  "grid_logs",
-  "grid_set_sharing",
-  "grid_deploy",
-  "grid_copy_app",
-  "grid_claim_anonymous_deploy",
-  "grid_download_source",
-];
-// NOTE: grid_fork, grid_download, and grid_pickup were once dropped short
-// aliases, but are now CANONICAL primary tools (copy/adopt verb rename) — so
-// they are no longer in this list.
+// ALL deprecated aliases were removed (founder directive, 2026-07-22): tools
+// register under their canonical grid_* names ONLY — an alias in ListTools was
+// pure duplicate clutter in connector UIs. Old names below must NOT be
+// advertised. (grid_fork, grid_download, and grid_pickup were once dropped
+// short aliases but are now CANONICAL primaries — copy/adopt verb rename.)
+const ALIASES = [];
 const DROPPED_ALIASES = [
   "grid_source", "grid_list", "grid_claim",
   "grid_init", "grid_env", "grid_secrets", "grid_rollback",
   "grid_versions", "grid_open", "grid_doctor", "grid_unplug", "grid_use",
+  "grid_fetch", "grid_logs", "grid_set_sharing", "grid_deploy",
+  "grid_copy_app", "grid_claim_anonymous_deploy", "grid_download_source",
 ];
 
 const transport = new StdioClientTransport({ command: "node", args: ["src/index.js"] });
@@ -162,10 +152,9 @@ check(
 
 // grid_plug is the unified direct-API create/re-plug verb (spec v2 §3) and the
 // single deploy/publish verb — it absorbed the drop single-file publish via the
-// inline `html` param. It was renamed from grid_deploy (canonical verb is now
-// `plug`); grid_deploy is kept as a deprecated back-compat alias. Local edition:
-// `html` + `path` + `artifact_files` + `target_entity_id`; the old CLI-wrap
-// `target` param is gone.
+// inline `html` param. It was renamed from grid_deploy; that old name is fully
+// removed (no alias). Local edition: `html` + `path` + `artifact_files` +
+// `target_entity_id`; the old CLI-wrap `target` param is gone.
 const plugTool = tools.find((t) => t.name === "grid_plug");
 const plugProps = plugTool?.inputSchema?.properties ?? {};
 check("deploy has `html` single-file param (absorbed from drop)", "html" in plugProps);
@@ -174,8 +163,6 @@ check("local deploy has `path` param", "path" in plugProps);
 check("deploy has `artifact_files` param", "artifact_files" in plugProps);
 check("deploy has `target_entity_id` param", "target_entity_id" in plugProps);
 check("grid_plug is the primary tool (canonical verb)", nameSet.has("grid_plug"));
-check("grid_deploy kept as deprecated alias of grid_plug", nameSet.has("grid_deploy") &&
-  /Deprecated alias of grid_plug/.test(tools.find((t) => t.name === "grid_deploy")?.description ?? ""));
 check("plug has `owner_token` param", "owner_token" in plugProps);
 check("plug has `anon` param", "anon" in plugProps);
 check("plug dropped the CLI-wrap `target` param", !("target" in plugProps));
@@ -190,10 +177,10 @@ check(
   Array.isArray(startStruct.workflows) && startStruct.workflows.some((w) => w.name === "presentation"),
 );
 
-// grid_fetch returns the deck template deterministically.
-const fetched = await client.callTool({ name: "grid_fetch", arguments: { kind: "template", name: "deck" } });
+// grid_get_template returns the deck template deterministically.
+const fetched = await client.callTool({ name: "grid_get_template", arguments: { kind: "template", name: "deck" } });
 const fetchedText = fetched.content?.[0]?.text ?? "";
-check("grid_fetch returns deck template HTML", fetched.isError !== true && /<!doctype html/i.test(fetchedText));
+check("grid_get_template returns deck template HTML", fetched.isError !== true && /<!doctype html/i.test(fetchedText));
 
 // grid_list resolves under its canonical name.
 const orgsStatus = await client.callTool({ name: "grid_list", arguments: {} });

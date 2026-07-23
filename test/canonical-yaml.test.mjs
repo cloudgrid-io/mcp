@@ -2,8 +2,8 @@
 //
 // The MCP/agents/builders fetch one practically-complete cloudgrid.yaml schema so
 // they author the manifest correctly. Asserts:
-//   1. grid_fetch("doc","cloudgrid-yaml") resolves (via fetchCorpus AND the real
-//      grid_fetch handler) and returns substantial content.
+//   1. grid_get_template("doc","cloudgrid-yaml") resolves (via fetchCorpus AND the real
+//      grid_get_template handler) and returns substantial content.
 //   2. The doc carries the full needs: vocabulary (all 9) + the injected env var
 //      names, at least one full example, and the needs-vs-requires note.
 //   3. The DB example uses an ACTIVE needs: {database: true} and NO active
@@ -30,7 +30,7 @@ function check(label, cond) {
 
 // ── 1. The doc fetches as a top-level `doc` (same mechanism as capability-map) ─
 const doc = fetchCorpus("doc", "cloudgrid-yaml");
-check("grid_fetch(doc, cloudgrid-yaml) resolves", typeof doc === "string" && doc.length > 2000);
+check("grid_get_template(doc, cloudgrid-yaml) resolves", typeof doc === "string" && doc.length > 2000);
 
 // ── 2. Needs vocabulary + injected env vars + a full example ─────────────────
 check("doc documents the full needs: vocabulary (all 9)",
@@ -124,10 +124,10 @@ const ctx = {
   check("grid_start playbook points at the cloudgrid-yaml reference",
     /cloudgrid-yaml/.test(startText));
 
-  // The real grid_fetch handler resolves the doc too (not just fetchCorpus).
-  const fetched = await server.handlers.grid_fetch({ kind: "doc", name: "cloudgrid-yaml" });
+  // The real grid_get_template handler resolves the doc too (not just fetchCorpus).
+  const fetched = await server.handlers.grid_get_template({ kind: "doc", name: "cloudgrid-yaml" });
   const fetchedText = fetched?.content?.[0]?.text ?? "";
-  check("grid_fetch handler returns the cloudgrid-yaml doc",
+  check("grid_get_template handler returns the cloudgrid-yaml doc",
     fetchedText.length > 2000 && /#1527/.test(fetchedText));
 }
 check("capability-map cross-links cloudgrid-yaml",

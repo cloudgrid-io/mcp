@@ -9,7 +9,7 @@
 //      Only local + create + signed-in triggers it; web / anon / edit do NOT.
 //      Asserted against the real runPlug via mocked fetch + an injected
 //      CLI runner (the deps seam).
-//   3. grid_fetch corpus resolution for kind:"rule" (and troubleshooting).
+//   3. grid_get_template corpus resolution for kind:"rule" (and troubleshooting).
 //
 // Run: node test/self-healing.test.mjs
 
@@ -275,7 +275,7 @@ try {
     check("runPlug unknown code → error passes through unchanged (no guidance appended)", err !== null && /nope/.test(err.message) && !/—/.test(err.message));
   }
 
-  // ═══ 4. grid_fetch corpus resolution for kind:"rule" ════════════════════
+  // ═══ 4. grid_get_template corpus resolution for kind:"rule" ════════════════════
   {
     const corpusRoot = fileURLToPath(new URL("../src/corpus/", import.meta.url));
     const rulesDir = join(corpusRoot, "rules");
