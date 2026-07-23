@@ -1,4 +1,4 @@
-// Direct-API tool internals: grid_deploy (runPlug), grid, claim, report, fork,
+// Direct-API tool internals: grid_plug (runPlug), pull, pickup, report,
 // download, visibility, and source retrieval.
 // Extracted verbatim from src/tools.js (refactor: split tools.js into modules).
 
@@ -51,7 +51,7 @@ export async function fetchUserOrgs(token) {
   }
 }
 
-// ── Shared grid disambiguation (grid_deploy) ──────────────────
+// ── Shared grid disambiguation (grid_plug) ──────────────────
 // The stateless "which grid?" ask on an authed create. Given the caller's token
 // and a supplied grid, it decides:
 //   - supplied grid matches a membership  → { proceed: true, grid }
@@ -162,7 +162,7 @@ function looksLikePath(s) {
   return /^(~|\.{0,2}\/|[A-Za-z]:[\\/]|\/)/.test(t) || /\.[A-Za-z0-9]{1,8}$/.test(t);
 }
 
-// Normalize an inline `html` string — grid_deploy's ergonomic single-file publish
+// Normalize an inline `html` string — grid_plug's ergonomic single-file publish
 // path — into ONE index.html artifact, reusing the same hardening the old drop
 // verb used (decodeIfBase64Html, the @-path/file-path rejection, the base64
 // guard, and the small-fragment wrap). Returns { path, buffer, type }. Throws on
@@ -512,7 +512,13 @@ export async function runReport(
   });
 }
 
-export async function runClaim(ctx, { claim_token, claim_url, entity_id }) {
+// grid_pull — continue/edit an existing entity IN PLACE (POST /entities/:id/pickup).
+// Like `git clone` of the SAME entity: your next grid_plug (target_entity_id)
+// updates it. Needs push access — you must OWN it or be a COLLABORATOR. A
+// view-only caller is told they can't edit/plug it (make a copy with grid_pickup,
+// or request collaborator access with the CLI `grid collab`). A claim_token also
+// claims an anonymous drop into your account (ownership transfer).
+export async function runPull(ctx, { claim_token, claim_url, entity_id }) {
   const token = await ctx.getToken();
   if (!token) {
     throw new Error("You are not signed in. Run grid_login first, then claim.");
@@ -593,35 +599,67 @@ export async function runClaim(ctx, { claim_token, claim_url, entity_id }) {
     if (res.status === 409) {
       ctx.state.lastAnonClaim = null;
       return {
-        text: "Nothing to claim — it was already claimed.",
-        structured: { claimed: 0, urls: [] },
+        text: "Already yours — nothing to pull.",
+        structured: { owner_is_you: true, can_edit: true },
+      };
+    }
+    const code = data?.error?.code || null;
+    // No push access → not an error to throw; tell the user their options.
+    if (res.status === 403 || code === "NOT_ALLOWLISTED" || code === "PICKUP_DISABLED" || code === "FORBIDDEN_ROLE") {
+      return {
+        text:
+          `You don't have push access to this entity, so you can't edit or plug it. Two options: ` +
+          `make your own separate copy with grid_pickup, or ask the owner for collaborator access with the CLI ` +
+          `\`grid collab <entity>\` (rolling out soon) and pull again once granted.`,
+        structured: { can_edit: false, owner_is_you: false, access: "view_only" },
       };
     }
     const msg = data?.error?.message || data?.message || raw || `HTTP ${res.status}`;
-    throw new Error(`Claim failed (HTTP ${res.status}): ${msg}`);
+    throw new Error(`Pull failed (HTTP ${res.status}): ${msg}`);
   }
 
   ctx.state.lastAnonClaim = null;
-  // The entity is authed-owned now — the anon owner token is dead weight (a
-  // claimed drop can no longer be edited anonymously). Future re-drops of it
-  // must ride the authed wire.
+  // A claimed anon drop is authed-owned now — its anon owner token is dead weight.
   if (ctx.state.lastDrop?.entity_id === targetId) {
     ctx.state.lastDrop.owner_token = null;
   }
   const url = data?.url || data?.redirect_url || ctx.state.lastDrop?.url || null;
-  const lines = ["Claimed 1, now yours:"];
-  lines.push(`${url ?? ""}${data?.new_expires_at ? ` (expires ${data.new_expires_at})` : ""}`.trim());
+  const slug = data?.slug || targetId;
+  const where = data?.grid ? ` in ${data.grid}` : "";
+  // A claim_token transfers ownership to you; otherwise read the pickup contract.
+  const ownerIsYou = data?.owner?.is_you === true || Boolean(claimToken);
+  const canReplug = data?.capabilities?.replug === true;
+  let head, canEdit;
+  if (ownerIsYou) {
+    head = `${slug}${where} is yours — your next grid_plug (with target_entity_id) updates it in place.`;
+    canEdit = true;
+  } else if (canReplug) {
+    head = `You have collaborator push access to ${slug}${where} — your next grid_plug (target_entity_id) updates the SHARED entity; the team sees the new version and can roll it back.`;
+    canEdit = true;
+  } else {
+    head = `You can view ${slug}${where} but do NOT have push access — you can't edit or plug it. Make your own copy with grid_pickup, or request collaborator access with the CLI \`grid collab ${slug}\` (rolling out soon), then pull again.`;
+    canEdit = false;
+  }
+  const lines = [head];
+  if (url) lines.push(`URL: ${url}`);
+  if (canEdit && data?.entity_id) {
+    lines.push(`Re-plug handle: entity_id=${data.entity_id} — pass it as grid_plug's target_entity_id to update in place.`);
+  }
   return {
     text: lines.join("\n"),
     structured: {
-      claimed: 1,
-      urls: url ? [url] : [],
+      ...(data?.entity_id ? { entity_id: data.entity_id } : {}),
+      ...(slug ? { slug } : {}),
+      grid: data?.grid ?? null,
+      ...(url ? { url } : {}),
+      owner_is_you: ownerIsYou,
+      can_edit: canEdit,
     },
   };
 }
 
 
-// ── grid_deploy — the unified create/re-plug verb (spec v2 §3) ──────────────
+// ── grid_plug — the unified create/re-plug verb (spec v2 §3) ──────────────
 
 // Total upload budget mirrors the server's multipart cap (100 MB).
 const PLUG_MAX_TOTAL_BYTES = 100 * 1024 * 1024;
@@ -964,7 +1002,7 @@ export function errorGuidance({ status, code, edition, isEdit, isAnon, signedIn 
   if (status === 401) {
     return isEdit
       ? "That did not authorize this entity (wrong entity, expired, or already claimed). Sign in if you own it (grid_login), pass its owner_token for an anonymously-created drop, or omit target_entity_id to create a new entity."
-      : "Not signed in. Ask the user: sign in (grid_login) to publish to their grid, OR publish anonymously now (re-call grid_deploy with anon: true) - it goes live immediately with a claim_url + owner_token to claim into their account later. Do not silently fail; offer both.";
+      : "Not signed in. Ask the user: sign in (grid_login) to publish to their grid, OR publish anonymously now (re-call grid_plug with anon: true) - it goes live immediately with a claim_url + owner_token to claim into their account later. Do not silently fail; offer both.";
   }
   if (status === 403) {
     return "You lack the role to plug this target. To re-plug someone else's entity, pick it up first (grid_edit_existing_app / grid_claim_anonymous_deploy).";
@@ -1622,7 +1660,7 @@ async function authedApiCall(ctx, { method, pathName, body, verb }) {
     const msg = data?.error?.message || data?.message || raw || `HTTP ${res.status}`;
     const codeStr = data?.error?.code || null;
     const err = new Error(`${verb} failed (HTTP ${res.status}${codeStr ? ` ${codeStr}` : ""}): ${msg}`);
-    // Expose the structured status/code so callers can branch (e.g. runFork's
+    // Expose the structured status/code so callers can branch (e.g. runPickup's
     // NOT_A_RUNTIME → inspiration-route fallback). Additive: existing callers
     // only read `.message`.
     err.status = res.status;
@@ -1632,63 +1670,13 @@ async function authedApiCall(ctx, { method, pathName, body, verb }) {
   return data;
 }
 
-// Fork: start a NEW entity from an existing source, copy-on-write with lineage.
-// Kind-aware (one fork verb, mirrors the CLI `fork` command): the caller may
-// not know the source's kind, so try the runtime route first and, when the
-// server reports the target is an inspiration (`400 NOT_A_RUNTIME`, emitted by
-// requireEntityAccess before the runtime handler runs), retry the inspiration
-// route. The inspiration remix lands in the caller's active grid, so no
-// `into_org_slug`; `source_version_id` has no meaning for inspirations.
-export async function runFork(ctx, { id, into_org_slug, name, source_version_id }) {
-  let data;
-  try {
-    data = await authedApiCall(ctx, {
-      method: "POST",
-      pathName: `/api/v2/runtimes/${encodeURIComponent(id)}/fork`,
-      body: {
-        ...(into_org_slug ? { into_org_slug } : {}),
-        ...(name ? { name } : {}),
-        ...(source_version_id ? { source_version_id } : {}),
-      },
-      verb: "Fork",
-    });
-  } catch (err) {
-    if (err && err.code === "NOT_A_RUNTIME") {
-      data = await authedApiCall(ctx, {
-        method: "POST",
-        pathName: `/api/v2/inspirations/${encodeURIComponent(id)}/fork`,
-        body: { ...(name ? { name } : {}) },
-        verb: "Fork",
-      });
-    } else {
-      throw err;
-    }
-  }
-  const gridSlug = data?.grid_slug ?? data?.org?.slug ?? null;
-  const lines = [
-    `Forked: ${data?.name ?? id} (entity_id=${data?.entity_id ?? "?"})${gridSlug ? ` in grid ${gridSlug}` : ""}`,
-    `Lineage: forked_from=${data?.forked_from ?? "?"}${data?.forked_from_version_id ? ` @ ${data.forked_from_version_id}` : ""}`,
-  ];
-  return {
-    text: lines.join("\n"),
-    structured: {
-      entity_id: data?.entity_id ?? null,
-      name: data?.name ?? null,
-      kind: data?.kind ?? null,
-      grid_slug: gridSlug,
-      forked_from: data?.forked_from ?? null,
-      forked_from_version_id: data?.forked_from_version_id ?? null,
-      current_version_id: data?.current_version_id ?? null,
-    },
-  };
-}
-
-// Remix: cross-grid "make my own copy". Unlike fork (same-grid, byte-carrying),
-// remix mints a NEW entity in ANY grid the caller can build in, keeps lineage
-// back to the source, and strips the source's secrets/connection credentials —
-// the remixer supplies their own before plugging. Hits POST
-// /api/v2/runtimes/:id/remix.
-export async function runRemix(ctx, { id, into_org_slug, name, source_version_id }) {
+// grid_pickup — "make your own copy" (like a git fork). Mints a NEW entity in a
+// grid you can build in, keeps lineage back to the source, and strips the
+// source's secrets/connection credentials — you set your own before plugging.
+// Plugging your copy creates/updates YOUR entity; the original is untouched.
+// Hits POST /api/v2/runtimes/:id/remix (the copy route). Mirrors the CLI's
+// `grid pickup`. To edit the ORIGINAL in place, that's grid_pull, not this.
+export async function runPickup(ctx, { id, into_org_slug, name, source_version_id }) {
   const data = await authedApiCall(ctx, {
     method: "POST",
     pathName: `/api/v2/runtimes/${encodeURIComponent(id)}/remix`,
@@ -1697,12 +1685,13 @@ export async function runRemix(ctx, { id, into_org_slug, name, source_version_id
       ...(name ? { name } : {}),
       ...(source_version_id ? { source_version_id } : {}),
     },
-    verb: "Remix",
+    verb: "Pickup",
   });
   const gridSlug = data?.grid_slug ?? data?.org?.slug ?? null;
   const lines = [
-    `Remixed: ${data?.name ?? id} (entity_id=${data?.entity_id ?? "?"})${gridSlug ? ` in grid ${gridSlug}` : ""}`,
-    `Lineage: forked_from=${data?.forked_from ?? "?"}. Secrets were not copied — set your own before you plug.`,
+    `Picked up a copy: ${data?.name ?? id} (entity_id=${data?.entity_id ?? "?"})${gridSlug ? ` in grid ${gridSlug}` : ""}.`,
+    "This is a NEW entity — plug it (with this entity_id as target_entity_id) to create/update YOUR copy; the original is untouched.",
+    `Lineage kept (forked_from=${data?.forked_from ?? "?"}). The source's secrets were NOT copied — set your own before you plug.`,
   ];
   return {
     text: lines.join("\n"),
@@ -1714,30 +1703,6 @@ export async function runRemix(ctx, { id, into_org_slug, name, source_version_id
       forked_from: data?.forked_from ?? null,
       forked_from_version_id: data?.forked_from_version_id ?? null,
       current_version_id: data?.current_version_id ?? null,
-    },
-  };
-}
-
-// Download: signed, time-limited (15-minute) source-bundle URLs. No entity is
-// created and no registry state changes.
-export async function runDownload(ctx, { id, version }) {
-  const qs = version ? `?version=${encodeURIComponent(version)}` : "";
-  const data = await authedApiCall(ctx, {
-    method: "GET",
-    pathName: `/api/v2/runtimes/${encodeURIComponent(id)}/source${qs}`,
-    verb: "Download",
-  });
-  const services = data?.services && typeof data.services === "object" ? data.services : {};
-  const lines = [`Source bundle URLs for ${data?.name ?? id} (valid ~15 minutes):`];
-  for (const [svc, u] of Object.entries(services)) lines.push(`  ${svc}: ${u}`);
-  if (Object.keys(services).length === 0) lines.push("  (no services returned)");
-  return {
-    text: lines.join("\n"),
-    structured: {
-      entity_id: data?.entity_id ?? null,
-      name: data?.name ?? null,
-      services,
-      domain: data?.domain ?? null,
     },
   };
 }
@@ -1805,7 +1770,7 @@ export async function runVisibility(ctx, { target, visibility, kind, org }) {
   // Route order. `space` is inspiration-only; a known runtime kind goes straight
   // to the entities route; a known inspiration goes straight to the inspiration
   // route; an unknown kind tries the runtime route first and falls back to the
-  // inspiration route on a not-found (mirrors runFork).
+  // inspiration route on a not-found (mirrors runPickup).
   let order;
   if (vis === "space") order = ["inspiration"];
   else if (isRuntimeKind) order = ["runtime"];
@@ -1975,7 +1940,7 @@ export async function runCheckDeploy(ctx, { poll_url, grid } = {}) {
   });
   if (!target) {
     throw new Error(
-      "No build to check. Pass poll_url from a grid_deploy result, or deploy something first in this session. (Instant inspiration deploys are live on return and have no build to poll.)",
+      "No build to check. Pass poll_url from a grid_plug result, or deploy something first in this session. (Instant inspiration deploys are live on return and have no build to poll.)",
     );
   }
   const verdict = await fetchDeployTrace(ctx, { pollUrl: target, grid: gridSlug });
@@ -2087,7 +2052,7 @@ async function readInspirationSourceViaApi(ctx, { entityId, slug, grid }) {
 
 // Resolve a public URL / grid+slug to a REAL entity_id (+ edition metadata) via
 // the deployed pickup contract (POST /api/v2/entities/:target/pickup — the same
-// endpoint runClaim uses). Used by runSource when a bare URL arrives with no
+// endpoint runPull uses). Used by runSource when a bare URL arrives with no
 // session entity_id (a fresh chat): the contract returns
 //   { entity_id, slug, grid, kind, single_html, capabilities, replug_handle,
 //     source_download_url, ... }

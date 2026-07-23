@@ -15,9 +15,7 @@ const GRIDCTL = [
   "grid_get_template",
   "grid_report",
   "grid_pickup",
-  "grid_fork",
-  "grid_remix",
-  "grid_download",
+  "grid_pull",
   "grid_get_app_source",
   "grid_login",
   "grid_login_status",
@@ -50,11 +48,11 @@ const GRIDCTL = [
   "grid_note",
 ];
 
-// ALL deprecated aliases were removed (founder directive, 2026-07-22): tools
-// register under their canonical grid_* names ONLY — an alias in ListTools was
-// pure duplicate clutter in connector UIs. Old names below must NOT be
-// advertised. (grid_fork, grid_download, and grid_pickup were once dropped
-// short aliases but are now CANONICAL primaries — copy/adopt verb rename.)
+// No deprecated aliases: tools register under their canonical grid_* names ONLY.
+// The names below must NOT be advertised — old aliases + the retired copy/source
+// verbs (grid_fork/grid_remix/grid_download were removed when the CLI dropped
+// `fork`/`remix`/`download`; the copy verb is grid_pickup, edit-in-place is
+// grid_pull).
 const ALIASES = [];
 const DROPPED_ALIASES = [
   "grid_source", "grid_list", "grid_claim",
@@ -62,6 +60,7 @@ const DROPPED_ALIASES = [
   "grid_versions", "grid_open", "grid_doctor", "grid_unplug", "grid_use",
   "grid_fetch", "grid_logs", "grid_set_sharing", "grid_deploy",
   "grid_copy_app", "grid_claim_anonymous_deploy", "grid_download_source",
+  "grid_fork", "grid_remix", "grid_download",
 ];
 
 const transport = new StdioClientTransport({ command: "node", args: ["src/index.js"] });

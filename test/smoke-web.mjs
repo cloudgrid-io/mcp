@@ -50,8 +50,12 @@ try {
     check(`exposes ${t}`, names.includes(t));
   }
   // Tool-name cleanup: the canonical primary names are present (both editions).
-  for (const nm of ["grid_get_template", "grid_get_app_source", "grid_list_grids", "grid_fork", "grid_remix", "grid_download", "grid_pickup", "grid_visibility", "grid_check_deploy"]) {
-    check(`exposes new name ${nm}`, names.includes(nm));
+  for (const nm of ["grid_get_template", "grid_get_app_source", "grid_list_grids", "grid_pickup", "grid_pull", "grid_visibility", "grid_check_deploy"]) {
+    check(`exposes ${nm}`, names.includes(nm));
+  }
+  // Retired copy/source verbs must NOT be advertised (CLI dropped fork/remix/download).
+  for (const nm of ["grid_fork", "grid_remix", "grid_download"]) {
+    check(`retired verb ${nm} is not advertised`, !names.includes(nm));
   }
   // ALL deprecated aliases are gone (founder directive 2026-07-22): canonical
   // names only, no redirect duplicates in ListTools.

@@ -50,7 +50,6 @@
     "snapshot:corpus": "node scripts/snapshot-corpus.mjs",
     "build:mcpb": "node scripts/build-mcpb.mjs",
     "test:widgets": "node test/apps-widgets.test.mjs",
-    "test:fork": "node test/fork.test.mjs",
     "test:set-sharing": "node test/set-sharing.test.mjs",
     "test:check-deploy": "node test/check-deploy.test.mjs",
     "test:staleness": "node test/staleness.test.mjs",
