@@ -65,6 +65,7 @@ requires-vs-needs caveat, validation rules), fetch the companion reference:
 | project management, projects and tasks tracker, team project board | `project-management` | `database: true` | runtime (async, poll) | local |
 | semantic search over a document / article / text, search-by-meaning box, question-answering search over content, embeddings / vector / similarity search — ONE document or small text set, one service | `simple-semantic-search` | `vector: pgvector, ai: true` (native pgvector, verified live 2026-07-16) | runtime (async, poll) | local |
 | search over my documents / PDFs / notes / knowledge base with upload UI and scheduled refresh, document search portfolio, searchable archive (multi-service) | `semantic-search` | `database: true` (template uses Mongo embeddings; `vector: pgvector` now available, #1545 shipped; active daily refresh cron) | runtime (async, poll) | local |
+| frontend plus a separate backend/API, two languages in one app (e.g. React + Python), a UI with a worker or scheduled job — any request where the parts run separately | no dedicated template — start from `app-with-data` and add a second service; structural reference: `semantic-search` (ships `web` + `backend` + `refresh` cron) | varies (at minimum `database: true` for persistent apps) | runtime (async, poll) | local |
 
 **Rule of thumb:** if the app must SAVE/remember data, share state across
 users/sessions, log in, or store submissions → it is persistent → runtime, local
@@ -191,6 +192,11 @@ engine hint. Cron is NOT a need — it is a **service type** (`type: cron` with
    inspiration with `grid_plug` and the inline `html` param (instant, any
    edition). Separate files/folders/assets, or anything with a `needs:` →
    runtime, local edition, `grid_plug` a linked folder, then poll to a live URL.
+4. More than one service when the user describes parts that run separately — a
+   frontend with a backend API, a worker, a scheduled job, or two different
+   languages. One service is the default; do not split without a reason. There
+   is no dedicated multi-service template; start from `app-with-data` and add a
+   second service, or use `semantic-search` as a structural reference.
 
 ## FAQ
 
