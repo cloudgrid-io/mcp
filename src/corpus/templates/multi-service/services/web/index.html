@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Notes</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin: 0; font-family: system-ui, sans-serif; }
+    main { max-width: 40rem; margin: 3rem auto; padding: 0 1.25rem; }
+    .row { display: flex; gap: .5rem; margin-bottom: 1rem; }
+    input { flex: 1; padding: .5rem .75rem; border: 1px solid #8886; border-radius: .5rem; background: inherit; color: inherit; }
+    button { padding: .5rem .9rem; border: 1px solid #8886; border-radius: .5rem; cursor: pointer; background: inherit; color: inherit; }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li { display: flex; justify-content: space-between; align-items: center; padding: .6rem 0; border-bottom: 1px solid #8883; }
+    .hint { color: #888; font-size: .875rem; }
+    .error { color: #c44; font-size: .875rem; margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Notes</h1>
+    <p class="hint">Persisted in grid-shared Mongo via the API service. Survives refresh.</p>
+    <div id="error" class="error" hidden></div>
+    <form id="form" class="row">
+      <input id="text" placeholder="Add a note..." autocomplete="off" />
+      <button type="submit">Add</button>
+    </form>
+    <ul id="list"></ul>
+  </main>
+  <script>
+    const API = '/api/items';
+    const listEl = document.getElementById('list');
+    const errorEl = document.getElementById('error');
+
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.hidden = false;
+      setTimeout(() => { errorEl.hidden = true; }, 4000);
+    }
+
+    function render(items) {
+      listEl.innerHTML = '';
+      items.forEach(item => {
+        const li = document.createElement('li');
+        const span = document.createElement('span');
+        span.textContent = item.text;
+        const btn = document.createElement('button');
+        btn.textContent = 'Delete';
+        btn.onclick = () => remove(item.id);
+        li.appendChild(span);
+        li.appendChild(btn);
+        listEl.appendChild(li);
+      });
+    }
+
+    async function load() {
+      try {
+        const res = await fetch(API);
+        if (!res.ok) throw new Error(res.statusText);
+        render(await res.json());
+      } catch (e) { showError('Failed to load: ' + e.message); }
+    }
+
+    document.getElementById('form').onsubmit = async (e) => {
+      e.preventDefault();
+      const input = document.getElementById('text');
+      const text = input.value.trim();
+      if (!text) return;
+      try {
+        const res = await fetch(API, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
+        if (!res.ok) throw new Error(res.statusText);
+        input.value = '';
+        load();
+      } catch (e) { showError('Failed to add: ' + e.message); }
+    };
+
+    async function remove(id) {
+      try {
+        const res = await fetch(API + '/' + encodeURIComponent(id), { method: 'DELETE' });
+        if (!res.ok) throw new Error(res.statusText);
+        load();
+      } catch (e) { showError('Failed to delete: ' + e.message); }
+    }
+
+    load();
+  </script>
+</body>
+</html>
