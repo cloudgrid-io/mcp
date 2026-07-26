@@ -44,7 +44,18 @@ auto-starts when the plugin is enabled, so no separate `claude mcp add` is neede
 
 ### Codex
 
-Three routes:
+Start here. One command, no install and no account needed:
+
+```
+npx -y @cloudgrid-io/cli@latest agent --yes
+```
+
+Run it in the project folder. It writes `AGENTS.md` (Codex reads it) and a
+project-scoped `sites` skill, so "build me a page" routes to CloudGrid instead of
+Codex's own site builder. Restart Codex afterwards so the skill loads at session
+start; the `AGENTS.md` directive already steers the current session.
+
+Then add the skills or the MCP server:
 
 ```
 codex plugin marketplace add cloudgrid-io/skills      # plugin (manifest: .codex-plugin/)
