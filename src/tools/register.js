@@ -104,7 +104,7 @@ export function registerTools(server, ctx) {
     }));
 
     server.registerResource("cloudgrid-org-picker", GRID_PICKER_URI, {
-      description: "Grid picker card — lets the user choose which grid to publish into.",
+      description: "Grid picker card — lets the user choose which grid to plug into.",
       mimeType: "text/html;profile=mcp-app",
     }, async () => ({
       contents: [{
@@ -194,7 +194,7 @@ export function registerTools(server, ctx) {
   // acknowledgement.
   regTool(
     "grid_note",
-    "Optionally leave a one-paragraph summary of what you built this session and why. Call it BEFORE a deploy, or in a session that ends without one — a successful deploy has already posted the QA log, so pass grid_plug's session_note instead. Recorded for CloudGrid QA. No side effects.",
+    "Optionally leave a one-paragraph summary of what you built this session and why. Call it BEFORE a plug, or in a session that ends without one — a successful plug has already posted the QA log, so pass grid_plug's session_note instead. Recorded for CloudGrid QA. No side effects.",
     { summary: z.string().describe("A short plain-language summary of what was built and why.") },
     { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     async (input) => {
@@ -229,7 +229,7 @@ export function registerTools(server, ctx) {
           path: z.string().optional().describe(
             "Local edition: path to the entity folder, a single file, or a .zip ARCHIVE to upload. " +
             "A folder is read recursively, honoring .gitignore/.cloudgridignore (plus .git/node_modules " +
-            "always skipped). A .zip is extracted and deployed: with its own cloudgrid.yaml it deploys " +
+            "always skipped). A .zip is extracted and plugged: with its own cloudgrid.yaml it plugs " +
             "as that project; otherwise it becomes a static app (all files served). Use this for " +
             "\"deploy this zip\" / \"gallery from these zipped images\" requests. Mutually exclusive with " +
             "`html` and `artifact_files` — EXCEPT `html` + a .zip of assets: the html becomes index.html " +
@@ -251,7 +251,7 @@ export function registerTools(server, ctx) {
       "On re-plug, a name: change is a warning only; it never renames the entity or moves the URL.",
     ),
     target_entity_id: z.string().optional().describe(
-      "Present → RE-PLUG: update this exact entity in place (same entity_id, slug, URL, deploy history). " +
+      "Present → RE-PLUG: update this exact entity in place (same entity_id, slug, URL, plug history). " +
       "Absent → CREATE a new entity. This is the durable handle a previous plug returned — persist it. " +
       "Re-plugging an anonymously-created drop needs its owner_token instead of sign-in.",
     ),
@@ -279,7 +279,7 @@ export function registerTools(server, ctx) {
       "target_entity_id). Re-minted on every anonymous edit; always persist the newest one from the result.",
     ),
     confirm_new_app: z.boolean().optional().describe(
-      "Set true to confirm deploying a source that already contains a cloudgrid.yaml as a NEW runtime app. " +
+      "Set true to confirm plugging a source that already contains a cloudgrid.yaml as a NEW runtime app. " +
       "On a create, if the source has a cloudgrid.yaml and this is not set, grid_plug returns needs_confirmation " +
       "so you can ask the user first (or use target_entity_id to re-plug an existing entity).",
     ),
@@ -288,7 +288,7 @@ export function registerTools(server, ctx) {
       "include it by default; omit only if the user asked not to share it.",
     ),
     session_note: z.string().optional().describe(
-      "One short paragraph on what you built and why. Recorded for CloudGrid QA alongside the deploy.",
+      "One short paragraph on what you built and why. Recorded for CloudGrid QA alongside the plug.",
     ),
   };
 

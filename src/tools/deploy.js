@@ -83,7 +83,7 @@ export async function resolveGridOrAsk(ctx, { token, suppliedGrid, edition }, de
       if (a.render_ready !== b.render_ready) return b.render_ready ? 1 : -1;
       return 0;
     });
-    const lines = ["Which grid should this be published to?"];
+    const lines = ["Which grid should this be plugged into?"];
     for (const o of annotated) {
       const tags = [];
       if (o.is_active) tags.push("your active grid");
@@ -787,7 +787,7 @@ async function expandZipToProject(zipPath, inlineHtml) {
   const hasInlineHtml = typeof inlineHtml === "string" && inlineHtml.length > 0;
   if (hasInlineHtml && hasManifest) {
     throw new Error(
-      "The zip already contains a cloudgrid.yaml project — deploy it as-is (drop the `html` param), " +
+      "The zip already contains a cloudgrid.yaml project — plug it as-is (drop the `html` param), " +
         "or re-plug the entity and edit its files instead.",
     );
   }
@@ -895,7 +895,7 @@ async function plugZipProjectViaCli(ctx, { projectDir, name }, input, deps = {})
   const url = parseCliPlugUrl(stdout);
   if (!url) {
     throw new Error(
-      `The zip project deployed via the CLI but no live URL was found in its output.\n${stdout.slice(0, 500)}`,
+      `The zip project was plugged via the CLI but no live URL was found in its output.\n${stdout.slice(0, 500)}`,
     );
   }
   return {
@@ -996,7 +996,7 @@ export function errorGuidance({ status, code, edition, isEdit, isAnon, signedIn 
   }
   // 409 EDIT_REJECTED — an in-place re-plug the server won't take.
   if (status === 409) {
-    return "The entity cannot be updated right now (a deploy is in progress, or it is archived/expired/claimed). An explicit re-plug never silently creates; retry later, or omit target_entity_id to create a new entity.";
+    return "The entity cannot be updated right now (a plug is in progress, or it is archived/expired/claimed). An explicit re-plug never silently creates; retry later, or omit target_entity_id to create a new entity.";
   }
   // 401 on an edit — the credential didn't authorize this entity.
   if (status === 401) {
@@ -1005,7 +1005,7 @@ export function errorGuidance({ status, code, edition, isEdit, isAnon, signedIn 
       : "Not signed in. Ask the user: sign in (grid_login) to publish to their grid, OR publish anonymously now (re-call grid_plug with anon: true) - it goes live immediately with a claim_url + owner_token to claim into their account later. Do not silently fail; offer both.";
   }
   if (status === 403) {
-    return "You lack the role to plug this target. To re-plug someone else's entity, pick it up first (grid_edit_existing_app / grid_claim_anonymous_deploy).";
+    return "You lack the role to plug this target. To re-plug someone else's entity, pull it first (grid_pull), or make your own copy (grid_pickup).";
   }
   // ── Consent-gated report offer (Task 34) ──────────────────────────────────
   // GENUINE bugs only: a build/deploy failure, any 5xx, INTERNAL_ERROR, or an
@@ -1152,11 +1152,11 @@ export async function runPlug(ctx, input, deps = {}) {
     if (target_entity_id || (slug && grid)) {
       throw new Error(
         "Re-plugging an existing entity from a zip is not supported yet — pick up the app " +
-          "(grid_edit_existing_app) and re-plug the folder, or deploy the zip as a new entity.",
+          "(grid_edit_existing_app) and re-plug the folder, or plug the zip as a new entity.",
       );
     }
     if (anon) {
-      throw new Error("A zip deploy creates a static app and needs sign-in — it cannot be anonymous.");
+      throw new Error("A zip plug creates a static app and needs sign-in — it cannot be anonymous.");
     }
     const expanded = await expandZipToProject(srcPath, hasHtml ? html : null);
     if (expanded.singleHtml) {
@@ -1371,9 +1371,9 @@ export async function runPlug(ctx, input, deps = {}) {
   } catch (err) {
     if (err?.name === "AbortError" || err?.name === "TimeoutError") {
       throw new Error(
-        `The deploy request timed out after ${Math.round(uploadTimeoutMs / 1000)}s. ` +
-          `The build may still be running on CloudGrid — check the deploy status ` +
-          `(poll_url / grid_status, or your grid) before deploying again, so you don't create a duplicate.`,
+        `The plug request timed out after ${Math.round(uploadTimeoutMs / 1000)}s. ` +
+          `The build may still be running on CloudGrid — check the build status ` +
+          `(poll_url / grid_status, or your grid) before plugging again, so you don't create a duplicate.`,
       );
     }
     throw new Error(`Could not reach CloudGrid at ${API_BASE}: ${err.message}`);
@@ -1558,7 +1558,7 @@ export async function runPlug(ctx, input, deps = {}) {
         : "npx -y @cloudgrid-io/cli plug";
       cliSteer =
         "Heads-up: this went in INLINE. For a multi-file app the disk-based CLI is more reliable (lockfiles/binaries can't truncate), but it must run where the CLI is already signed in — a terminal or Claude Code that has done `grid login` once. Do NOT try `grid login` inside a chat sandbox: its login poll is long-lived and the sandbox is ephemeral, so it won't stick. " +
-        `If you had to leave any files out to make this inline deploy safe, tell the user — offer the complete deploy from Claude Code or a terminal (\`${replug}\`), or confirm they accept the reduced version. Do not drop files silently.`;
+        `If you had to leave any files out to make this inline plug safe, tell the user — offer the complete plug from Claude Code or a terminal (\`${replug}\`), or confirm they accept the reduced version. Do not drop files silently.`;
     }
   }
 
@@ -1566,8 +1566,8 @@ export async function runPlug(ctx, input, deps = {}) {
   if (isBuilding) {
     lines.push(
       isEdit
-        ? `Building (async): ${url} — the update is deploying, not live yet.`
-        : `Building (async): ${url} — the deploy is in progress, not live yet.`,
+        ? `Building (async): ${url} — the update is plugging, not live yet.`
+        : `Building (async): ${url} — the plug is in progress, not live yet.`,
     );
     // Point at a tool that exists on THIS edition. grid_status is CLI-wrapping,
     // local-only — telling a hosted (ChatGPT/claude.ai) model to "run
@@ -1584,7 +1584,7 @@ export async function runPlug(ctx, input, deps = {}) {
     lines.push(`Updated in place: ${url}`);
   } else if (isInspirationCreate) {
     // Authed inspiration create — owned by the caller. Wording mirrors the drop verb.
-    lines.push(ctx.edition === "web" ? `Your app is live: ${url}` : `Published to your grid: ${url}`);
+    lines.push(ctx.edition === "web" ? `Your app is live: ${url}` : `Plugged into your grid: ${url}`);
     if (ctx.edition !== "web") lines.push("Owned by you.");
   } else {
     lines.push(`Live: ${url}`);
@@ -1940,7 +1940,7 @@ export async function runCheckDeploy(ctx, { poll_url, grid } = {}) {
   });
   if (!target) {
     throw new Error(
-      "No build to check. Pass poll_url from a grid_plug result, or deploy something first in this session. (Instant inspiration deploys are live on return and have no build to poll.)",
+      "No build to check. Pass poll_url from a grid_plug result, or plug something first in this session. (Instant inspiration plugs are live on return and have no build to poll.)",
     );
   }
   const verdict = await fetchDeployTrace(ctx, { pollUrl: target, grid: gridSlug });
@@ -1953,7 +1953,7 @@ export async function runCheckDeploy(ctx, { poll_url, grid } = {}) {
   }
   if (verdict.status === "failed") {
     return {
-      text: `The build FAILED: ${verdict.error || "no reason reported"}. The URL is not live — do not give it to the user as working. Fix the app (or re-deploy) and try again.` +
+      text: `The build FAILED: ${verdict.error || "no reason reported"}. The URL is not live — do not give it to the user as working. Fix the app (or re-plug) and try again.` +
         formatFailureDetail(verdict),
       structured: {
         status: "failed",
