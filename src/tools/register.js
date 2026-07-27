@@ -271,8 +271,10 @@ export function registerTools(server, ctx) {
       yaml: z.string().optional().describe("An inline cloudgrid.yaml override used as a detection hint."),
     }).optional().describe("Classification hints for the CREATE path (not entity targeting — that's target_entity_id)."),
     anon: z.boolean().optional().describe(
-      "Create an anonymous Guest-Grid drop (no auth). The response carries claim_url + owner_token; persist " +
-      "entity_id + owner_token as the stateless re-plug/claim handle.",
+      "Create an anonymous Guest-Grid drop (no auth). Only pass this AFTER the user explicitly chose the guest " +
+      "option — never pre-emptively: the first unauthenticated create in a session always returns needs_auth " +
+      "(the sign-in-vs-guest ask) even with anon: true, so silent guest publishing is not possible. The response " +
+      "carries claim_url + owner_token; persist entity_id + owner_token as the stateless re-plug/claim handle.",
     ),
     owner_token: z.string().optional().describe(
       "The owner token of an anonymously-created drop — authorizes an anonymous re-plug (with " +
@@ -417,22 +419,30 @@ export function registerTools(server, ctx) {
             });
           }
         }
-        if (input?.anon !== true && !isEdit) {
+        if (!isEdit) {
           const token = await ctx.getToken();
-          if (!token) {
-            // AUTH HARD GATE (create only): not signed in and not anon → do NOT
-            // silently ride the anonymous wire. Return the login-or-anon choice
-            // and stop. The model relays it; the user picks. (Rule 17, enforced.)
+          if (!token && (input?.anon !== true || ctx.state?.authChoiceOffered !== true)) {
+            // AUTH HARD GATE (create only): not signed in → do NOT silently
+            // ride the anonymous wire — EVEN when the model passed anon: true.
+            // Field bug (2026-07-26, Claude web): INSTRUCTIONS_WEB said "no
+            // account needed", the model self-served anon: true on the first
+            // call, and the user's page landed on the Guest Grid without ever
+            // being asked. anon: true is model-attestable, so it cannot be the
+            // gate; the session flag is. First unauthenticated create in a
+            // session ALWAYS returns the sign-in-vs-guest choice; a re-call
+            // with anon: true after the choice was surfaced proceeds. (Rule 17,
+            // enforced server-side.)
+            if (ctx.state) ctx.state.authChoiceOffered = true;
             return okResult({
               text:
-                "You're not signed in. To publish this I can either:\n" +
-                "  1. Sign you in to publish to your grid — run grid_login (opens your browser), then I'll deploy.\n" +
-                "  2. Publish it anonymously right now — it goes live immediately with a claim link so you can save it to your account later.\n" +
-                "Which would you like? (For anonymous, re-call grid_plug with anon: true.)",
+                "This is a new publish and the user is not signed in. Ask the user which they want — do not choose for them:\n" +
+                "  1. Sign in and plug it to their grid — run grid_login (opens the browser), then re-call grid_plug.\n" +
+                "  2. Plug it as a guest — live immediately at a guest link that expires in 7 days unless claimed (re-call grid_plug with anon: true).\n" +
+                "Relay this question to the user and STOP until they answer.",
               structured: { needs_auth: true },
             });
           }
-          {
+          if (token && input?.anon !== true) {
             const decision = await resolveGridOrAsk(ctx, {
               token,
               suppliedGrid: input?.grid,
