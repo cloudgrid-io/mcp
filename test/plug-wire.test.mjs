@@ -500,6 +500,23 @@ try {
     replies = [{ status: 202, body: { entity_id: "ent-clean", slug: "s", grid: "acme", url: "https://acme.cloudgrid.io/s", status: "live" } }];
     const clean = await runPlug(secretCtx, { html: "<p>Set your API key in settings — never paste sk-... keys into pages.</p>", grid: "acme" });
     check("prose about keys (no real key shape) is NOT blocked", clean?.structured?.entity_id === "ent-clean");
+
+    // The local `path` route reads files from disk — same scan applies (a model
+    // can write the key to a file and plug the path, bypassing the inline check).
+    const { mkdtempSync, writeFileSync: wf } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join: pjoin } = await import("node:path");
+    const dir = mkdtempSync(pjoin(tmpdir(), "plug-secret-"));
+    wf(pjoin(dir, "index.html"), `<script>fetch("https://openrouter.ai",{headers:{Authorization:"Bearer ${fakeKey}"}})</script>`);
+    let blocked3 = null;
+    const before3 = calls.length;
+    try {
+      await runPlug(secretCtx, { path: dir, grid: "acme" });
+    } catch (e) {
+      blocked3 = e.message;
+    }
+    check("path-read file with an API key is BLOCKED before any network call",
+      blocked3 !== null && /Blocked/.test(blocked3 ?? "") && calls.length === before3);
   }
 
   // ── parseManifestName unit checks ──────────────────────────────────────────

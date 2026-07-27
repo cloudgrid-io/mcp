@@ -1296,6 +1296,15 @@ export async function runPlug(ctx, input, deps = {}) {
     artifacts = [art];
   } else if (hasPath) {
     artifacts = collectPathArtifacts(effectivePath);
+    // Same secret scan as the inline sources — a model on the local edition
+    // can write a key into a file and plug the path, bypassing the inline
+    // check. Scan textual files (≤1MB) read from disk too.
+    for (const a of artifacts) {
+      if (a.buffer && a.buffer.length <= 1024 * 1024) {
+        const hit = scanInlineSecrets(a.buffer.toString("utf8"));
+        if (hit) throw new Error(secretBlockMessage(hit, `file \`${a.path}\``));
+      }
+    }
   } else if (hasArtifacts) {
     let total = 0;
     artifacts = artifact_files.map((f) => {
@@ -2066,9 +2075,18 @@ export async function runCheckDeploy(ctx, { poll_url, grid } = {}) {
     };
   }
   if (verdict.status === "failed") {
+    // The project is NOT lost on a failed build: the source was uploaded
+    // before the build ran and lives on the entity. On the hosted edition
+    // (no filesystem, no way to iterate here) hand the user their files —
+    // the source zip (grid_get_app_source → source_download_url) or the
+    // pull command that downloads + links the folder so the SAME entity
+    // continues locally.
+    const handoff = ctx.edition === "web" && entityId
+      ? `\nThe project files are NOT lost — they are saved on the entity. If it can't be fixed from this chat, hand the user their work: call grid_get_app_source for the source zip (source_download_url), or give them the local continue command: npx -y @cloudgrid-io/cli@latest pull ${gridSlug ? `${gridSlug}/` : ""}${ctx.state.lastDrop?.slug || entityId} — it downloads the project and links the folder so their next plug updates this same entity.`
+      : "";
     return {
       text: `The build FAILED: ${verdict.error || "no reason reported"}. The URL is not live — do not give it to the user as working. Fix the app (or re-plug) and try again.` +
-        formatFailureDetail(verdict),
+        formatFailureDetail(verdict) + handoff,
       structured: {
         status: "failed",
         live: false,
@@ -2076,6 +2094,7 @@ export async function runCheckDeploy(ctx, { poll_url, grid } = {}) {
         ...(verdict.logTail ? { build_log_tail: verdict.logTail } : {}),
         ...(verdict.fix ? { suggested_fix: verdict.fix } : {}),
         ...(verdict.consoleUrl ? { build_log_url: verdict.consoleUrl } : {}),
+        ...(ctx.edition === "web" && entityId ? { source_recovery: { entity_id: entityId, via: ["grid_get_app_source", "grid pull"] } } : {}),
       },
     };
   }
