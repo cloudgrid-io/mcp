@@ -109,7 +109,98 @@ export async function resolveGridOrAsk(ctx, { token, suppliedGrid, edition }, de
   if (grids.length === 1) {
     return { single: { ...grids[0], is_active: grids[0].slug === activeGrid } };
   }
-  return { proceed: true };
+  // ZERO grids for a signed-in user: do NOT proceed — the plug is a guaranteed
+  // 403 NO_ACTIVE_ORG dead end. Field bug (2026-07-27, first-time user): the
+  // model sent the user to the console to create a grid by hand. Grid creation
+  // is a first-class API action (POST /api/v2/grids) — offer to do it here.
+  return {
+    picker: {
+      text:
+        "This account has no grid yet — a grid is the workspace the user's apps live in, and you can create it right now; do NOT send the user to the console for this. " +
+        "Suggest a short slug from the user's name or the app (3-40 lowercase letters, digits, or hyphens, starting with a letter), confirm it with the user, " +
+        "then call grid_create_grid with that slug and re-call grid_plug with grid: <slug>.",
+      structured: { needs_grid_create: true },
+    },
+  };
+}
+
+// ── grid_create_grid — create the user's first (or another) grid ────────────
+// Mirrors the CLI `grid create grid <slug>` (POST /api/v2/grids; the caller
+// becomes the grid's admin, a "general" space is provisioned server-side).
+const GRID_SLUG_RE = /^[a-z][a-z0-9-]{2,39}$/;
+
+export async function runCreateGrid(ctx, { slug, name } = {}) {
+  const token = await ctx.getToken();
+  if (!token) {
+    return {
+      text: "Creating a grid needs an account — sign the user in first (grid_login), then re-call grid_create_grid.",
+      structured: { needs_auth: true },
+    };
+  }
+  const s = String(slug || "").trim().toLowerCase();
+  if (!GRID_SLUG_RE.test(s)) {
+    return {
+      text: `Invalid grid slug '${s}'. Use 3-40 lowercase letters, digits, or hyphens, starting with a letter.`,
+      structured: { error: { code: "INVALID_SLUG" } },
+    };
+  }
+  const res = await fetch(`${API_BASE}/api/v2/grids`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ slug: s, name: String(name || s).trim() }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const code = data?.error?.code || data?.code || `HTTP_${res.status}`;
+    const msg = data?.error?.message || data?.message || res.statusText || "request failed";
+    return {
+      text: `Could not create grid '${s}' (${code}): ${msg}` + (code === "HTTP_409" || /exists|taken/i.test(msg) ? " Try a different slug." : ""),
+      structured: { error: { code, message: msg } },
+    };
+  }
+  const finalSlug = data.slug ?? s;
+  const lines = [`Created grid ${finalSlug} — the user is its admin.`];
+  if (data.poll_url) lines.push("Its TLS certificate is still provisioning, so the first page may take a minute to serve.");
+  lines.push(`Now re-call grid_plug with grid: ${finalSlug}.`);
+  return {
+    text: lines.join("\n"),
+    structured: { created: true, grid: { slug: finalSlug, name: data.name ?? String(name || s) } },
+  };
+}
+
+// ── Inline-source secret scan ────────────────────────────────────────────────
+// Field bug (2026-07-27): the model embedded the user's OpenRouter API key in
+// a public inline page ("so they can test now"). A plugged page's source is
+// readable by anyone who can open it — a pasted key is leaked the moment the
+// URL is shared. Hard-block the obvious key shapes client-side, before the
+// upload. (Not a guarantee — a determined model can obfuscate — but it stops
+// the good-faith "embed it so it works" path cold.)
+const SECRET_PATTERNS = [
+  [/sk-or-v1-[A-Za-z0-9]{16,}/, "an OpenRouter API key"],
+  [/sk-ant-[A-Za-z0-9_-]{16,}/, "an Anthropic API key"],
+  [/sk-proj-[A-Za-z0-9_-]{16,}/, "an OpenAI API key"],
+  [/\bsk-[A-Za-z0-9]{32,}\b/, "an OpenAI-style secret key"],
+  [/AIza[0-9A-Za-z_-]{30,}/, "a Google API key"],
+  [/ghp_[A-Za-z0-9]{30,}/, "a GitHub token"],
+  [/github_pat_[A-Za-z0-9_]{30,}/, "a GitHub fine-grained token"],
+  [/AKIA[0-9A-Z]{16}/, "an AWS access key id"],
+  [/xox[baprs]-[A-Za-z0-9-]{10,}/, "a Slack token"],
+];
+
+export function scanInlineSecrets(text) {
+  if (typeof text !== "string" || text.length === 0) return null;
+  for (const [re, label] of SECRET_PATTERNS) {
+    if (re.test(text)) return label;
+  }
+  return null;
+}
+
+export function secretBlockMessage(label, where) {
+  return (
+    `Blocked: the ${where} contains what looks like ${label}. A plugged page is PUBLIC — anyone who opens it can read its source, so a pasted API key is leaked the moment the URL is shared. ` +
+    `Remove the key, and if it was ever live, tell the user to rotate it. ` +
+    `If the app needs to call an LLM, that is a RUNTIME app, not an inline page: needs: { ai: true } gives it CloudGrid's managed AI gateway with NO API key at all, and other keys go in grid secrets set — both stay server-side. Runtime apps build on the local edition (Claude Desktop/Code or a terminal).`
+  );
 }
 
 // ── Direct-API tools (both editions) ───────────────────────────────────────────
@@ -1005,6 +1096,12 @@ export function errorGuidance({ status, code, edition, isEdit, isAnon, signedIn 
       : "Not signed in. Ask the user: sign in (grid_login) to publish to their grid, OR publish anonymously now (re-call grid_plug with anon: true) - it goes live immediately with a claim_url + owner_token to claim into their account later. Do not silently fail; offer both.";
   }
   if (status === 403) {
+    // NO_ACTIVE_ORG is not a role problem — the account has no grid at all.
+    // The generic pull/pickup hint here sent a first-time user in circles
+    // (field bug 2026-07-27); route them to in-flow grid creation instead.
+    if (code === "NO_ACTIVE_ORG") {
+      return "The account has no grid yet. Do not send the user to the console — create one from here: suggest a short slug, confirm it with the user, call grid_create_grid, then re-call grid_plug with grid: <slug>.";
+    }
     return "You lack the role to plug this target. To re-plug someone else's entity, pull it first (grid_pull), or make your own copy (grid_pickup).";
   }
   // ── Consent-gated report offer (Task 34) ──────────────────────────────────
@@ -1146,6 +1243,23 @@ export async function runPlug(ctx, input, deps = {}) {
     throw new Error(
       "The hosted server cannot read local files — pass the source inline via `html` or `artifact_files`.",
     );
+  }
+  // Secret scan on inline sources — a plugged page is public; block pasted API
+  // keys before they leave the machine. (Field bug 2026-07-27: an OpenRouter
+  // key was embedded in a public page "so they can test now".)
+  if (hasHtml) {
+    const hit = scanInlineSecrets(html);
+    if (hit) throw new Error(secretBlockMessage(hit, "inline `html`"));
+  }
+  if (hasArtifacts) {
+    for (const f of artifact_files) {
+      let body = f?.content;
+      if (typeof body === "string" && f?.encoding === "base64") {
+        try { body = Buffer.from(body, "base64").toString("utf8"); } catch { /* scan raw */ }
+      }
+      const hit = scanInlineSecrets(body);
+      if (hit) throw new Error(secretBlockMessage(hit, `artifact file \`${f?.path ?? "?"}\``));
+    }
   }
   let zipSingleHtml = null;
   if (zipSource) {

@@ -196,8 +196,11 @@ try {
     const single = await resolveGridOrAsk(ctx, { token: "jwt", suppliedGrid: undefined, edition: "web" }, { fetchUserOrgs: oneGrid });
     check("resolveGridOrAsk single grid → single decision", single.single?.slug === "acme");
 
+    // Zero grids no longer falls through into a guaranteed 403 NO_ACTIVE_ORG
+    // (field bug 2026-07-27): it returns the create-a-grid ask instead.
     const none = await resolveGridOrAsk(ctx, { token: "jwt", suppliedGrid: undefined, edition: "web" }, { fetchUserOrgs: noGrids });
-    check("resolveGridOrAsk no grids → proceed (fall through)", none.proceed === true && none.grid === undefined);
+    check("resolveGridOrAsk no grids → needs_grid_create ask (never a 403 dead end)",
+      none.picker?.structured?.needs_grid_create === true && /grid_create_grid/.test(none.picker?.text ?? ""));
   }
 } finally {
   globalThis.fetch = realFetch;

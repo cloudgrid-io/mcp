@@ -468,6 +468,40 @@ try {
     check("target_entity_id primary: /plug targets it directly", madeCalls.find((c) => c.url.endsWith("/api/v2/plug"))?.form?.get("target_entity_id") === "ent-primary");
   }
 
+  // ── Secret scan: pasted API keys never reach the wire (field bug 2026-07-27:
+  //    an OpenRouter key was embedded in a public page "so they can test now") ──
+  {
+    const secretCtx = makeCtx({ token: "jwt-s", edition: "local" });
+    const fakeKey = "sk-or-v1-" + "a1b2c3d4".repeat(4);
+    const before = calls.length;
+    let blocked = null;
+    try {
+      await runPlug(secretCtx, { html: `<script>const KEY = "${fakeKey}";</script>`, grid: "acme" });
+    } catch (e) {
+      blocked = e.message;
+    }
+    check("inline html with an API key is BLOCKED before any network call",
+      blocked !== null && calls.length === before);
+    check("secret block names the key type and the fix (needs ai / grid secrets)",
+      /OpenRouter/.test(blocked ?? "") && /needs: \{ ai: true \}|grid secrets/.test(blocked ?? ""));
+
+    let blocked2 = null;
+    try {
+      await runPlug(secretCtx, {
+        artifact_files: [{ path: "app.js", content: Buffer.from(`const k="${fakeKey}"`).toString("base64"), encoding: "base64" }],
+        grid: "acme",
+      });
+    } catch (e) {
+      blocked2 = e.message;
+    }
+    check("base64 artifact file with an API key is BLOCKED too", blocked2 !== null && /Blocked/.test(blocked2 ?? ""));
+
+    // A page mentioning keys in prose (no real key shape) still plugs fine.
+    replies = [{ status: 202, body: { entity_id: "ent-clean", slug: "s", grid: "acme", url: "https://acme.cloudgrid.io/s", status: "live" } }];
+    const clean = await runPlug(secretCtx, { html: "<p>Set your API key in settings — never paste sk-... keys into pages.</p>", grid: "acme" });
+    check("prose about keys (no real key shape) is NOT blocked", clean?.structured?.entity_id === "ent-clean");
+  }
+
   // ── parseManifestName unit checks ──────────────────────────────────────────
   check("parseManifestName: top-level name", parseManifestName("name: foo\nservices: {}\n") === "foo");
   check("parseManifestName: quoted", parseManifestName('name: "bar baz"\n') === "bar baz");

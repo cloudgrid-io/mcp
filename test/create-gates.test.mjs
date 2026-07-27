@@ -116,6 +116,20 @@ try {
     check("explicit valid grid bypasses the grid gate (deploy attempted)", globalThis.__PLUG_CALLS__ === 1);
   }
 
+  // ── ZERO-GRID gate: signed in but member of no grid → needs_grid_create,
+  //    never a silent 403 NO_ACTIVE_ORG dead end (field bug 2026-07-27: the
+  //    model sent a first-time user to the console to create a grid by hand). ──
+  {
+    globalThis.__GRIDS__ = [];
+    resetPlug();
+    const h = captureDeploy(makeCtx({ token: "jwt" }));
+    const res = await h(HTML);
+    check("authed zero-grid create did NOT deploy", globalThis.__PLUG_CALLS__ === 0);
+    check("authed zero-grid create returns needs_grid_create", parse(res).needs_grid_create === true);
+    check("zero-grid ask routes to grid_create_grid, not the console",
+      /grid_create_grid/.test(res?.content?.[0]?.text ?? "") && !/console\.cloudgrid\.io/.test(res?.content?.[0]?.text ?? ""));
+  }
+
   // ── EDIT bypass: target_entity_id skips both gates ──
   {
     globalThis.__GRIDS__ = [];
