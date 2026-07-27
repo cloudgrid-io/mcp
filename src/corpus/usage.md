@@ -39,7 +39,7 @@ npx skills add cloudgrid-io/skills
 /plugin install cloudgrid
 ```
 - **Find it under `/plugin`**; the skills also show under `/skills` (labeled Plugin).
-- Invoke as **`/cloudgrid:plug`** (plugin namespace + short skill name, like `superpowers:brainstorming`), or describe the task.
+- Invoke as **`/cloudgrid:plug`** (plugin namespace + short skill name), or describe the task.
 
 ### Route 3 — the MCP server
 ```
