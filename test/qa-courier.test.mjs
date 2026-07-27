@@ -40,7 +40,11 @@ function stubSink() {
 function makeCtx({ token = null, sink, loggerOpts = {}, withLogger = true } = {}) {
   const ctx = {
     edition: "web",
-    state: { pendingLoginCode: null, lastAnonClaim: null, lastDrop: null, anonCookie: null, client: { name: "test", version: "1" } },
+    // authChoiceOffered: the sign-in-vs-guest ask already surfaced in this
+    // session (the auth hard gate would otherwise intercept the first
+    // unauthenticated anon: true create — see create-gates.test.mjs, which
+    // owns that contract; this test is about the QA courier, post-gate).
+    state: { pendingLoginCode: null, lastAnonClaim: null, lastDrop: null, anonCookie: null, authChoiceOffered: true, client: { name: "test", version: "1" } },
     canOpenBrowser: false,
     getToken: async () => token,
     getActiveGrid: async () => null,
