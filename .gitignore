@@ -3,3 +3,4 @@ node_modules/
 .dev.vars
 cloudgrid.mcpb
 .claude/
+WORKER-REPORT.md
