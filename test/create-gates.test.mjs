@@ -74,13 +74,21 @@ try {
     check("no-auth create offers sign-in AND anonymous", /grid_login/.test(res?.content?.[0]?.text ?? "") && /anon/i.test(res?.content?.[0]?.text ?? ""));
   }
 
-  // ── AUTH gate bypass: anon:true proceeds (reaches the wire → our mock throws the sentinel) ──
+  // ── AUTH gate is NOT model-bypassable (field bug 2026-07-26, Claude web):
+  //    the FIRST unauthenticated create in a session returns needs_auth EVEN
+  //    with anon:true — the model cannot self-serve a silent guest publish.
+  //    After the ask was surfaced (same session state), anon:true proceeds. ──
   {
     globalThis.__GRIDS__ = [];
     resetPlug();
-    const h = captureDeploy(makeCtx({ token: null }));
+    const ctx = makeCtx({ token: null });
+    const h = captureDeploy(ctx);
+    const first = await h({ ...HTML, anon: true });
+    check("first anon:true create is still gated (no deploy)", globalThis.__PLUG_CALLS__ === 0);
+    check("first anon:true create returns needs_auth", parse(first).needs_auth === true);
+    check("gate marks the session (authChoiceOffered)", ctx.state.authChoiceOffered === true);
     await h({ ...HTML, anon: true });
-    check("anon:true bypasses the auth gate (deploy attempted)", globalThis.__PLUG_CALLS__ === 1);
+    check("anon:true AFTER the ask proceeds (deploy attempted)", globalThis.__PLUG_CALLS__ === 1);
   }
 
   // ── GRID gate: authed, >1 grid, no grid → needs_grid, no deploy ──
