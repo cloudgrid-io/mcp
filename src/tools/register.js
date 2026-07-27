@@ -23,6 +23,7 @@ import {
   runPull,
   runPlug,
   runPickup,
+  runCreateGrid,
   runVisibility,
   runSource,
   runCheckDeploy,
@@ -180,6 +181,38 @@ export function registerTools(server, ctx) {
     async (input) => {
       try {
         return okResult(await runPull(ctx, input || {}));
+      } catch (err) {
+        return fail(err.message);
+      }
+    },
+  );
+
+  // grid_create_grid — create a grid for the signed-in user (POST /api/v2/grids,
+  // the same call as the CLI `grid create grid <slug>`). Exists so a first-time
+  // user with NO grid is never sent to the console: grid_plug returns
+  // needs_grid_create in that case, and this tool closes the loop in-chat.
+  reg(
+    "grid_create_grid",
+    {
+      description: "Create a new grid (workspace) for the signed-in user — they become its admin. Use when the account has no grid yet (grid_plug returns needs_grid_create, or a plug fails with NO_ACTIVE_ORG): suggest a short slug from the user's name or app, CONFIRM it with the user (the slug is permanent and appears in URLs), create, then re-call grid_plug with grid: <slug>. Never send the user to the console to create a grid by hand. Requires sign-in. Calls the API directly (both editions).",
+      inputSchema: {
+        slug: z.string().describe("The grid slug: 3-40 lowercase letters, digits, or hyphens, starting with a letter. Permanent — confirm with the user before creating."),
+        name: z.string().optional().describe("Display name (defaults to the slug)."),
+      },
+      outputSchema: {
+        created: z.boolean().optional().describe("True when the grid was created."),
+        grid: z.object({
+          slug: z.string().describe("The new grid's slug — pass it to grid_plug as `grid`."),
+          name: z.string().optional().describe("Its display name."),
+        }).optional(),
+        needs_auth: z.boolean().optional().describe("Sign-in required first (grid_login)."),
+        error: z.object({ code: z.string(), message: z.string().optional() }).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+    },
+    async (input) => {
+      try {
+        return okResult(await runCreateGrid(ctx, input || {}));
       } catch (err) {
         return fail(err.message);
       }

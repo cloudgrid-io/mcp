@@ -50,7 +50,7 @@ try {
     check(`exposes ${t}`, names.includes(t));
   }
   // Tool-name cleanup: the canonical primary names are present (both editions).
-  for (const nm of ["grid_get_template", "grid_get_app_source", "grid_list_grids", "grid_pickup", "grid_pull", "grid_visibility", "grid_check_deploy"]) {
+  for (const nm of ["grid_get_template", "grid_get_app_source", "grid_list_grids", "grid_create_grid", "grid_pickup", "grid_pull", "grid_visibility", "grid_check_deploy"]) {
     check(`exposes ${nm}`, names.includes(nm));
   }
   // Retired copy/source verbs must NOT be advertised (CLI dropped fork/remix/download).
