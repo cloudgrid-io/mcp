@@ -1240,6 +1240,15 @@ export async function runPlug(ctx, input, deps = {}) {
         "may accompany a .zip `path` — it becomes the index.html over the archive's assets.",
     );
   }
+  // M3: a create/re-plug with NO source at all is a caller mistake — fail it
+  // here with the source list instead of letting it wander into an obscure
+  // downstream error.
+  if (!hasHtml && !hasArtifacts && !hasPath) {
+    throw new Error(
+      "No source to plug. Pass exactly one of: `html` (a single inline HTML document), " +
+        "`artifact_files` (multiple inline files), or `path` (a local file/folder/zip, local edition only).",
+    );
+  }
   if (ctx.edition === "web" && hasPath) {
     throw new Error(
       "The hosted server cannot read local files — pass the source inline via `html` or `artifact_files`.",
