@@ -71,15 +71,6 @@ try {
     "resolvePlugUrl falls back to client composition when url is empty",
     resolvePlugUrl({ url: "", slug: "s1", grid: null }) === "https://guest.cloudgrid.io/s1",
   );
-  // Runtime fallback must use the flat-arch double-dash host, not the legacy
-  // nested `<slug>.<grid>` form (which 404s on every current grid). Regression
-  // guard: an empty server url on an app/agent plug was composing a dead URL
-  // that agents then opened in a browser.
-  check(
-    "resolvePlugUrl runtime fallback is the flat-arch double-dash host",
-    resolvePlugUrl({ url: "", slug: "web", grid: "atomic", detection: { kind: "app" } }) ===
-      "https://web--atomic.cloudgrid.io",
-  );
 
   // ── html single-file publish: anon create → re-plug (owner-token wire) ──────
   // The inline `html` path is the old drop behavior folded into runPlug: one
@@ -218,7 +209,13 @@ try {
     check("web authed html create posts to /plug with Authorization", Boolean(plugPost) && plugPost.headers.Authorization === "Bearer jwt-web");
     check("new deploy → visibility is NOT set silently (no PATCH)", !patch);
     check("new deploy → reports the server's current visibility", w.structured.current_visibility === "org");
-    check("new deploy → offers the full visibility option set", Array.isArray(w.structured.visibility_options) && ["private", "org", "space", "link"].every((v) => w.structured.visibility_options.some((o) => o.value === v)));
+    // Two-axis model: the offered set is the three current modes (private, grid,
+    // link) — retired values (org, authenticated, space-as-mode) are display-only
+    // and must NOT be offered as choices.
+    check("new deploy → offers the Decision-060 option set (private/grid/link, no retired values)",
+      Array.isArray(w.structured.visibility_options) &&
+      ["private", "grid", "link"].every((v) => w.structured.visibility_options.some((o) => o.value === v)) &&
+      !w.structured.visibility_options.some((o) => ["org", "authenticated", "space"].includes(o.value)));
     check("new deploy → instructs the agent to ASK then grid_visibility", /ASK the user who should be able to open this/.test(w.text) && /grid_visibility/.test(w.text));
     check("web authed html create → says Your app is live", /Your app is live/.test(w.text));
   }

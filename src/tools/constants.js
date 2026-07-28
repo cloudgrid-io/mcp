@@ -29,12 +29,20 @@ export const ANON_HTML_MAX_BYTES = 2_000_000;
 export const AUTHED_HTML_MAX_BYTES = 25_000_000;
 export const CONSOLE_URL = "https://console.cloudgrid.io/";
 
+// Display labels for visibility values (two-axis model). The OPTIONS list is what
+// the post-plug ask offers; the LABELS map also keeps legacy keys (org,
+// authenticated, space) so an entity's CURRENT stored value still renders — do
+// not offer those as choices.
+export const VISIBILITY_OPTIONS = ["private", "grid", "link"];
 export const VISIBILITY_LABELS = {
   private: "Only you",
-  org: "Your grid",
-  authenticated: "Anyone signed in",
-  space: "A space",
+  grid: "Everyone in your grid",
   link: "Anyone with the link",
+  // display-only (legacy stored values / axis renderings):
+  org: "Everyone in your grid",
+  authenticated: "Anyone with the link, sign-in required",
+  space: "Selected spaces",
+  public: "Anyone, findable by search",
 };
 
 // ── Widget resources (ChatGPT Apps SDK, web edition only) ────────────────────

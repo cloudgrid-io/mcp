@@ -40,11 +40,17 @@ The command prints the outlet URL. Hand that URL to the user.
 
 `grid visibility set <slug> <mode>` accepts:
 
-- `link` — anyone with the URL can open it. Use this for sharing.
+- `link` — anyone with the URL can open it. Use this for sharing. Add
+  `--require-signin` for signed-in accounts only, `--indexed` to be findable by
+  search engines.
 - `private` — only the owner.
-- `authenticated` — any logged-in user.
-- `org` — members of the org.
-- `space` — members of the entity's space.
+- `grid` — everyone in the grid.
+
+Finer control uses the two axes instead of a mode:
+`grid visibility set <slug> --inside <private|spaces|grid> --outside <none|link|public> [--space <slug>...] [--require-signin]`
+(`--outside public` = anyone, search-indexed. `authenticated` is retired — it
+equals `--inside private --outside link --require-signin`; `org` is gone — use
+`grid`.)
 
 Default to `link` when the user says "share" or "make it public". Confirm before
 using a wider mode than they asked for.
