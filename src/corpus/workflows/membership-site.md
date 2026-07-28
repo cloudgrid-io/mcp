@@ -53,7 +53,7 @@ workflow:
 
 ## 4. Scaffold
 
-`grid_create_project` an app `<name>`. It scaffolds the project folder and writes a `cloudgrid.yaml` with an EMPTY
+`grid new <name>`. It scaffolds the project folder and writes a `cloudgrid.yaml` with an EMPTY
 `services: {}`. No server entity exists yet — the first `grid plug` auto-creates
 it from the manifest (honoring its `name:`) and writes `.cloudgrid/link.json`.
 Then write the app under **`services/web/`** and
@@ -99,11 +99,11 @@ never set `needs:` and `requires:` together (the validator rejects it).
 
 ## 6. Config / secrets
 
-- Stripe + auth secrets → `grid_set_secret` (set the vault items `stripe-live-key`,
+- Stripe + auth secrets → `grid secrets set` (set the vault items `stripe-live-key`,
   `stripe-webhook-secret`, `auth-provider-key` that the `vault:` block maps from).
   The deployer injects each as its env var at runtime and under `grid dev`.
 - Non-secret config (auth publishable key `NEXT_PUBLIC_...`, Stripe price id) →
-  `grid_set_env` / `services.web.env`.
+  `grid env set` / `services.web.env`.
 - Do **NOT** set the DB connection vars yourself (`DATABASE_MONGODB_URL` / legacy
   `MONGODB_URL`) — the grid injects them.
 
@@ -116,7 +116,7 @@ and vault secrets before deploying. Don't require it.
 
 Deploy the folder with `grid_plug`. A **runtime deploy is ASYNC**: the first
 response is `status: "building"`, NOT a live URL yet.
-- Poll `grid_status` (or the returned poll_url) until the entity is live.
+- Poll `grid_check_deploy` (or the returned poll_url) until the entity is live.
 - Surface a liveness signal while it builds — never a bare silent wait.
 - Once live, register the `/api/webhook` URL as the Stripe webhook endpoint,
   copy the signing secret into the `stripe-webhook-secret` vault item, and

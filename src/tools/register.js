@@ -877,7 +877,7 @@ export function registerTools(server, ctx) {
     "grid_get_template",
     {
       description:
-        "Load a specific CloudGrid workflow, template, example, rule, or doc by name — deterministic retrieval from the bundled corpus (complements the fuzzy search_cloudgrid_documentation). Use after grid_start to pull the exact recipe/template you need, e.g. grid_get_template({kind:\"workflow\", name:\"presentation\"}) then grid_get_template({kind:\"template\", name:\"deck\"}).",
+        "Load a specific CloudGrid workflow, template, example, rule, or doc by name — deterministic retrieval from the bundled corpus. Use after grid_start to pull the exact recipe/template you need, e.g. grid_get_template({kind:\"workflow\", name:\"presentation\"}) then grid_get_template({kind:\"template\", name:\"deck\"}).",
       inputSchema: {
         kind: z
           .enum(["workflow", "template", "example", "rule", "troubleshooting", "doc"])

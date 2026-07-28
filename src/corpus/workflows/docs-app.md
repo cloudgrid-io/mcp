@@ -45,7 +45,7 @@ and builds your project.
 
 ## 3. Scaffold
 
-`grid_create_project` an app `<name>`. `init` creates the entity + `.cloudgrid/link.json`
+`grid new <name>`. `init` creates the entity + `.cloudgrid/link.json`
 and writes a `cloudgrid.yaml`. Then fetch the template:
 `grid_get_template("template", "docs-app")` — a minimal Astro Starlight project:
 
@@ -101,7 +101,7 @@ looks for `services/site/` and fails with "Service directory not found". No
 Deploy the folder with `grid_plug`. The platform (Cloud Build) runs `npm run
 build` for you and serves the `dist/` output — you do NOT need to build first. A build deploy is **ASYNC**: the first response is
 `status: "building"` with a `poll_url` / entity, NOT a live URL yet.
-- Poll `grid_status` (or the returned poll_url) until the entity is live.
+- Poll `grid_check_deploy` (or the returned poll_url) until the entity is live.
 - Surface a liveness signal while it builds — never a bare silent wait.
 - Only once it is live, return the deployed URL.
 

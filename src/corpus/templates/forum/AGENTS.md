@@ -104,7 +104,7 @@ dev` and runtime.
   injects that vault item as `process.env.ENV_VAR`. This blueprint maps
   `AUTH_PROVIDER_SECRET_KEY` and `AUTH_PROVIDER_PUBLISHABLE_KEY`. Rename the env
   keys to whatever the provider SDK expects (see §4) and set the vault items with
-  `grid_set_secret` / the org vault — do not commit keys.
+  `grid secrets set` / the org vault — do not commit keys.
 - **AI (optional)** — if you add `needs: { ai: true }` (e.g. auto-moderation or
   summarize-thread), the grid injects **`RUNTIME_GATEWAY_URL`**; call it via
   `@cloudgrid-io/runtime`. Not required for the base forum.
@@ -169,18 +169,18 @@ A forum is a runtime (built + deployed container) app — **local edition**
 
 1. `grid_login_status` → `grid_login` if needed. Respect the grid picker
    (ask which grid if the user has more than one).
-2. `grid_create_project` an app `<name>` — scaffolds the project folder and a
+2. `grid new <name>` — scaffolds the project folder and a
    `cloudgrid.yaml` with empty `services: {}`. No server entity exists yet — the
    first plug auto-creates it from the manifest (honoring its `name:`) and
    writes `.cloudgrid/link.json`.
 3. Write the app under `services/web/` per §1, then fill `cloudgrid.yaml` to the
    active shape: `name`, `services.web { type: nextjs, path: / }`, `needs:
    { database: true }`, and the `vault:` mappings for the auth keys.
-4. Set the auth secrets: `grid_set_secret` (or the org vault) for the provider
+4. Set the auth secrets: `grid secrets set` (or the org vault) for the provider
    keys. Do NOT set `DATABASE_MONGODB_URL` — the grid injects it.
 5. (Optional) `grid dev` to run locally against injected Mongo before shipping.
 6. `grid_plug` to deploy. A runtime deploy is **ASYNC** — the first response
-   is `status: building`, not a live URL. Poll `grid_status` (or the returned
+   is `status: building`, not a live URL. Poll `grid_check_deploy` (or the returned
    poll_url) until live; surface a liveness signal while it builds, never a bare
    spinner.
 7. Only once live, return the deployed app URL. Re-plug the SAME entity to update

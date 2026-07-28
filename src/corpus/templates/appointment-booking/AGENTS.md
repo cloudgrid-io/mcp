@@ -102,7 +102,7 @@ clients racing for the same slot cannot both win.
     STRIPE_KEY: stripe-live-key                  # only if you take deposits
     STRIPE_WEBHOOK_SECRET: stripe-webhook-secret # only if you take deposits
   ```
-  Set the vault items ONCE with `grid_set_secret` (or `grid secrets set`), then
+  Set the vault items ONCE with `grid secrets set` (or `grid secrets set`), then
   the deployer injects each as the named env var (`process.env.AUTH_PROVIDER_KEY`,
   `process.env.STRIPE_KEY`, …) at runtime and under `grid dev`. Do NOT commit
   keys; do NOT set secrets in `services.web.env` (that block is for non-secret
@@ -163,20 +163,20 @@ you want client accounts.
 
 1. `grid_login_status` → `grid_login` if needed. Respect the grid picker
    (ask which grid if the user has more than one).
-2. `grid_create_project` an app `<name>` — it scaffolds the project folder and
+2. `grid new <name>` — it scaffolds the project folder and
    a `cloudgrid.yaml` with empty `services: {}`. No server entity exists yet —
    the first plug auto-creates it from the manifest (honoring its `name:`) and
    writes `.cloudgrid/link.json`.
 3. Write the app under `services/web/` and set `cloudgrid.yaml` to the active
    shape: `name` + `services.web{type: nextjs, path: /}` + `needs:{database:true}`
    + the `vault:` block. (Leave the `reminders` cron service COMMENTED — see §7.)
-4. Set the secrets: `grid_set_secret` for `auth-provider-key` (and, if taking
+4. Set the secrets: `grid secrets set` for `auth-provider-key` (and, if taking
    deposits, `stripe-live-key`, `stripe-webhook-secret` — the vault item keys the
    `vault:` block maps from). Non-secret config (auth publishable key, price ids)
-   → `grid_set_env` / `services.web.env`. Do NOT set `DATABASE_MONGODB_URL`
+   → `grid env set` / `services.web.env`. Do NOT set `DATABASE_MONGODB_URL`
    yourself — the grid injects it.
 5. `grid_plug` to deploy. A runtime deploy is **ASYNC** — the first response
-   is `status: building`, not a live URL. Poll `grid_status` (or the returned
+   is `status: building`, not a live URL. Poll `grid_check_deploy` (or the returned
    poll_url) until live; surface a liveness signal while it builds, never a bare
    silent wait.
 6. If taking deposits, once live add the `/api/webhook` URL as the Stripe webhook

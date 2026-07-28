@@ -185,7 +185,7 @@ hosted edition cannot build a runtime container.
    the `vault:` block).
 2. `grid plug --no-deploy` — registers the entity from the manifest (honors its
    `name:`) and writes `.cloudgrid/link.json`, without building yet (the
-   `grid_create_project` MCP tool does the same).
+   `grid new` CLI command does the same).
 3. Store the secrets the vault block maps:
    `grid secrets set stripe-live-key sk_live_…`,
    `grid secrets set stripe-webhook-secret whsec_…`,
