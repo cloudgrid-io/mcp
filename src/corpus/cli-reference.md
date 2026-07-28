@@ -90,7 +90,7 @@ grid grid
 | `logs [name]` | Stream entity logs |
 | `open [name]` | Open the entity URL in the browser |
 | `info [name]` / `builds [name]` | Entity metadata; recent deploys |
-| `visibility set <slug> <mode>` | private \| authenticated \| org \| link |
+| `visibility set <slug> <mode>` | private \| grid \| link — or the axes: `--inside <private\|spaces\|grid> --outside <none\|link\|public>` (+ `--require-signin`, `--space <slug>`) |
 | `rollback` / `versions` | Roll back to a prior deploy; list/tag minted versions |
 | `env` / `secrets` | Manage runtime env vars and secrets (secret values are never printed) |
 | `grid` / `list` | List what's on your hub / org |

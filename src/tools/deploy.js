@@ -13,6 +13,7 @@ import {
   AUTHED_HTML_MAX_BYTES,
   CONSOLE_URL,
   VISIBILITY_LABELS,
+  VISIBILITY_OPTIONS,
   APPS_WIDGETS_ENABLED,
   GRID_PICKER_URI,
   PLUG_UPLOAD_TIMEOUT_MS,
@@ -316,8 +317,8 @@ const GUEST_ORG_SLUG = "guest";
 // `<slug>--<grid>.cloudgrid.io`), so it must never be the primary source:
 //   - inspiration (HTML drops): path-based at the org apex
 //       https://<grid>.cloudgrid.io/<slug>
-//   - runtime (app/agent):      flat-arch double-dash host
-//       https://<slug>--<grid>.cloudgrid.io
+//   - runtime (app/agent):      subdomain
+//       https://<slug>.<grid>.cloudgrid.io
 // Anonymous drops are grid-less in the response (`grid: null`); they live under
 // the Guest Org, so the apex slug is the constant `guest`.
 function composePlugUrl(data) {
@@ -326,11 +327,7 @@ function composePlugUrl(data) {
   const grid = data?.grid || GUEST_ORG_SLUG;
   const kind = data?.detection?.kind;
   if (kind === "app" || kind === "agent") {
-    // Flat-arch host: runtime entities serve at `<slug>--<grid>.cloudgrid.io`
-    // (double-dash), NOT the legacy nested `<slug>.<grid>` form — the latter
-    // 404s on every current grid. Still fallback-only; the server's `data.url`
-    // remains the primary source (resolvePlugUrl).
-    return `https://${slug}--${grid}.cloudgrid.io`;
+    return `https://${slug}.${grid}.cloudgrid.io`;
   }
   // inspiration (and any unknown/static kind) — path-based at the org apex.
   return `https://${grid}.cloudgrid.io/${slug}`;
@@ -1750,14 +1747,14 @@ export async function runPlug(ctx, input, deps = {}) {
     const current = typeof data.visibility === "string" ? data.visibility : null;
     structured.console_url = CONSOLE_URL;
     if (current) structured.current_visibility = current;
-    structured.visibility_options = Object.entries(VISIBILITY_LABELS).map(([v, l]) => ({ value: v, label: l }));
+    structured.visibility_options = VISIBILITY_OPTIONS.map((v) => ({ value: v, label: VISIBILITY_LABELS[v] }));
     lines.push(`Manage all your apps in your grid: ${CONSOLE_URL}`);
     lines.push(
       `Now ASK the user who should be able to open this${current ? ` (currently ${VISIBILITY_LABELS[current] ?? current})` : ""}, then set their choice with grid_visibility — do not decide it for them. Options: ${
-        Object.entries(VISIBILITY_LABELS)
-          .map(([v, l]) => `${v} (${l})`)
+        VISIBILITY_OPTIONS
+          .map((v) => `${v} (${VISIBILITY_LABELS[v]})`)
           .join("; ")
-      }.`,
+      }. Finer control: a sign-in-required link (require_signin), search-indexed (indexed), or selected spaces (inside: spaces).`,
     );
   }
   return { text: lines.join("\n"), structured };
@@ -1848,7 +1845,7 @@ export async function runPickup(ctx, { id, into_org_slug, name, source_version_i
 // direct API — works on the hosted edition where the CLI-wrapping share tool is
 // unavailable. Kind-aware routing (see below). Defaults to the drop made in this
 // session, so "make it private" needs no ids.
-export async function runVisibility(ctx, { target, visibility, kind, org }) {
+export async function runVisibility(ctx, { target, visibility, inside, outside, require_signin, spaces, indexed, kind, org }) {
   const token = await ctx.getToken();
   if (!token) {
     throw new Error("Changing visibility needs an owner. Run grid_login first.");
@@ -1865,32 +1862,78 @@ export async function runVisibility(ctx, { target, visibility, kind, org }) {
     headers["X-CloudGrid-Org"] = orgSlug;
   }
 
-  // Two visibility surfaces with two vocabularies:
-  //   - inspirations: PATCH /api/v2/inspirations/:id       { private|space|authenticated|org|link }
-  //   - runtimes:     PATCH /api/v2/entities/:id/visibility { private|authenticated|grid|link }
-  // Whole-grid visibility is the legacy `org` on inspirations and the canonical
-  // `grid` on runtimes. Normalize the caller's value to `grid`, then map per
-  // route. `space` exists only on inspirations.
-  const vis = visibility === "org" ? "grid" : visibility;
-  const runtimeValue = vis; // private | authenticated | grid | link
-  const inspirationValue = vis === "grid" ? "org" : vis; // private | space | authenticated | org | link
+  // ── Decision 060: two-axis visibility ──────────────────────────────────────
+  // A scope is two independent axes:
+  //   inside  (share_scope):     private | spaces | grid   — who in the grid sees it
+  //   outside (external_access): none | link | public      — reach beyond the grid
+  //   require_signin: link only — the link needs a signed-in CloudGrid account
+  // Legacy positional modes (private|grid|link) still ride the { visibility }
+  // body; `authenticated` is RETIRED as a first-class mode and maps to the axis
+  // body it equals (private + link + require_signin); `org` is rejected;
+  // `public` as a mode is an alias of `link` (the axis value `public` is the
+  // indexed one); `space` maps to inside: spaces and needs the `spaces` list.
+  const normSpaces = [...new Set((spaces || []).map((s) => String(s).trim().toLowerCase()).filter(Boolean))];
+  const useAxes = inside !== undefined || outside !== undefined;
+  let body;
+  let requested; // for the result text when the response is sparse
+  if (useAxes) {
+    if (visibility) throw new Error("Pass either `visibility` or the `inside`/`outside` axes, not both.");
+    if (!inside || !outside) {
+      throw new Error("Both axes are required: inside (private|spaces|grid) and outside (none|link|public).");
+    }
+    if (inside === "spaces" && normSpaces.length === 0) {
+      throw new Error("inside: spaces needs at least one space slug in `spaces`.");
+    }
+    if (inside !== "spaces" && normSpaces.length > 0) {
+      throw new Error("`spaces` only applies with inside: spaces.");
+    }
+    if (require_signin === true && outside !== "link") {
+      throw new Error("require_signin only applies when outside is link.");
+    }
+    body = {
+      share_scope: inside,
+      external_access: outside,
+      ...(require_signin === true ? { require_signin: true } : {}),
+      ...(inside === "spaces" ? { visibility_spaces: normSpaces } : {}),
+    };
+    requested = `inside: ${inside}${inside === "spaces" ? ` (${normSpaces.join(", ")})` : ""}, outside: ${outside}${require_signin === true ? " (sign-in required)" : ""}`;
+  } else {
+    let mode = String(visibility || "").trim().toLowerCase();
+    if (!mode) throw new Error("Pass a visibility mode (private | grid | link), or the inside/outside axes.");
+    if (mode === "org") {
+      throw new Error("'org' visibility is deprecated. Use 'grid' (everyone in the grid).");
+    }
+    if (mode === "public") mode = "link"; // alias; `indexed: true` governs search-indexing
+    if (mode === "authenticated") {
+      // Retired as a first-class mode (Decision 060) — the axis body it equals.
+      body = { share_scope: "private", external_access: "link", require_signin: true };
+      requested = "link with sign-in required (the retired 'authenticated')";
+    } else if (mode === "space") {
+      if (normSpaces.length === 0) {
+        throw new Error("'space' visibility needs the `spaces` list (which space slugs can see it) — or use inside: spaces with outside: none.");
+      }
+      body = { share_scope: "spaces", external_access: "none", visibility_spaces: normSpaces };
+      requested = `selected spaces (${normSpaces.join(", ")})`;
+    } else if (mode === "private" || mode === "grid" || mode === "link") {
+      body = { visibility: mode };
+      if (mode === "grid" && normSpaces.length > 0) body.visibility_spaces = normSpaces;
+      if (mode === "link") body.link_indexed = indexed === true;
+      requested = mode + (mode === "link" && indexed === true ? " (search-indexed)" : "");
+    } else {
+      throw new Error(`Unknown visibility '${visibility}'. Use private | grid | link (public = link alias), or the inside/outside axes.`);
+    }
+  }
 
   const k = kind || ctx.state.lastDrop?.kind || null;
   const isRuntimeKind = k === "app" || k === "agent";
 
-  if (vis === "space" && isRuntimeKind) {
-    throw new Error(
-      "'space' visibility isn't available for runtime apps/agents. Use grid, authenticated, private, or link.",
-    );
-  }
-
-  const patch = async (pathName, value) => {
+  const patch = async (pathName) => {
     let res;
     try {
       res = await fetch(`${API_BASE}${pathName}`, {
         method: "PATCH",
         headers,
-        body: JSON.stringify({ visibility: value }),
+        body: JSON.stringify(body),
       });
     } catch (err) {
       throw new Error(`Could not reach CloudGrid at ${API_BASE}: ${err.message}`);
@@ -1901,33 +1944,53 @@ export async function runVisibility(ctx, { target, visibility, kind, org }) {
     return { res, data, raw };
   };
 
+  // BL634 — BOTH realms take the same realm-scoped visibility PATCH with the
+  // same body vocabulary: /api/v2/entities/:id/visibility (runtimes) and
+  // /api/v2/inspirations/:id/visibility (inspirations).
   const runtimePath = `/api/v2/entities/${encodeURIComponent(id)}/visibility`;
-  const inspirationPath = `/api/v2/inspirations/${encodeURIComponent(id)}`;
+  const inspirationPath = `/api/v2/inspirations/${encodeURIComponent(id)}/visibility`;
 
-  // Route order. `space` is inspiration-only; a known runtime kind goes straight
-  // to the entities route; a known inspiration goes straight to the inspiration
-  // route; an unknown kind tries the runtime route first and falls back to the
-  // inspiration route on a not-found (mirrors runPickup).
+  // Route order: a known runtime kind goes straight to the entities route; a
+  // known inspiration to the inspiration route; unknown tries runtime first and
+  // falls back on a not-found (mirrors runPickup).
   let order;
-  if (vis === "space") order = ["inspiration"];
-  else if (isRuntimeKind) order = ["runtime"];
+  if (isRuntimeKind) order = ["runtime"];
   else if (k === "inspiration") order = ["inspiration"];
   else order = ["runtime", "inspiration"];
 
   let last;
   for (let i = 0; i < order.length; i++) {
     const route = order[i];
-    last = route === "runtime"
-      ? await patch(runtimePath, runtimeValue)
-      : await patch(inspirationPath, inspirationValue);
+    last = await patch(route === "runtime" ? runtimePath : inspirationPath);
     if (last.res.ok) {
-      const lines = [`Visibility is now ${vis}.`];
-      if (last.data?.url) lines.push(last.data.url);
+      const d = last.data || {};
+      // Prefer the server's stored axes (Decision 060 Task 7: authoritative on
+      // the wire); fall back to what we asked for.
+      const lines = [];
+      if (d.share_scope || d.external_access) {
+        const insideLine =
+          d.share_scope === "private" ? "only the owner" :
+          d.share_scope === "spaces" ? `selected spaces${Array.isArray(d.visibility_spaces) && d.visibility_spaces.length ? ` (${d.visibility_spaces.join(", ")})` : ""}` :
+          d.share_scope === "grid" ? "everyone in the grid" : d.share_scope;
+        const outsideLine =
+          d.external_access === "none" ? "no one outside the grid" :
+          d.external_access === "link" ? `anyone with the link${d.require_signin ? " (signed-in accounts only)" : ""}${d.link_indexed ? ", search-indexed" : ""}` :
+          d.external_access === "public" ? "anyone, findable by search engines" : d.external_access;
+        lines.push(`Visibility set — inside the grid: ${insideLine}; outside: ${outsideLine}.`);
+      } else {
+        lines.push(`Visibility is now ${d.visibility || requested}.`);
+      }
+      if (d.url) lines.push(d.url);
       return {
         text: lines.join("\n"),
         structured: {
-          visibility: vis,
-          ...(last.data?.url ? { url: last.data.url } : {}),
+          visibility: d.visibility || (useAxes ? undefined : String(visibility || "").trim().toLowerCase() || undefined),
+          ...(d.share_scope ? { share_scope: d.share_scope } : {}),
+          ...(d.external_access ? { external_access: d.external_access } : {}),
+          ...(d.require_signin !== undefined ? { require_signin: d.require_signin === true } : {}),
+          ...(Array.isArray(d.visibility_spaces) ? { visibility_spaces: d.visibility_spaces } : {}),
+          ...(d.link_indexed !== undefined ? { link_indexed: d.link_indexed === true } : {}),
+          ...(d.url ? { url: d.url } : {}),
         },
       };
     }

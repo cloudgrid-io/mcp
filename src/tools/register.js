@@ -659,15 +659,25 @@ export function registerTools(server, ctx) {
   reg(
     "grid_visibility",
     {
-      description: "Change who can see a CloudGrid inspiration OR runtime app/agent: private, authenticated, grid (everyone in the grid), or link (anyone with the URL). `space` is inspiration-only. Use when the user wants to make something private, restrict who sees it, or open it up — including right after a drop, with no target id needed. Kind-aware: routes runtime apps/agents to the entities visibility surface and inspirations to the inspiration surface automatically. Defaults to the drop made in this session. Requires sign-in. Calls the API directly.",
+      description: "Change who can see a CloudGrid inspiration OR runtime app/agent. Simple modes: private (only the user), grid (everyone in their grid), link (anyone with the URL — add indexed: true to be findable by search engines). Finer control via the TWO AXES instead: inside (who in the grid: private | spaces | grid) and outside (reach beyond it: none | link | public), with require_signin for a members-only link and `spaces` for selected spaces. 'authenticated' is retired (it maps to a sign-in-required link); 'org' is gone — use grid. Use when the user wants to make something private, restrict who sees it, or open it up — including right after a drop, with no target id needed. Kind-aware routing across both surfaces. Defaults to the drop made in this session. Requires sign-in. Calls the API directly.",
       inputSchema: {
-        visibility: z.enum(["private", "space", "authenticated", "grid", "org", "link"]).describe("The new scope. Use `grid` for whole-grid visibility (`org` is the deprecated alias). `space` is inspiration-only."),
+        visibility: z.enum(["private", "grid", "link", "public", "authenticated", "space"]).optional().describe("Simple mode: private | grid | link ('public' is an alias of link — pass indexed: true for search-findable; 'authenticated' is the retired alias for a sign-in-required link; 'space' needs the `spaces` list). Pass either this OR the inside/outside axes."),
+        inside: z.enum(["private", "spaces", "grid"]).optional().describe("Axis 1 — who in the grid can see it: private (only the user), spaces (selected spaces — pass `spaces`), or grid (everyone in the grid). Use together with `outside`, instead of `visibility`."),
+        outside: z.enum(["none", "link", "public"]).optional().describe("Axis 2 — reach beyond the grid: none, link (anyone with the link; add require_signin: true for signed-in accounts only), or public (anyone, and findable by search engines)."),
+        require_signin: z.boolean().optional().describe("With outside: link (or visibility: link) — the link requires a signed-in CloudGrid account."),
+        spaces: z.array(z.string()).optional().describe("Space slugs, for inside: spaces (or the legacy space/grid modes)."),
+        indexed: z.boolean().optional().describe("With visibility: link — make the page search-engine indexable."),
         target: z.string().optional().describe("Entity id. Defaults to this session's last drop."),
         kind: z.enum(["inspiration", "app", "agent"]).optional().describe("Entity kind. Omit to auto-detect from this session's last drop (falls back to trying the runtime surface, then the inspiration surface)."),
         org: z.string().optional().describe("Grid of the entity. Defaults to the active grid."),
       },
       outputSchema: {
-        visibility: z.string().describe("The visibility that was set."),
+        visibility: z.string().optional().describe("The legacy mode that was set, when a simple mode was used."),
+        share_scope: z.string().optional().describe("Stored axis: who in the grid (private | spaces | grid)."),
+        external_access: z.string().optional().describe("Stored axis: reach beyond the grid (none | link | public)."),
+        require_signin: z.boolean().optional().describe("Whether the link requires sign-in."),
+        visibility_spaces: z.array(z.string()).optional().describe("The space slugs, when share_scope is spaces."),
+        link_indexed: z.boolean().optional().describe("Whether the link is search-indexed."),
         url: z.string().optional().describe("URL of the entity, if returned."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
