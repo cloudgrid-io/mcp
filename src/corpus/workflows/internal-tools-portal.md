@@ -54,7 +54,7 @@ deploy steps.
 
 ## 4. Scaffold
 
-`grid_create_project` an app `<name>`. It scaffolds the project folder and writes a `cloudgrid.yaml` with an EMPTY
+`grid new <name>`. It scaffolds the project folder and writes a `cloudgrid.yaml` with an EMPTY
 `services: {}`. No server entity exists yet — the first `grid plug` auto-creates
 it from the manifest (honoring its `name:`) and writes `.cloudgrid/link.json`.
 Then (a) build the app under **`services/web/`**
@@ -100,9 +100,9 @@ following `AGENTS.md`, and (b) fill `cloudgrid.yaml` to the shape below.
 ## 6. Config
 
 - Create the vault items the `vault:` block references (the auth provider's
-  secret + publishable keys, plus any per-tool API secrets) — `grid_set_secret` /
+  secret + publishable keys, plus any per-tool API secrets) — `grid secrets set` /
   vault UI. Never commit them.
-- Non-secret config → `grid_set_env`.
+- Non-secret config → `grid env set`.
 - Do **NOT** set the DB connection vars yourself (`DATABASE_MONGODB_URL` or the
   legacy `MONGODB_URL`) — the grid injects them.
 
@@ -115,7 +115,7 @@ vault env vars before deploying. Don't require it.
 
 Deploy the folder with `grid_plug`. A **runtime deploy is ASYNC**: the first
 response is `status: "building"`, NOT a live URL yet.
-- Poll `grid_status` (or the returned poll_url) until the entity is live.
+- Poll `grid_check_deploy` (or the returned poll_url) until the entity is live.
 - Surface a liveness signal while it builds — never a bare silent wait.
 - Only once it is live, return the deployed app URL (NOT the build/log link).
 

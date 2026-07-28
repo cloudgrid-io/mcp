@@ -52,7 +52,7 @@ edition** (Claude Desktop / Claude Code) or the CLI.
    `services` / `availabilityRules` / `bookings` collections + the double-booking
    guard, how CloudGrid injects the DB and vault secrets, how to wire Stripe +
    auth, and the reminder-cron design).
-2. `grid_create_project` an app `<name>`. It scaffolds the project folder and
+2. `grid new <name>`. It scaffolds the project folder and
    writes a `cloudgrid.yaml` with an EMPTY `services: {}`. No server entity
    exists yet — the first `grid plug` auto-creates it from the manifest
    (honoring its `name:`) and writes `.cloudgrid/link.json`.
@@ -90,9 +90,9 @@ edition** (Claude Desktop / Claude Code) or the CLI.
 
 ## 5. Config (secrets)
 
-- Payment/auth secrets → add the vault items with `grid_set_secret` (e.g.
+- Payment/auth secrets → add the vault items with `grid secrets set` (e.g.
   `stripe-live-key`, `stripe-webhook-secret`, `auth-provider-key`) BEFORE plug so
-  the `vault:` mappings resolve. Non-secret config → `grid_set_env`.
+  the `vault:` mappings resolve. Non-secret config → `grid env set`.
 - Do **NOT** set the DB connection vars yourself (`DATABASE_MONGODB_URL` / legacy
   `MONGODB_URL`) — the grid injects them.
 
@@ -106,7 +106,7 @@ require it.
 
 Deploy the folder with `grid_plug`. A **runtime deploy is ASYNC**: the first
 response is `status: "building"`, NOT a live URL yet.
-- Poll `grid_status` (or the returned poll_url) until the entity is live.
+- Poll `grid_check_deploy` (or the returned poll_url) until the entity is live.
 - Surface a liveness signal while it builds — never a bare silent wait.
 - Only once it is live, return the deployed app URL (NOT the build/log link).
 

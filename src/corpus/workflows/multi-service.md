@@ -35,7 +35,7 @@ Multi-service apps are runtime deploys. They require the **local edition**
 
 ## 3. Scaffold
 
-`grid_create_project` an app. It scaffolds the project folder with an empty
+`grid new`. It scaffolds the project folder with an empty
 `services: {}`. Then:
 
 1. Fill in `cloudgrid.yaml` with the services the app needs.
@@ -100,7 +100,7 @@ For a three-service layout (frontend + backend + cron), see the
 ## 7. Deploy (async)
 
 Deploy the folder with `grid_plug`. A runtime deploy is ASYNC: poll
-`grid_status` until the entity is live. Only then return the deployed URL.
+`grid_check_deploy` until the entity is live. Only then return the deployed URL.
 
 ## 8. Return the live URL + iterate
 

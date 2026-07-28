@@ -24,7 +24,7 @@ edition only.
    the getter, never at module top level (top-level read fails `next build`).
 4. **Secrets via the `vault:` block** → env vars. `STRIPE_KEY`,
    `STRIPE_WEBHOOK_SECRET`, `AUTH_PROVIDER_KEY` map to vault items; set them with
-   `grid_set_secret`, and the deployer injects them at runtime. Read lazily; do
+   `grid secrets set`, and the deployer injects them at runtime. Read lazily; do
    not commit keys or put secrets in `services.web.env`.
 5. **Gate server-side.** Auth answers "who are you"; the `memberships`
    collection answers "have you paid". `app/members/layout.js` checks membership
@@ -60,7 +60,7 @@ vault:
 
 ## Deploy (async, local edition)
 
-`grid_create_project` first (creates the entity + link.json), write the app under
-`services/web/`, set the vault secrets with `grid_set_secret`, `grid_plug`
-(async — poll `grid_status` to a live URL), then register the `/api/webhook`
+`grid new` first (creates the entity + link.json), write the app under
+`services/web/`, set the vault secrets with `grid secrets set`, `grid_plug`
+(async — poll `grid_check_deploy` to a live URL), then register the `/api/webhook`
 URL in Stripe and re-plug. Re-plug the same entity to update the same URL.

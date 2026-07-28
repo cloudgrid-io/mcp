@@ -37,7 +37,7 @@ edition** (Claude Desktop / Claude Code) or the CLI.
 
 ## 3. Scaffold
 
-`grid_create_project` an app `<name>`. It scaffolds the project folder and writes a `cloudgrid.yaml` with an EMPTY
+`grid new <name>`. It scaffolds the project folder and writes a `cloudgrid.yaml` with an EMPTY
 `services: {}`. No server entity exists yet — the first `grid plug` auto-creates
 it from the manifest (honoring its `name:`) and writes `.cloudgrid/link.json`.
 Then (a) write the app under **`services/web/`**,
@@ -83,7 +83,7 @@ before deploying. Don't require it.
 
 ## 6. Config
 
-- API keys / secrets → `grid_set_secret`. Non-secret config → `grid_set_env`.
+- API keys / secrets → `grid secrets set`. Non-secret config → `grid env set`.
 - Do **NOT** set the DB connection vars yourself (`DATABASE_MONGODB_URL` or the
   legacy `MONGODB_URL`) — the grid injects them.
 
@@ -91,7 +91,7 @@ before deploying. Don't require it.
 
 Deploy the folder with `grid_plug`. A **runtime deploy is ASYNC**: the first
 response is `status: "building"`, NOT a live URL yet.
-- Poll `grid_status` (or the returned poll_url) until the entity is live.
+- Poll `grid_check_deploy` (or the returned poll_url) until the entity is live.
 - Surface a liveness signal while it builds — never a bare silent wait.
 - Only once it is live, return the deployed app URL (NOT the build/log link).
 

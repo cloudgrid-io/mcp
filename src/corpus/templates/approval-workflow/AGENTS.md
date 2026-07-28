@@ -146,7 +146,7 @@ routes and the UI agree on what is legal.
 
 ## 6. Deploy steps
 
-1. `grid_create_project` an app `<name>` — scaffolds the project folder and a
+1. `grid new <name>` — scaffolds the project folder and a
    `cloudgrid.yaml` with an empty `services: {}`. No server entity exists yet —
    the first `grid plug` auto-creates it from the manifest (honoring its
    `name:`) and writes `.cloudgrid/link.json`.

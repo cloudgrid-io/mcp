@@ -29,12 +29,12 @@ Operating rules:
 Plug is via grid_plug on every edition: for a single HTML page pass it inline as the html param (works on the hosted MCP too); for a multi-file app write the files and pass a folder path (local MCP / CLI — see rules 18–19: run the CLI as `npx -y @cloudgrid-io/cli@latest`, ready before the plug). A single HTML page plugs synchronously as an inspiration, so you get a URL right away. A user-supplied ZIP archive (local edition): pass its path directly as the path param — it is extracted and plugged as a static app; if the zip is assets-only (e.g. images for a gallery), generate the page and pass it as html alongside the zip path, and it becomes the index.html over the archive's files.
 When you plug a folder that already has a cloudgrid.yaml, grid_plug returns needs_confirmation on the first create instead of plugging — it's asking whether to create a NEW app. Relay that to the user, and once they say yes re-call grid_plug with confirm_new_app: true. To update an existing app instead, pass its target_entity_id.
 
-After a plug: a single HTML page plugs synchronously — the URL is live immediately. A runtime app (folder-based, anything with needs:) builds asynchronously: grid_plug returns status "building". When that happens, call grid_check_deploy every ~15 seconds until it reports "success" or "failed". Do NOT tell the user the app is live until grid_check_deploy confirms success. If it reports "failed", read the build log with grid_view_logs, fix the cause, and re-plug.
+After a plug: a single HTML page plugs synchronously — the URL is live immediately. A runtime app (folder-based, anything with needs:) builds asynchronously: grid_plug returns status "building". When that happens, call grid_check_deploy every ~15 seconds until it reports "success" or "failed". Do NOT tell the user the app is live until grid_check_deploy confirms success. If it reports "failed", read the build log with `grid logs`, fix the cause, and re-plug.
 
 Iteration: when the user asks for changes to something already plugged, edit the source and re-call grid_plug with the same target_entity_id to update in place — the URL stays the same. For a single-HTML page, fetch the current HTML with grid_get_app_source, apply the change, and re-plug inline. For a runtime app, edit the files in the folder and re-plug; the build is async, so poll grid_check_deploy the same way as on the first plug.
 
 When something goes wrong:
-- Build failed or app returning errors: call grid_view_logs to read the build or runtime log. Fix the cause and re-plug.
-- Need to see what is running: call grid_status for the current state of an entity (build status, URL, services, needs).
-- Bad plug, need to revert: call grid_rollback_deploy to roll back to the previous working version.
-- Check what was plugged before: call grid_list_versions to see the version history of an entity.
+- Build failed or app returning errors: run `grid logs` to read the build or runtime log. Fix the cause and re-plug.
+- Need to see what is running: run `grid status` for the current state of an entity (build status, URL, services, needs).
+- Bad plug, need to revert: run `grid rollback` to roll back to the previous working version.
+- Check what was plugged before: run `grid versions` to see the version history of an entity.

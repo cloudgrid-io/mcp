@@ -78,7 +78,7 @@ A user is a member when a `memberships` doc for their `authId` has
     STRIPE_WEBHOOK_SECRET: stripe-webhook-secret
     AUTH_PROVIDER_KEY: auth-provider-key
   ```
-  Set the vault items ONCE with `grid_set_secret` (or `grid secrets set`), then
+  Set the vault items ONCE with `grid secrets set` (or `grid secrets set`), then
   the deployer injects each as the named env var (`process.env.STRIPE_KEY`, etc.)
   at runtime and under `grid dev`. Do NOT commit keys; do NOT set them in
   `services.web.env` (that block is for non-secret config only). Read them
@@ -132,20 +132,20 @@ A user is a member when a `memberships` doc for their `authId` has
 
 1. `grid_login_status` → `grid_login` if needed. Respect the grid picker
    (ask which grid if the user has more than one).
-2. `grid_create_project` an app `<name>` — it scaffolds the project folder and
+2. `grid new <name>` — it scaffolds the project folder and
    a `cloudgrid.yaml` with empty `services: {}`. No server entity exists yet —
    the first plug auto-creates it from the manifest (honoring its `name:`) and
    writes `.cloudgrid/link.json`.
 3. Write the app under `services/web/` and set `cloudgrid.yaml` to the active
    shape: `name` + `services.web{type: nextjs, path: /}` + `needs:{database:true}`
    + the `vault:` block.
-4. Set the secrets: `grid_set_secret` for `stripe-live-key`,
+4. Set the secrets: `grid secrets set` for `stripe-live-key`,
    `stripe-webhook-secret`, `auth-provider-key` (the vault item keys the
    `vault:` block maps from). Non-secret config (publishable auth key, price id)
-   → `grid_set_env` / `services.web.env`. Do NOT set `DATABASE_MONGODB_URL`
+   → `grid env set` / `services.web.env`. Do NOT set `DATABASE_MONGODB_URL`
    yourself — the grid injects it.
 5. `grid_plug` to deploy. A runtime deploy is **ASYNC** — the first response
-   is `status: building`, not a live URL. Poll `grid_status` (or the returned
+   is `status: building`, not a live URL. Poll `grid_check_deploy` (or the returned
    poll_url) until live; surface a liveness signal while it builds, never a bare
    silent wait.
 6. Once live, add the `/api/webhook` URL as the Stripe webhook endpoint and copy
