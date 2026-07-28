@@ -29,7 +29,7 @@ export const ANON_HTML_MAX_BYTES = 2_000_000;
 export const AUTHED_HTML_MAX_BYTES = 25_000_000;
 export const CONSOLE_URL = "https://console.cloudgrid.io/";
 
-// Display labels for visibility values (Decision 060). The OPTIONS list is what
+// Display labels for visibility values (two-axis model). The OPTIONS list is what
 // the post-plug ask offers; the LABELS map also keeps legacy keys (org,
 // authenticated, space) so an entity's CURRENT stored value still renders — do
 // not offer those as choices.

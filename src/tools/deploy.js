@@ -1862,7 +1862,7 @@ export async function runVisibility(ctx, { target, visibility, inside, outside, 
     headers["X-CloudGrid-Org"] = orgSlug;
   }
 
-  // ── Decision 060: two-axis visibility ──────────────────────────────────────
+  // ── Two-axis visibility model ──────────────────────────────────────
   // A scope is two independent axes:
   //   inside  (share_scope):     private | spaces | grid   — who in the grid sees it
   //   outside (external_access): none | link | public      — reach beyond the grid
@@ -1905,7 +1905,7 @@ export async function runVisibility(ctx, { target, visibility, inside, outside, 
     }
     if (mode === "public") mode = "link"; // alias; `indexed: true` governs search-indexing
     if (mode === "authenticated") {
-      // Retired as a first-class mode (Decision 060) — the axis body it equals.
+      // Retired as a first-class mode — the axis body it equals.
       body = { share_scope: "private", external_access: "link", require_signin: true };
       requested = "link with sign-in required (the retired 'authenticated')";
     } else if (mode === "space") {
@@ -1944,7 +1944,7 @@ export async function runVisibility(ctx, { target, visibility, inside, outside, 
     return { res, data, raw };
   };
 
-  // BL634 — BOTH realms take the same realm-scoped visibility PATCH with the
+  // BOTH realms now take the same realm-scoped visibility PATCH with the
   // same body vocabulary: /api/v2/entities/:id/visibility (runtimes) and
   // /api/v2/inspirations/:id/visibility (inspirations).
   const runtimePath = `/api/v2/entities/${encodeURIComponent(id)}/visibility`;
@@ -1964,7 +1964,7 @@ export async function runVisibility(ctx, { target, visibility, inside, outside, 
     last = await patch(route === "runtime" ? runtimePath : inspirationPath);
     if (last.res.ok) {
       const d = last.data || {};
-      // Prefer the server's stored axes (Decision 060 Task 7: authoritative on
+      // Prefer the server's stored axes (stored axes are authoritative on
       // the wire); fall back to what we asked for.
       const lines = [];
       if (d.share_scope || d.external_access) {

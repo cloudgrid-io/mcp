@@ -209,7 +209,7 @@ try {
     check("web authed html create posts to /plug with Authorization", Boolean(plugPost) && plugPost.headers.Authorization === "Bearer jwt-web");
     check("new deploy → visibility is NOT set silently (no PATCH)", !patch);
     check("new deploy → reports the server's current visibility", w.structured.current_visibility === "org");
-    // Decision 060: the offered set is the three current modes (private, grid,
+    // Two-axis model: the offered set is the three current modes (private, grid,
     // link) — retired values (org, authenticated, space-as-mode) are display-only
     // and must NOT be offered as choices.
     check("new deploy → offers the Decision-060 option set (private/grid/link, no retired values)",

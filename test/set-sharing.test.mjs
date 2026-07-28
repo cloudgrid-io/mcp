@@ -1,4 +1,4 @@
-// grid_visibility — Decision 060 two-axis contract.
+// grid_visibility — the two-axis visibility contract.
 //
 // BOTH realms now take the same realm-scoped PATCH with the same vocabulary:
 //   runtimes:     PATCH /api/v2/entities/:id/visibility
