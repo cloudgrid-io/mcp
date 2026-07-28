@@ -1,3 +1,10 @@
+# Changelog
+
+For releases after 0.20.21, see the
+[GitHub Releases page](https://github.com/cloudgrid-io/mcp/releases).
+
+---
+
 ## 0.20.21
 
 - fix(corpus): the ai-app/ai-knowledge-base templates now use @cloudgrid-io/runtime + runtime.ai.chat({ model, ... }) reading RUNTIME_GATEWAY_URL, replacing the stale @cloudgrid-io/ai + dead AI_GATEWAY_URL that made every built AI app fail with AI_UNAVAILABLE 404 (user reports: Tamir, Nataly). Reserved-env-var list + capability-map + all template manifests updated; archetypes test asserts the new SDK.

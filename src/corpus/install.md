@@ -136,8 +136,13 @@ npx -y @cloudgrid-io/mcp
 ```
 
 It wraps the same `grid` CLI and uses the same credentials, so no extra login
-is needed. Remote-capable clients can point at `https://mcp.cloudgrid.io/mcp`
-instead. See [USAGE.md](USAGE.md) for per-client snippets.
+is needed. Remote-capable clients can point at one of two hosted endpoints:
+
+- `https://mcp.cloudgrid.io/mcp` — anonymous-first; no account needed to try it.
+- `https://mcp-connected.cloudgrid.io/mcp` — connected; native OAuth sign-in
+  when you add it (for claude.ai org connectors and clients that support OAuth).
+
+See [USAGE.md](USAGE.md) for per-client snippets.
 
 ### Claude Desktop — one-click install
 
