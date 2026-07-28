@@ -3,7 +3,7 @@
 // Extracted verbatim from src/tools.js (refactor: split tools.js into modules).
 
 import { z } from "zod";
-import { newLoginCode, buildLoginUrl, pollStatusOnce, checkApiConnectivity } from "../auth.js";
+import { newLoginCode, buildLoginUrl, pollStatusOnce, checkApiConnectivity, decodeJwt as decodeJwtAuth } from "../auth.js";
 import { PLAYBOOK, fetchCorpus, listWorkflows } from "../playbook.js";
 import {
   APPS_WIDGETS_ENABLED,
@@ -227,9 +227,9 @@ export function registerTools(server, ctx) {
   // acknowledgement.
   regTool(
     "grid_note",
-    "Optionally leave a one-paragraph summary of what you built this session and why. Call it BEFORE a plug, or in a session that ends without one — a successful plug has already posted the QA log, so pass grid_plug's session_note instead. Recorded for CloudGrid QA. No side effects.",
+    "Optionally leave a one-paragraph summary of what you built this session and why. Call it BEFORE a plug, or in a session that ends without one — a successful plug has already posted the QA log, so pass grid_plug's session_note instead. The summary is recorded with the CloudGrid team for QA review.",
     { summary: z.string().describe("A short plain-language summary of what was built and why.") },
-    { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     async (input) => {
       try { ctx.logger?.setNarrative(input?.summary); } catch { /* never */ }
       // Honesty after flush: a successful deploy posts the QA log on that same
@@ -327,10 +327,6 @@ export function registerTools(server, ctx) {
     ),
   };
 
-  // grid_plug is the create/re-plug verb. `grid_deploy` is kept as a deprecated
-  // back-compat alias (registered right after the primary below); the canonical
-  // name is grid_plug, and "deploy" survives only as an intent keyword in this
-  // tool's description. MCP-tool name only — the CLI verb `grid plug` is unchanged.
   const plugConfig = {
       description:
         "Plug an app, website, game, or single HTML page into CloudGrid — the live runtime that runs it and provides its infrastructure — and get a live public URL. " +
@@ -454,17 +450,30 @@ export function registerTools(server, ctx) {
         }
         if (!isEdit) {
           const token = await ctx.getToken();
-          if (!token && (input?.anon !== true || ctx.state?.authChoiceOffered !== true)) {
-            // AUTH HARD GATE (create only): not signed in → do NOT silently
-            // ride the anonymous wire — EVEN when the model passed anon: true.
-            // Field bug (2026-07-26, Claude web): INSTRUCTIONS_WEB said "no
-            // account needed", the model self-served anon: true on the first
-            // call, and the user's page landed on the Guest Grid without ever
-            // being asked. anon: true is model-attestable, so it cannot be the
-            // gate; the session flag is. First unauthenticated create in a
-            // session ALWAYS returns the sign-in-vs-guest choice; a re-call
-            // with anon: true after the choice was surfaced proceeds. (Rule 17,
-            // enforced server-side.)
+          if (input?.anon === true && ctx.state?.authChoiceOffered !== true) {
+            if (ctx.state) ctx.state.authChoiceOffered = true;
+            if (token) {
+              const claims = decodeJwtAuth(token);
+              const who = claims.email ? ` as ${claims.email}` : "";
+              return okResult({
+                text:
+                  `You are signed in${who}. The user has not explicitly chosen anonymous publishing. Ask the user which they want — do not choose for them:\n` +
+                  `  1. Publish to your grid (re-call grid_plug without anon: true).\n` +
+                  `  2. Publish anonymously — a guest link that expires in 7 days unless claimed (re-call grid_plug with anon: true).\n` +
+                  `Relay this question to the user and STOP until they answer.`,
+                structured: { needs_auth: true },
+              });
+            }
+            return okResult({
+              text:
+                "This is a new publish and the user is not signed in. Ask the user which they want — do not choose for them:\n" +
+                "  1. Sign in and plug it to their grid — run grid_login (opens the browser), then re-call grid_plug.\n" +
+                "  2. Plug it as a guest — live immediately at a guest link that expires in 7 days unless claimed (re-call grid_plug with anon: true).\n" +
+                "Relay this question to the user and STOP until they answer.",
+              structured: { needs_auth: true },
+            });
+          }
+          if (!token && input?.anon !== true) {
             if (ctx.state) ctx.state.authChoiceOffered = true;
             return okResult({
               text:
@@ -752,7 +761,7 @@ export function registerTools(server, ctx) {
       });
       const readyCount = annotated.filter((o) => o.render_ready).length;
       if (readyCount === 0 && annotated.length > 0) {
-        lines.push("\nNone of your grids are fully set up yet. You can use an anonymous drop as a fallback, or wait until provisioning completes.");
+        lines.push("\nNone of your grids are fully set up yet. Wait until provisioning completes (grid_start will show render_ready: true) before plugging. Do not switch to anonymous unless the user asks for it.");
       }
       // Structured output stays `orgs` (its declared schema); user text says grid.
       return okResult({ text: lines.join("\n"), structured: { orgs: annotated } });
@@ -786,6 +795,9 @@ export function registerTools(server, ctx) {
           .object({
             active_grid: z.string().nullable().describe("The user's active grid/org slug, or null."),
             signed_in: z.boolean().describe("Whether the current session is signed in."),
+            email: z.string().optional().describe("The signed-in user's email, when available."),
+            session_expired: z.boolean().optional().describe("True when credentials exist but the JWT has expired. Run grid_login to sign in again."),
+            identity_changed: z.boolean().optional().describe("True when the session's identity changed via a different transport Bearer. Session state was reset."),
             update_available: z
               .object({
                 current: z.string().describe("This MCP's version."),
@@ -802,9 +814,26 @@ export function registerTools(server, ctx) {
     async () => {
       const workflows = listWorkflows();
       let signedIn = false;
+      let sessionExpired = false;
+      let signedInEmail = null;
       let activeGrid = null;
       try {
-        signedIn = Boolean(await ctx.getToken());
+        if (ctx.getCredentialsStatus) {
+          const status = await ctx.getCredentialsStatus();
+          sessionExpired = status.expired;
+          if (status.creds?.jwt) {
+            signedIn = true;
+            const claims = decodeJwtAuth(status.creds.jwt);
+            signedInEmail = claims.email ?? null;
+          }
+        } else {
+          const token = await ctx.getToken();
+          signedIn = Boolean(token);
+          if (token) {
+            const claims = decodeJwtAuth(token);
+            signedInEmail = claims.email ?? null;
+          }
+        }
       } catch {
         signedIn = false;
       }
@@ -813,28 +842,33 @@ export function registerTools(server, ctx) {
       } catch {
         activeGrid = null;
       }
-      // Staleness (local edition): populated fire-and-forget at boot. The
-      // .mcpb never auto-updates, so this is where silent rot becomes a
-      // one-line user action — the model relays the note in-session.
+      const identityChanged = ctx.state?.identityChanged === true;
+      if (identityChanged) ctx.state.identityChanged = false;
       const stale = stalenessNote(ctx.staleness);
-      const structured = {
-        playbook: PLAYBOOK,
-        workflows,
-        context: {
-          active_grid: activeGrid,
-          signed_in: signedIn,
-          ...(ctx.staleness?.behind
-            ? { update_available: { current: ctx.staleness.current, latest: ctx.staleness.latest } }
-            : {}),
-        },
+      const contextObj = {
+        active_grid: activeGrid,
+        signed_in: signedIn,
+        ...(signedInEmail ? { email: signedInEmail } : {}),
+        ...(sessionExpired ? { session_expired: true } : {}),
+        ...(identityChanged ? { identity_changed: true } : {}),
+        ...(ctx.staleness?.behind
+          ? { update_available: { current: ctx.staleness.current, latest: ctx.staleness.latest } }
+          : {}),
       };
+      const structured = { playbook: PLAYBOOK, workflows, context: contextObj };
       const wfLines = workflows.length
         ? workflows.map((w) => `  - ${w.name}: ${w.when || w.summary}`).join("\n")
         : "  (none available)";
-      const text =
+      let text =
         `${PLAYBOOK}\n\nAvailable workflows:\n${wfLines}\n\n` +
         `Next: match the intent to a workflow and call grid_get_template({kind:"workflow", name}).` +
         (stale ? `\n\n${stale}` : "");
+      if (sessionExpired) {
+        text += "\n\nYour CloudGrid sign-in has expired. Run grid_login to sign in again.";
+      }
+      if (identityChanged) {
+        text += "\n\nYour session identity changed (a different account connected via transport). Session state has been reset.";
+      }
       return okResult({ text, structured });
     },
   );
@@ -965,7 +999,7 @@ export function registerTools(server, ctx) {
       cwd: z.string().optional().describe("Working directory. The CLI runs in this directory. Defaults to the MCP server's working directory."),
     },
     { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
-    cliTool((input) => buildCreateProjectArgs(input), { cwdParam: true }),
+    cliTool((input) => buildCreateProjectArgs(input), { cwdParam: true, excludeDirFromCwd: true }),
   );
 
   // NOTE: grid_plug is no longer CLI-wrapping — the unified direct-API verb

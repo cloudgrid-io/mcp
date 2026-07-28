@@ -14,6 +14,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { registerTools } from "./tools.js";
 import {
   readCredentials,
+  readCredentialsStatus,
   readActiveGridSlug,
   writeCredentials,
   credentialsPath,
@@ -31,6 +32,7 @@ const ctx = {
   state: { pendingLoginCode: null, lastAnonClaim: null, lastDrop: null, anonCookie: null },
   canOpenBrowser: true,
   getToken: async () => (await readCredentials())?.jwt ?? null,
+  getCredentialsStatus: async () => await readCredentialsStatus(),
   getActiveGrid: async () => await readActiveGridSlug(),
   saveToken: async (jwt) => await writeCredentials(jwt),
   savedLocationNote: () => `Credentials saved to ${credentialsPath()}.`,

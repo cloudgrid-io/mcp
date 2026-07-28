@@ -95,7 +95,7 @@ export const CLI_TOOL_VERBS = {
   grid_info:     ["info"],
   grid_get:          ["get"],
   grid_describe_grid: ["describe"],
-  grid_edit_existing_app:        ["pickup"],
+  grid_edit_existing_app:        ["pull"],
   grid_rename:   ["rename"],
   grid_take_offline:   ["unplug"],
   grid_delete:   ["delete"],

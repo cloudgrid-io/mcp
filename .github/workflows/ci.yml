@@ -109,6 +109,11 @@ jobs:
       # HTTPS server validates after trusting the CA, cert-error login preflight
       # returns terminal guidance.
       - run: npm run test:system-ca
+      # Auth strictness (WP-A): expired JWT detection, symmetric anon gate,
+      # 401 guidance no longer offers anonymous, CLI verb drift, H6 honest
+      # annotations.
+      - run: npm run test:auth-strictness
+      - run: npm run test:auth
       # Offline app-with-data test (0.9.0): the first runtime (DB-backed) build
       # path. Asserts the app-with-data workflow/template/example + persistent-apps
       # troubleshooting resolve via fetchCorpus and the real grid_fetch handler,

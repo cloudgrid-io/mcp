@@ -94,14 +94,28 @@ export async function pollStatusOnce(code) {
   return res.json();
 }
 
-// Read the stored credentials, or null if absent/unreadable. Same file the CLI
-// writes, so an MCP can reuse a CLI login (and vice versa).
+// Read the stored credentials, or null if absent/unreadable/expired. Same file
+// the CLI writes, so an MCP can reuse a CLI login (and vice versa).
+// Returns { jwt, email, ... } when valid, null otherwise.
 export async function readCredentials() {
+  const result = await readCredentialsStatus();
+  if (result.expired || !result.creds) return null;
+  return result.creds;
+}
+
+// Like readCredentials, but distinguishes "expired" from "absent" so callers
+// (grid_start) can surface a targeted message.
+export async function readCredentialsStatus() {
   try {
     const creds = JSON.parse(await readFile(credentialsPath(), "utf8"));
-    return creds && creds.jwt ? creds : null;
+    if (!creds || !creds.jwt) return { creds: null, expired: false };
+    const claims = decodeJwt(creds.jwt);
+    if (claims.exp && claims.exp * 1000 <= Date.now()) {
+      return { creds: null, expired: true };
+    }
+    return { creds, expired: false };
   } catch {
-    return null;
+    return { creds: null, expired: false };
   }
 }
 

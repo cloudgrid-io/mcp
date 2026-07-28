@@ -43,6 +43,7 @@
     "smoke:redrop": "node test/smoke-redrop.mjs",
     "smoke:oauth": "node test/smoke-oauth.mjs",
     "test:auth": "node test/auth.test.mjs",
+    "test:auth-strictness": "node test/auth-strictness.test.mjs",
     "test:win-cli": "node test/windows-cli-resolution.test.mjs",
     "test:electron-env": "node test/electron-spawn-env.test.mjs",
     "smoke:docs": "node test/smoke-docs.mjs",
