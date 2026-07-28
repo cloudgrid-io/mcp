@@ -316,8 +316,8 @@ const GUEST_ORG_SLUG = "guest";
 // `<slug>--<grid>.cloudgrid.io`), so it must never be the primary source:
 //   - inspiration (HTML drops): path-based at the org apex
 //       https://<grid>.cloudgrid.io/<slug>
-//   - runtime (app/agent):      subdomain
-//       https://<slug>.<grid>.cloudgrid.io
+//   - runtime (app/agent):      flat-arch double-dash host
+//       https://<slug>--<grid>.cloudgrid.io
 // Anonymous drops are grid-less in the response (`grid: null`); they live under
 // the Guest Org, so the apex slug is the constant `guest`.
 function composePlugUrl(data) {
@@ -326,7 +326,11 @@ function composePlugUrl(data) {
   const grid = data?.grid || GUEST_ORG_SLUG;
   const kind = data?.detection?.kind;
   if (kind === "app" || kind === "agent") {
-    return `https://${slug}.${grid}.cloudgrid.io`;
+    // Flat-arch host: runtime entities serve at `<slug>--<grid>.cloudgrid.io`
+    // (double-dash), NOT the legacy nested `<slug>.<grid>` form — the latter
+    // 404s on every current grid. Still fallback-only; the server's `data.url`
+    // remains the primary source (resolvePlugUrl).
+    return `https://${slug}--${grid}.cloudgrid.io`;
   }
   // inspiration (and any unknown/static kind) — path-based at the org apex.
   return `https://${grid}.cloudgrid.io/${slug}`;

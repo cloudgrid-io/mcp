@@ -71,6 +71,15 @@ try {
     "resolvePlugUrl falls back to client composition when url is empty",
     resolvePlugUrl({ url: "", slug: "s1", grid: null }) === "https://guest.cloudgrid.io/s1",
   );
+  // Runtime fallback must use the flat-arch double-dash host, not the legacy
+  // nested `<slug>.<grid>` form (which 404s on every current grid). Regression
+  // guard: an empty server url on an app/agent plug was composing a dead URL
+  // that agents then opened in a browser.
+  check(
+    "resolvePlugUrl runtime fallback is the flat-arch double-dash host",
+    resolvePlugUrl({ url: "", slug: "web", grid: "atomic", detection: { kind: "app" } }) ===
+      "https://web--atomic.cloudgrid.io",
+  );
 
   // ── html single-file publish: anon create → re-plug (owner-token wire) ──────
   // The inline `html` path is the old drop behavior folded into runPlug: one
