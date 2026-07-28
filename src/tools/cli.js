@@ -421,14 +421,15 @@ export async function runCloudgrid(args, opts = {}, deps = {}) {
   }
 }
 
-export function cliTool(buildArgs, { cwdParam = false } = {}) {
+export function cliTool(buildArgs, { cwdParam = false, excludeDirFromCwd = false } = {}) {
   return async (input) => {
     try {
       const params = input || {};
       const opts = {};
       if (cwdParam) {
-        // Accept cwd, directory, or dir as the working-directory override.
-        opts.cwd = params.cwd ?? params.directory ?? params.dir;
+        opts.cwd = excludeDirFromCwd
+          ? (params.cwd ?? params.directory)
+          : (params.cwd ?? params.directory ?? params.dir);
       }
       return ok(await runCloudgrid(buildArgs(params), opts));
     } catch (err) {

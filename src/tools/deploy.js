@@ -94,7 +94,7 @@ export async function resolveGridOrAsk(ctx, { token, suppliedGrid, edition }, de
     lines.push("Pass the grid slug in the `grid` parameter.");
     const readyCount = annotated.filter((o) => o.render_ready).length;
     if (readyCount === 0) {
-      lines.push("Note: none of your grids are fully set up yet. You can use anonymous: true as a fallback.");
+      lines.push("Note: none of your grids are fully set up yet. Wait until provisioning completes (grid_start will show render_ready: true) before plugging.");
     }
     return {
       picker: {
@@ -205,7 +205,7 @@ export function secretBlockMessage(label, where) {
 
 // ── Direct-API tools (both editions) ───────────────────────────────────────────
 function looksLikeFullHtml(s) {
-  const head = s.replace(/^﻿/, "").trimStart().slice(0, 256).toLowerCase();
+  const head = s.replace(/^\uFEFF/, "").trimStart().slice(0, 256).toLowerCase();
   return head.startsWith("<!doctype html") || head.startsWith("<html");
 }
 
@@ -774,10 +774,10 @@ function compileIgnorePattern(line) {
   if (pat.startsWith("/")) pat = pat.slice(1);
   const rx = pat
     .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*\*/g, " ")
+    .replace(/\*\*/g, "\uFFFF")
     .replace(/\*/g, "[^/]*")
     .replace(/\?/g, "[^/]")
-    .replace(/ /g, ".*");
+    .replace(/\uFFFF/g, ".*");
   const body = anchored ? `^${rx}` : `(^|/)${rx}`;
   const re = new RegExp(`${body}(/|$)`);
   return { re, dirOnly };
@@ -1093,7 +1093,7 @@ export function errorGuidance({ status, code, edition, isEdit, isAnon, signedIn 
   if (status === 401) {
     return isEdit
       ? "That did not authorize this entity (wrong entity, expired, or already claimed). Sign in if you own it (grid_login), pass its owner_token for an anonymously-created drop, or omit target_entity_id to create a new entity."
-      : "Not signed in. Ask the user: sign in (grid_login) to publish to their grid, OR publish anonymously now (re-call grid_plug with anon: true) - it goes live immediately with a claim_url + owner_token to claim into their account later. Do not silently fail; offer both.";
+      : "Your sign-in is missing or expired. Run grid_login, then retry the same grid_plug. Do not offer anonymous publishing as a fix for a failed sign-in; anonymous is only for a user who explicitly asks to publish without attribution.";
   }
   if (status === 403) {
     // NO_ACTIVE_ORG is not a role problem — the account has no grid at all.
@@ -1354,6 +1354,18 @@ export async function runPlug(ctx, input, deps = {}) {
   }
 
   // ── Auth wire selection ─────────────────────────────────────────────────────
+  // Defence in depth: anon: true must only reach here after the explicit choice
+  // prompt was surfaced (register.js sets authChoiceOffered to true). The flag is
+  // undefined when runPlug is called directly (tests bypass the gate), so only
+  // assert when ctx.state has authChoiceOffered as an own property.
+  if (
+    anon === true &&
+    ctx.state &&
+    "authChoiceOffered" in ctx.state &&
+    ctx.state.authChoiceOffered !== true
+  ) {
+    throw new Error("anon: true reached runPlug without the auth choice being offered first. This is a bug.");
+  }
   const authToken = anon === true ? null : await ctx.getToken();
   let ownerToken = typeof owner_token === "string" && owner_token.length > 0 ? owner_token : null;
   if (isEdit && !ownerToken) {
@@ -1746,8 +1758,6 @@ export async function runPlug(ctx, input, deps = {}) {
   }
   return { text: lines.join("\n"), structured };
 }
-
-// ── grid_copy_app / grid_download_source — direct-API verbs (spec v2 §5–6) ────────
 
 async function authedApiCall(ctx, { method, pathName, body, verb }) {
   const token = await ctx.getToken();

@@ -47,8 +47,11 @@ function makeCtx({ token = null, activeOrg = null, edition = "web" } = {}) {
 
 function handlersFor(ctxOpts) {
   const server = makeServer();
-  registerTools(server, makeCtx(ctxOpts));
-  return server.handlers;
+  const ctx = makeCtx(ctxOpts);
+  registerTools(server, ctx);
+  const handlers = server.handlers;
+  handlers.__ctx = ctx;
+  return handlers;
 }
 
 // ── fetch mock ──────────────────────────────────────────────────────────────
@@ -133,10 +136,13 @@ try {
   }
 
   // ── Case 4b: plug + anon → proceeds (guest, no ask, no grid fetch) ───────────
+  // Pre-set authChoiceOffered: the auth gate is tested in create-gates; here we
+  // verify the grid picker is bypassed for anon creates.
   {
     orgsReply = TWO_GRIDS; // even with many grids, anon never asks
     resetCalls();
     const h = handlersFor({ token: "jwt", edition: "web" });
+    h.__ctx.state.authChoiceOffered = true;
     const res = await h.grid_plug({ artifact_files: artifact, anon: true });
     check("plug anon → published, no ask", plugCalled() && !res.structuredContent?.needs_grid);
     check("plug anon did not fetch the grid list", !calls.some((c) => c.url.includes("/api/v2/orgs")));
