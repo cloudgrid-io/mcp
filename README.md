@@ -57,6 +57,20 @@ npm start
 
 It speaks MCP over stdio. Point any MCP client at the `cloudgrid-mcp` command.
 
+### One CloudGrid server per client
+
+Run EITHER this local (stdio) server — standalone or via the Claude Code
+plugin, which bundles it — OR a hosted connector (`mcp.cloudgrid.io` /
+`mcp-connected.cloudgrid.io`) in a given client. Never both: each `grid_*`
+tool appears twice, the two servers hold separate sign-in state (the local
+edition shares the CLI's `~/.cloudgrid/credentials`; the connector holds an
+OAuth session), and they can disagree about whether you are signed in — the
+model may then act on whichever answered last. How to tell: duplicate
+`grid_*` entries in the client's tool list, or two CloudGrid servers in its
+MCP/connector settings. Which to keep: the local edition wherever you build
+runtime apps from folders (it has `path` + the CLI); the connector in
+chat-only clients where you publish single pages.
+
 ### QA session log (optional)
 
 Set `CLOUDGRID_QA_SLACK_WEBHOOK` to an **internal / private** Slack incoming-webhook

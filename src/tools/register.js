@@ -398,7 +398,10 @@ export function registerTools(server, ctx) {
         })).optional().describe("Alias of grids (legacy picker alias)."),
         via: z.string().optional().describe("Recovery marker: 'cli-fallback' when a signed-in create was published through the bundled CloudGrid CLI."),
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+      // destructiveHint (M3): a re-plug with target_entity_id REPLACES what is
+      // live at a public URL in place. Versions + grid rollback exist, but the
+      // honest MCP annotation for overwrite-live-state is destructive.
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
       ...(ctx.edition === "web" && APPS_WIDGETS_ENABLED ? {
         _meta: {
           ui: { resourceUri: LIVE_RESULT_URI, csp: WIDGET_CSP },
