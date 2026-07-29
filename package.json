@@ -42,6 +42,7 @@
     "smoke:web": "node test/smoke-web.mjs",
     "smoke:redrop": "node test/smoke-redrop.mjs",
     "smoke:oauth": "node test/smoke-oauth.mjs",
+    "test:oauth-gate": "node test/oauth-gate.test.mjs",
     "test:auth": "node test/auth.test.mjs",
     "test:auth-strictness": "node test/auth-strictness.test.mjs",
     "test:win-cli": "node test/windows-cli-resolution.test.mjs",

@@ -98,7 +98,7 @@ app.use(express.urlencoded({ extended: false })); // OAuth token exchange is for
 
 app.get("/healthz", (_req, res) => res.json({ ok: true, edition: "web" }));
 
-mountOAuth(app, PUBLIC_BASE);
+mountOAuth(app, PUBLIC_BASE, { requireAuth: REQUIRE_AUTH });
 
 // One transport per MCP session, keyed by the session id.
 const transports = Object.create(null);

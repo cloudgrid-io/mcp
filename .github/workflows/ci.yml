@@ -114,6 +114,9 @@ jobs:
       # annotations.
       - run: npm run test:auth-strictness
       - run: npm run test:auth
+      # OAuth-route gating (M14): anon host 404s OAuth discovery + registration;
+      # auth host 200s with the right issuer; /healthz 200 on both.
+      - run: npm run test:oauth-gate
       # Offline app-with-data test (0.9.0): the first runtime (DB-backed) build
       # path. Asserts the app-with-data workflow/template/example + persistent-apps
       # troubleshooting resolve via fetchCorpus and the real grid_fetch handler,
