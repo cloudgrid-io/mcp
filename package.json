@@ -56,7 +56,8 @@
     "test:check-deploy": "node test/check-deploy.test.mjs",
     "test:staleness": "node test/staleness.test.mjs",
     "test:proxy": "node test/proxy.test.mjs",
-    "test:system-ca": "node test/system-ca.test.mjs"
+    "test:system-ca": "node test/system-ca.test.mjs",
+    "test:tool-titles-and-vocab": "node test/tool-titles-and-vocab.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
