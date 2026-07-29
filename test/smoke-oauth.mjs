@@ -2,6 +2,10 @@
 // mock upstream CloudGrid (so no human sign-in is needed), then proves the issued
 // Bearer becomes the MCP session's identity (the drop call carries it). Also
 // checks the MCP_REQUIRE_AUTH=1 challenge. Run: node test/smoke-oauth.mjs
+//
+// The OAuth discovery + registration + flow routes are only mounted when
+// MCP_REQUIRE_AUTH=1 (the connected-host posture). This test runs the full dance
+// against that posture; the anon-host posture is covered by oauth-gate.test.mjs.
 
 import { createServer } from "node:http";
 import { createHash, randomBytes } from "node:crypto";
@@ -37,6 +41,11 @@ const mock = createServer((req, res) => {
     res.end(JSON.stringify(statusCalls < 2 ? { status: "pending" } : { status: "authenticated", jwt: FAKE_JWT }));
     return;
   }
+  if (req.url.startsWith("/api/v2/orgs")) {
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ grids: [{ slug: "e2e-bot", name: "e2e-bot", role: "owner", render_ready: true }] }));
+    return;
+  }
   if (req.url.startsWith("/api/v2/plug")) {
     dropAuthHeader = req.headers.authorization ?? null;
     let body = "";
@@ -66,10 +75,13 @@ const mock = createServer((req, res) => {
 });
 await new Promise((r) => mock.listen(MOCK_PORT, r));
 
+// Start the server with MCP_REQUIRE_AUTH=1 — the connected-host posture where
+// OAuth discovery + registration + the full connect flow are mounted.
 const env = {
   ...process.env,
   PORT: String(MCP_PORT),
   MCP_PUBLIC_URL: BASE,
+  MCP_REQUIRE_AUTH: "1",
   CLOUDGRID_API_URL: `http://localhost:${MOCK_PORT}`,
   CLOUDGRID_PUBLIC_API_URL: `http://localhost:${MOCK_PORT}`,
 };
@@ -83,6 +95,15 @@ try {
     } catch {}
     await sleep(100);
   }
+
+  // 0. MCP_REQUIRE_AUTH: unauthenticated /mcp gets 401 with resource metadata.
+  const r401 = await fetch(`${BASE}/mcp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "x", version: "0" } } }),
+  });
+  check("MCP_REQUIRE_AUTH: unauthenticated /mcp gets 401", r401.status === 401);
+  check("401 carries WWW-Authenticate resource metadata", (r401.headers.get("www-authenticate") ?? "").includes("oauth-protected-resource"));
 
   // 1. Discovery metadata.
   const prm = await (await fetch(`${BASE}/.well-known/oauth-protected-resource`)).json();
@@ -158,29 +179,6 @@ try {
     await client?.close();
   } catch {}
   child.kill("SIGKILL");
-}
-
-// 6. MCP_REQUIRE_AUTH=1 → 401 challenge with resource metadata.
-const strict = spawn("node", ["src/web.js"], {
-  env: { ...env, PORT: String(MCP_PORT + 1), MCP_PUBLIC_URL: `http://localhost:${MCP_PORT + 1}`, MCP_REQUIRE_AUTH: "1" },
-  stdio: ["ignore", "ignore", "inherit"],
-});
-try {
-  for (let i = 0; i < 40; i++) {
-    try {
-      if ((await fetch(`http://localhost:${MCP_PORT + 1}/healthz`)).ok) break;
-    } catch {}
-    await sleep(100);
-  }
-  const r = await fetch(`http://localhost:${MCP_PORT + 1}/mcp`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "x", version: "0" } } }),
-  });
-  check("MCP_REQUIRE_AUTH: unauthenticated /mcp gets 401", r.status === 401);
-  check("401 carries WWW-Authenticate resource metadata", (r.headers.get("www-authenticate") ?? "").includes("oauth-protected-resource"));
-} finally {
-  strict.kill("SIGKILL");
 }
 mock.close();
 

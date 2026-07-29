@@ -73,8 +73,11 @@ function interstitialHtml(sid, loginUrl) {
 /**
  * Mounts the OAuth surface on an express app.
  * publicBase = this server's public origin (e.g. https://mcp.cloudgrid.io).
+ * opts.requireAuth — when false the OAuth discovery and registration routes are
+ *   not mounted (anonymous-first host has no use for them).
  */
-export function mountOAuth(app, publicBase) {
+export function mountOAuth(app, publicBase, opts = {}) {
+  if (!opts.requireAuth) return;
   const base = publicBase.replace(/\/+$/, "");
 
   const asMetadata = {
