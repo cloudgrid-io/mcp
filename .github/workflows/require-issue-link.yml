@@ -1,0 +1,109 @@
+name: Require Linked Issue
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+jobs:
+  require-issue-link:
+    name: require-issue-link
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the PR references a tracking issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+
+            // 1. Bot-authored PRs are exempt. Dependency and security updates must
+            //    never be blocked on an issue that does not exist.
+            const BOTS = ["dependabot[bot]", "github-actions[bot]", "renovate[bot]"];
+            if (pr.user && (BOTS.includes(pr.user.login) || pr.user.type === "Bot")) {
+              core.info(`Author ${pr.user.login} is a bot. Exempt.`);
+              return;
+            }
+
+            // 2. Deliberate escape hatch so an emergency is never wedged.
+            const labels = (pr.labels || []).map((l) => l.name);
+            if (labels.includes("no-issue-needed")) {
+              core.info("Labelled no-issue-needed. Exempt.");
+              return;
+            }
+
+            // 3. Ground truth first: did GitHub actually link a closing issue?
+            //    This is what the process means by the issue's Development section,
+            //    and it is stronger than any text match.
+            const q = `
+              query($owner:String!, $repo:String!, $number:Int!) {
+                repository(owner:$owner, name:$repo) {
+                  pullRequest(number:$number) {
+                    closingIssuesReferences(first: 10) {
+                      nodes { number repository { nameWithOwner } }
+                    }
+                  }
+                }
+              }`;
+            let linked = [];
+            try {
+              const res = await github.graphql(q, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                number: pr.number,
+              });
+              linked =
+                res.repository.pullRequest.closingIssuesReferences.nodes || [];
+            } catch (e) {
+              core.warning(`Could not read closingIssuesReferences: ${e.message}`);
+            }
+            if (linked.length > 0) {
+              const names = linked
+                .map((n) => `${n.repository.nameWithOwner}#${n.number}`)
+                .join(", ");
+              core.info(`GitHub reports a linked closing issue: ${names}`);
+              return;
+            }
+
+            // 4. Fall back to explicit text for the non-closing forms. "Part of" and
+            //    "Related to" are correct when more PRs or QA remain, and they
+            //    intentionally do not create a closing reference.
+            const stripCode = (s) =>
+              s.replace(/```[\s\S]*?```/g, " ").replace(/`[^`\n]*`/g, " ");
+            const text = stripCode(`${pr.title || ""}\n${pr.body || ""}`);
+
+            // Anchored so it cannot begin mid-word, and the keyword must be
+            // immediately followed by an optional owner/repo and then #<number>.
+            // A bare "#123" does NOT satisfy this, by design.
+            const LINK =
+              /(?<![A-Za-z0-9_/-])(?:clos(?:e|es|ed)|fix(?:es|ed)?|resolv(?:e|es|ed)|part of|related to)\s+(?:[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+)?#\d+\b/i;
+
+            if (LINK.test(text)) {
+              core.info("Explicit issue reference found in the title or body.");
+              return;
+            }
+
+            core.setFailed(
+              [
+                "This PR does not reference a tracking issue.",
+                "",
+                "Every PR must link the issue it implements. Add one of these to the",
+                "PR title or description:",
+                "",
+                "  Fixes #123                        - same repo, this PR completes it",
+                "  Fixes cloudgrid-io/mcp#123        - issue lives in another repo",
+                "  Part of #123                      - more PRs or QA still to come",
+                "  Related to #123                   - context, not a completion",
+                "",
+                "A bare '#123' is not enough - it does not record intent.",
+                "",
+                "No issue yet? Create one in the repo that owns the code and add it to",
+                "CloudGrid Product & Engineering:",
+                "https://github.com/orgs/cloudgrid-io/projects/2",
+                "",
+                "Genuinely does not need an issue? Apply the 'no-issue-needed' label.",
+              ].join("\n"),
+            );
