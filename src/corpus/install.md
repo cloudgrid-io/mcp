@@ -142,6 +142,17 @@ is needed. Remote-capable clients can point at one of two hosted endpoints:
 - `https://mcp-connected.cloudgrid.io/mcp` — connected; native OAuth sign-in
   when you add it (for claude.ai org connectors and clients that support OAuth).
 
+**One CloudGrid server per client.** Run either the local (stdio) server — on
+its own or via the Claude Code plugin, which bundles it — or a hosted connector
+in a given client. Never both: the 14 shared `grid_*` tool names appear twice,
+and the two servers hold separate sign-in state (the local edition uses the
+CLI's `~/.cloudgrid/credentials`; the connector holds an OAuth session) — they
+can disagree about whether you are signed in. How to tell: duplicate `grid_*`
+entries in the tool list, or two CloudGrid servers in the client's MCP settings.
+Which to keep: the local edition wherever you build runtime apps from folders
+(it has the full CLI toolset); the connector in chat-only clients where you
+publish single pages.
+
 See [USAGE.md](USAGE.md) for per-client snippets.
 
 ### Claude Desktop — one-click install
