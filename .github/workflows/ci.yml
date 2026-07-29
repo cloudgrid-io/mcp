@@ -165,6 +165,10 @@ jobs:
       # Offline apps-widgets gate: grid_plug text-first default (no openai
       # outputTemplate), live-result widget resource, MCP_APPS_WIDGETS=1 restore.
       - run: npm run test:widgets
+      # Tool titles (#201) + targeting-vocabulary convergence (#198): every tool
+      # has a non-empty title, canonical entity_id/grid params work alongside
+      # legacy aliases, org is absent from the published visibility enum.
+      - run: npm run test:tool-titles-and-vocab
 
   readme-tool-table:
     runs-on: ubuntu-latest

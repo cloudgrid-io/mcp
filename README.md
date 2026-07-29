@@ -120,7 +120,7 @@ CLI uses, so the two share one identity.
 | `grid_whoami` | `grid whoami` | Show the signed-in user and active grid. |
 | `grid_switch_grid` | `grid use` | Switch the active grid. |
 | `grid_logout` | `grid logout` | Sign out and clear local credentials. |
-| `grid_status` | `grid status` | Org dashboard, entity detail, or deploy snapshot. |
+| `grid_status` | `grid status` | Grid dashboard, entity detail, or deploy snapshot. |
 | `grid_info` | `grid info` | Show metadata for a CloudGrid entity. |
 | `grid_get` | `grid get <grids|entities|spaces> --json` | List CloudGrid grids, entities, or spaces. |
 | `grid_describe_grid` | `grid describe grid <slug> --json` | Show a grid's detail: role, members, spaces, tier, wildcard-TLS state. |

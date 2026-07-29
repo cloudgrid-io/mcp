@@ -20,12 +20,12 @@ export const MCP_VERSION = (() => {
   }
 })();
 
+// Anti-abuse cap — unauthenticated publishing is the primary abuse surface.
 export const ANON_HTML_MAX_BYTES = 2_000_000;
-// Signed-in inline drops get a larger cap than the anonymous 2MB. Kept
-// conservative — it must stay ≤ the platform's single-artifact byte limit.
-// TODO(platform-confirm): confirm the server's single-artifact limit (the
-// folder-plug path uses PLUG_MAX_TOTAL_BYTES = 100MB, but the single-artifact
-// inline limit is not yet confirmed) and raise this to match.
+// Product cap for authed inline plugs. The server accepts up to 150 MB
+// (express.json body limit; nginx ingress allows 200m), so this guard is
+// ~6x stricter by design — a normal page is well under 1 MB, and past
+// 25 MB the right shape is a folder plug (multipart, see deploy.js:756).
 export const AUTHED_HTML_MAX_BYTES = 25_000_000;
 export const CONSOLE_URL = "https://console.cloudgrid.io/";
 
