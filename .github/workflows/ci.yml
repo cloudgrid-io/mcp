@@ -40,10 +40,10 @@ jobs:
       # and grid_fetch resolves kind:"rule".
       - run: npm run test:self-healing
       # Offline grid-picker parity test (0.7.3): grid_plug asks "which grid?"
-      # on authed multi-grid creates (like grid_drop), never on edits/anon,
+      # on authed multi-grid creates (like grid_plug), never on edits/anon,
       # and proceeds on an explicit/single grid. Drives the real tool handlers.
       - run: npm run test:grid-picker
-      # Offline output-schema regression (grid_deploy -32602): one outputSchema,
+      # Offline output-schema regression (grid_plug -32602): one outputSchema,
       # three response modes (deploy result / grid-picker ask / CLI-fallback). The
       # SDK renders additionalProperties:false and the client validates every
       # result - undeclared picker/fallback keys throw -32602. Real Client<->Server
@@ -69,7 +69,7 @@ jobs:
       # carries a cloudgrid.yaml returns needs_confirmation (does not
       # auto-create) until grid_plug is re-called with confirm_new_app:true.
       - run: npm run test:manifest-confirm
-      # Offline QA courier test (0.20.5): grid_deploy's user_request + session_note
+      # Offline QA courier test (0.20.5): grid_plug's user_request + session_note
       # args reach the flushed QA session log, stay [omitted] in the per-call trail
       # (default-deny allowlist), respect stdio env precedence, and a successful
       # deploy nudges grid_note only when a QA logger is active. Drives the real
@@ -90,7 +90,7 @@ jobs:
       # gracefully on non-200, and the grid_source tool + playbook/drop/plug
       # guidance are wired. Mocks global fetch.
       - run: npm run test:source
-      # Offline set-sharing kind-awareness: grid_set_sharing routes runtime
+      # Offline set-sharing kind-awareness: grid_visibility routes runtime
       # app/agent to PATCH /entities/:id/visibility (grid vocab) and inspirations
       # to PATCH /inspirations/:id (org vocab), maps org<->grid, falls back on a
       # not-found, and keeps space inspiration-only. Mocks global fetch.
@@ -159,6 +159,12 @@ jobs:
       # default (no CLOUDGRID_QA_SLACK_WEBHOOK → no-op), and never throws into the
       # tool path. Drives the real registered handlers + grid_note.
       - run: npm run test:session-log
+      # Offline content-handling test: base64 HTML decoding, large-blob rejection,
+      # @-path steering, anon/authed size limits.
+      - run: npm run test:content
+      # Offline apps-widgets gate: grid_plug text-first default (no openai
+      # outputTemplate), live-result widget resource, MCP_APPS_WIDGETS=1 restore.
+      - run: npm run test:widgets
 
   readme-tool-table:
     runs-on: ubuntu-latest
