@@ -97,6 +97,25 @@ check(
   ),
 );
 
+// ── bin-name contract (review L7): the CLI's bin renamed cloudgrid -> grid.
+// The bundled rung must resolve BOTH shapes — grid-only (every current
+// published CLI) and cloudgrid-only (a pre-rename bundle). With only the old
+// key looked up, the rung was silently dead on all current installs and every
+// call fell through to npx.
+{
+  const gridOnlyPkg = JSON.stringify({ version: "0.15.25", bin: { grid: "./dist/index.js" } });
+  const gridDeps = { ...makeDeps(newUrlToPath), fsRead: () => gridOnlyPkg };
+  const gridResolved = resolveBundledCli(gridDeps);
+  check("bin-name: grid-only bin (current published CLI) resolves", gridResolved !== null && gridResolved.version === "0.15.25");
+
+  const legacyResolved = resolveBundledCli(makeDeps(newUrlToPath)); // FAKE_PKG is cloudgrid-only
+  check("bin-name: cloudgrid-only bin (pre-rename bundle) still resolves", legacyResolved !== null);
+
+  const noBinPkg = JSON.stringify({ version: "0.15.25", bin: {} });
+  const noneResolved = resolveBundledCli({ ...makeDeps(newUrlToPath), fsRead: () => noBinPkg });
+  check("bin-name: neither key -> null (falls through to npx)", noneResolved === null);
+}
+
 if (failures > 0) {
   console.log(`\n${failures} check(s) failed.`);
   process.exit(1);
