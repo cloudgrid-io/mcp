@@ -2,9 +2,9 @@
 // Snapshot the documentation corpus into src/corpus/.
 //
 // Reads markdown from the skills repo and connect docs, copies them into
-// src/corpus/ so the docs edition bundles a self-contained corpus at build
-// time. Re-run this script whenever the source docs change, then commit
-// the updated snapshot.
+// src/corpus/ so the server bundles a self-contained corpus at build time.
+// Re-run this script whenever the source docs change, then commit the
+// updated snapshot.
 //
 // Usage:
 //   node scripts/snapshot-corpus.mjs [--skills-dir <path>] [--connect-dir <path>]

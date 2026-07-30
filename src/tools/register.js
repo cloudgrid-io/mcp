@@ -810,8 +810,7 @@ export function registerTools(server, ctx) {
   // ── Agent Core orientation tools (authed editions: local + web) ───────────
   // These serve the delivery ladder's Orient + Load rungs. They are registered
   // before the local-only cutoff below, so BOTH the local and web (hosted-auth)
-  // editions expose them. The anon docs edition (src/docs.js) does NOT call
-  // registerTools, so it never gets them (spec F3).
+  // editions expose them.
 
   reg(
     "grid_start",
