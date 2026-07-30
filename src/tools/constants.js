@@ -76,7 +76,15 @@ export const CLI_NPX_PKG = "@cloudgrid-io/cli@latest";
 // server-side with HTTP 426) — a gate below the floor green-lights CLIs the API
 // rejects on every call (issue #59). Bump this in lockstep with every floor
 // raise (CLI release protocol checklist).
-export const MIN_CLI_VERSION = "0.15.14";
+//
+// 2026-07-30: raised 0.15.14 -> 0.15.26 so the MCP stops using stale local
+// CLIs. Below the floor the MCP does NOT error — it skips that rung and runs
+// `npx @cloudgrid-io/cli@latest`, so raising this makes MCP callers effectively
+// run latest at the cost of an npx fetch on the first call. It does not and
+// cannot force a direct CLI user to upgrade; that is the server-side floor
+// (`platform_settings.cli_compat.min`, live at 0.15.2), which is a separate,
+// user-breaking change.
+export const MIN_CLI_VERSION = "0.15.26";
 
 // Upload/create POST budget. The build itself is async (server returns 202 +
 // poll_url); this bounds only the request→response, so a stalled server errors
