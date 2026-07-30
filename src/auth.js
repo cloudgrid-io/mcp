@@ -46,7 +46,7 @@ export function newLoginCode() {
 
 // The sign-in URL the user opens in a browser — always the public host.
 export function buildLoginUrl(code) {
-  return `${PUBLIC_API_BASE}/auth/login?code=${encodeURIComponent(code)}`;
+  return `${PUBLIC_API_BASE}/auth/login?code=${encodeURIComponent(code)}&source=mcp`;
 }
 
 const CERT_ERROR_GUIDANCE =
