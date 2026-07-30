@@ -209,7 +209,13 @@ try {
     check("web authed html create posts to /plug with Authorization", Boolean(plugPost) && plugPost.headers.Authorization === "Bearer jwt-web");
     check("new deploy → visibility is NOT set silently (no PATCH)", !patch);
     check("new deploy → reports the server's current visibility", w.structured.current_visibility === "org");
-    check("new deploy → offers the full visibility option set", Array.isArray(w.structured.visibility_options) && ["private", "org", "space", "link"].every((v) => w.structured.visibility_options.some((o) => o.value === v)));
+    // Two-axis model: the offered set is the three current modes (private, grid,
+    // link) — retired values (org, authenticated, space-as-mode) are display-only
+    // and must NOT be offered as choices.
+    check("new deploy → offers the Decision-060 option set (private/grid/link, no retired values)",
+      Array.isArray(w.structured.visibility_options) &&
+      ["private", "grid", "link"].every((v) => w.structured.visibility_options.some((o) => o.value === v)) &&
+      !w.structured.visibility_options.some((o) => ["org", "authenticated", "space"].includes(o.value)));
     check("new deploy → instructs the agent to ASK then grid_visibility", /ASK the user who should be able to open this/.test(w.text) && /grid_visibility/.test(w.text));
     check("web authed html create → says Your app is live", /Your app is live/.test(w.text));
   }
@@ -466,6 +472,57 @@ try {
     const madeCalls = calls.slice(before);
     check("target_entity_id primary: NO pickup resolve when it is present", !madeCalls.some((c) => isPickup(c.url)));
     check("target_entity_id primary: /plug targets it directly", madeCalls.find((c) => c.url.endsWith("/api/v2/plug"))?.form?.get("target_entity_id") === "ent-primary");
+  }
+
+  // ── Secret scan: pasted API keys never reach the wire (field bug 2026-07-27:
+  //    an OpenRouter key was embedded in a public page "so they can test now") ──
+  {
+    const secretCtx = makeCtx({ token: "jwt-s", edition: "local" });
+    const fakeKey = "sk-or-v1-" + "a1b2c3d4".repeat(4);
+    const before = calls.length;
+    let blocked = null;
+    try {
+      await runPlug(secretCtx, { html: `<script>const KEY = "${fakeKey}";</script>`, grid: "acme" });
+    } catch (e) {
+      blocked = e.message;
+    }
+    check("inline html with an API key is BLOCKED before any network call",
+      blocked !== null && calls.length === before);
+    check("secret block names the key type and the fix (needs ai / grid secrets)",
+      /OpenRouter/.test(blocked ?? "") && /needs: \{ ai: true \}|grid secrets/.test(blocked ?? ""));
+
+    let blocked2 = null;
+    try {
+      await runPlug(secretCtx, {
+        artifact_files: [{ path: "app.js", content: Buffer.from(`const k="${fakeKey}"`).toString("base64"), encoding: "base64" }],
+        grid: "acme",
+      });
+    } catch (e) {
+      blocked2 = e.message;
+    }
+    check("base64 artifact file with an API key is BLOCKED too", blocked2 !== null && /Blocked/.test(blocked2 ?? ""));
+
+    // A page mentioning keys in prose (no real key shape) still plugs fine.
+    replies = [{ status: 202, body: { entity_id: "ent-clean", slug: "s", grid: "acme", url: "https://acme.cloudgrid.io/s", status: "live" } }];
+    const clean = await runPlug(secretCtx, { html: "<p>Set your API key in settings — never paste sk-... keys into pages.</p>", grid: "acme" });
+    check("prose about keys (no real key shape) is NOT blocked", clean?.structured?.entity_id === "ent-clean");
+
+    // The local `path` route reads files from disk — same scan applies (a model
+    // can write the key to a file and plug the path, bypassing the inline check).
+    const { mkdtempSync, writeFileSync: wf } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join: pjoin } = await import("node:path");
+    const dir = mkdtempSync(pjoin(tmpdir(), "plug-secret-"));
+    wf(pjoin(dir, "index.html"), `<script>fetch("https://openrouter.ai",{headers:{Authorization:"Bearer ${fakeKey}"}})</script>`);
+    let blocked3 = null;
+    const before3 = calls.length;
+    try {
+      await runPlug(secretCtx, { path: dir, grid: "acme" });
+    } catch (e) {
+      blocked3 = e.message;
+    }
+    check("path-read file with an API key is BLOCKED before any network call",
+      blocked3 !== null && /Blocked/.test(blocked3 ?? "") && calls.length === before3);
   }
 
   // ── parseManifestName unit checks ──────────────────────────────────────────

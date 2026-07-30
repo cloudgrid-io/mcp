@@ -68,7 +68,12 @@ export function resolveBundledCli(deps = {}) {
     const pkgPath = pathImpl.join(srcDir, "..", "node_modules", "@cloudgrid-io", "cli", "package.json");
     if (!fsExists(pkgPath)) return null;
     const pkg = JSON.parse(fsRead(pkgPath, "utf-8"));
-    const bin = pkg.bin && pkg.bin.cloudgrid;
+    // The CLI's bin renamed cloudgrid -> grid (the product verb). Accept both:
+    // current packages ship { grid: ... } only; the cloudgrid key covers a
+    // bundled pre-rename CLI. Without the grid key this rung was silently DEAD
+    // on every current install and everything fell through to npx (review L7 —
+    // the flagged future risk had already happened).
+    const bin = pkg.bin && (pkg.bin.grid || pkg.bin.cloudgrid);
     if (!bin) return null;
     return { entry: pathImpl.join(pathImpl.dirname(pkgPath), bin), version: pkg.version || null };
   } catch {
@@ -358,10 +363,13 @@ export async function runCloudgrid(args, opts = {}, deps = {}) {
     );
   }
 
-  // 2. Global `cloudgrid` on PATH — version-gated.
-  //    On Windows the bin is `cloudgrid.cmd`; run it via cmd.exe (execMaybeCmd).
-  {
-    const globalBin = IS_WIN ? "cloudgrid.cmd" : "cloudgrid";
+  // 2. Global CLI on PATH — version-gated. The bin renamed cloudgrid -> grid
+  //    (the product verb); try `grid` first, then the pre-rename `cloudgrid`.
+  //    The version gate doubles as an identity check: an unrelated `grid`
+  //    binary won't print a CloudGrid semver >= the floor, so it is skipped.
+  //    On Windows the bins are `.cmd` shims; run via cmd.exe (execMaybeCmd).
+  for (const name of ["grid", "cloudgrid"]) {
+    const globalBin = IS_WIN ? `${name}.cmd` : name;
     let useGlobal = false;
     try {
       const { stdout: vOut } = await execMaybeCmd(
@@ -379,11 +387,11 @@ export async function runCloudgrid(args, opts = {}, deps = {}) {
         useGlobal = true;
       } else {
         console.error(
-          `cloudgrid-mcp: global CLI ${ver || vOut.trim()} < ${MIN_CLI_VERSION}, skipping`,
+          `cloudgrid-mcp: global CLI (${name}) ${ver || vOut.trim()} < ${MIN_CLI_VERSION}, skipping`,
         );
       }
     } catch {
-      // Not on PATH or --version failed — skip
+      // Not on PATH or --version failed — try the next name
     }
     if (useGlobal) {
       try {
@@ -421,14 +429,15 @@ export async function runCloudgrid(args, opts = {}, deps = {}) {
   }
 }
 
-export function cliTool(buildArgs, { cwdParam = false } = {}) {
+export function cliTool(buildArgs, { cwdParam = false, excludeDirFromCwd = false } = {}) {
   return async (input) => {
     try {
       const params = input || {};
       const opts = {};
       if (cwdParam) {
-        // Accept cwd, directory, or dir as the working-directory override.
-        opts.cwd = params.cwd ?? params.directory ?? params.dir;
+        opts.cwd = excludeDirFromCwd
+          ? (params.cwd ?? params.directory)
+          : (params.cwd ?? params.directory ?? params.dir);
       }
       return ok(await runCloudgrid(buildArgs(params), opts));
     } catch (err) {

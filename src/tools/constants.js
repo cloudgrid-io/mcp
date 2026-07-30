@@ -20,21 +20,29 @@ export const MCP_VERSION = (() => {
   }
 })();
 
+// Anti-abuse cap — unauthenticated publishing is the primary abuse surface.
 export const ANON_HTML_MAX_BYTES = 2_000_000;
-// Signed-in inline drops get a larger cap than the anonymous 2MB. Kept
-// conservative — it must stay ≤ the platform's single-artifact byte limit.
-// TODO(platform-confirm): confirm the server's single-artifact limit (the
-// folder-plug path uses PLUG_MAX_TOTAL_BYTES = 100MB, but the single-artifact
-// inline limit is not yet confirmed) and raise this to match.
+// Product cap for authed inline plugs. The server accepts up to 150 MB
+// (express.json body limit; nginx ingress allows 200m), so this guard is
+// ~6x stricter by design — a normal page is well under 1 MB, and past
+// 25 MB the right shape is a folder plug (multipart, see deploy.js:756).
 export const AUTHED_HTML_MAX_BYTES = 25_000_000;
 export const CONSOLE_URL = "https://console.cloudgrid.io/";
 
+// Display labels for visibility values (two-axis model). The OPTIONS list is what
+// the post-plug ask offers; the LABELS map also keeps legacy keys (org,
+// authenticated, space) so an entity's CURRENT stored value still renders — do
+// not offer those as choices.
+export const VISIBILITY_OPTIONS = ["private", "grid", "link"];
 export const VISIBILITY_LABELS = {
   private: "Only you",
-  org: "Your grid",
-  authenticated: "Anyone signed in",
-  space: "A space",
+  grid: "Everyone in your grid",
   link: "Anyone with the link",
+  // display-only (legacy stored values / axis renderings):
+  org: "Everyone in your grid",
+  authenticated: "Anyone with the link, sign-in required",
+  space: "Selected spaces",
+  public: "Anyone, findable by search",
 };
 
 // ── Widget resources (ChatGPT Apps SDK, web edition only) ────────────────────
@@ -68,7 +76,15 @@ export const CLI_NPX_PKG = "@cloudgrid-io/cli@latest";
 // server-side with HTTP 426) — a gate below the floor green-lights CLIs the API
 // rejects on every call (issue #59). Bump this in lockstep with every floor
 // raise (CLI release protocol checklist).
-export const MIN_CLI_VERSION = "0.15.14";
+//
+// 2026-07-30: raised 0.15.14 -> 0.15.26 so the MCP stops using stale local
+// CLIs. Below the floor the MCP does NOT error — it skips that rung and runs
+// `npx @cloudgrid-io/cli@latest`, so raising this makes MCP callers effectively
+// run latest at the cost of an npx fetch on the first call. It does not and
+// cannot force a direct CLI user to upgrade; that is the server-side floor
+// (`platform_settings.cli_compat.min`, live at 0.15.2), which is a separate,
+// user-breaking change.
+export const MIN_CLI_VERSION = "0.15.26";
 
 // Upload/create POST budget. The build itself is async (server returns 202 +
 // poll_url); this bounds only the request→response, so a stalled server errors
@@ -95,7 +111,7 @@ export const CLI_TOOL_VERBS = {
   grid_info:     ["info"],
   grid_get:          ["get"],
   grid_describe_grid: ["describe"],
-  grid_edit_existing_app:        ["pickup"],
+  grid_edit_existing_app:        ["pull"],
   grid_rename:   ["rename"],
   grid_take_offline:   ["unplug"],
   grid_delete:   ["delete"],

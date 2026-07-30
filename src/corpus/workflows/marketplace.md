@@ -54,7 +54,7 @@ There is no app code to copy — you generate it from the guide.
 
 ## 4. Scaffold + fill cloudgrid.yaml
 
-`grid_create_project` an app `<name>` — it scaffolds the project folder and a
+`grid new <name>` — it scaffolds the project folder and a
 starter `cloudgrid.yaml` with empty `services:{}` (no server entity yet; the
 first `grid plug` auto-creates it from the manifest, honoring its `name:`, and
 writes `.cloudgrid/link.json`). Then put the app under **`services/web/`** and
@@ -99,7 +99,7 @@ Generate the files under `services/web/` per the guide:
 - Map secrets in the `vault:` block (done above), then **store the values**:
   `grid secrets set stripe-live-key sk_live_…`,
   `grid secrets set stripe-webhook-secret whsec_…`,
-  `grid secrets set auth-provider-key …`. Non-secret public config → `grid_set_env`.
+  `grid secrets set auth-provider-key …`. Non-secret public config → `grid env set`.
 - Do **NOT** set the DB connection vars yourself (`DATABASE_MONGODB_URL` / legacy
   `MONGODB_URL`) — the grid injects them.
 
@@ -112,7 +112,7 @@ secrets before deploying. Don't require it.
 
 Deploy the folder with `grid_plug`. A **runtime deploy is ASYNC**: the first
 response is `status: "building"`, NOT a live URL yet.
-- Poll `grid_status` (or the returned poll_url) until the entity is live.
+- Poll `grid_check_deploy` (or the returned poll_url) until the entity is live.
 - Surface a liveness signal while it builds — never a bare silent wait.
 - Only once it is live, return the deployed app URL (NOT the build/log link).
 

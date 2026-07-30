@@ -1,16 +1,17 @@
-// grid_visibility kind-awareness. Reported bug: setting visibility on a runtime
-// app/agent failed with "handles inspirations, not runtime agents" because
-// runVisibility hardcoded PATCH /api/v2/inspirations/:id for every entity.
+// grid_visibility — the two-axis visibility contract.
 //
-// The platform has two surfaces with two vocabularies:
-//   - inspirations: PATCH /api/v2/inspirations/:id      { private|space|authenticated|org|link }
-//   - runtimes:     PATCH /api/v2/entities/:id/visibility { private|authenticated|grid|link }
-// runVisibility must route by kind and map the whole-grid word (org<->grid).
-// Mirrors runFork: runtime route first when kind is unknown, fall back to the
-// inspiration route on 404 NOT_FOUND.
+// BOTH realms now take the same realm-scoped PATCH with the same vocabulary:
+//   runtimes:     PATCH /api/v2/entities/:id/visibility
+//   inspirations: PATCH /api/v2/inspirations/:id/visibility
+// Bodies: legacy modes ride { visibility: private|grid|link } (+ link_indexed /
+// visibility_spaces); the axes ride { share_scope, external_access,
+// require_signin?, visibility_spaces? }. `authenticated` is RETIRED — it maps
+// to the axis body it equals (private + link + require_signin). `org` is
+// rejected. `public` as a mode is an alias of `link`. `space` maps to
+// inside: spaces and needs the `spaces` list.
 //
 // Run: node test/set-sharing.test.mjs
-import { runVisibility, API_BASE } from "../src/tools.js";
+import { runVisibility } from "../src/tools.js";
 
 let failures = 0;
 function check(label, cond) {
@@ -31,7 +32,7 @@ let fetchCalls = [];
 let replies = {}; // { runtime: {status, body}, inspiration: {status, body} }
 
 const isRuntimeVis = (u) => /\/api\/v2\/entities\/[^/]+\/visibility$/.test(u);
-const isInspirationVis = (u) => /\/api\/v2\/inspirations\/[^/]+$/.test(u);
+const isInspirationVis = (u) => /\/api\/v2\/inspirations\/[^/]+\/visibility$/.test(u);
 
 globalThis.fetch = async (url, opts = {}) => {
   const u = String(url);
@@ -48,69 +49,112 @@ const runtimeCalls = () => fetchCalls.filter((c) => isRuntimeVis(c.url));
 const inspirationCalls = () => fetchCalls.filter((c) => isInspirationVis(c.url));
 
 try {
-  // 1. Runtime agent (kind from session) → entities route, org mapped to grid, NO inspiration call.
+  // 1. Runtime agent, legacy mode → entities route, { visibility } body; no inspiration call.
   reset();
-  replies.runtime = { status: 200, body: JSON.stringify({ url: "https://a.cloudgrid.io" }) };
-  const r1 = await runVisibility(makeCtx({ kind: "agent", entity_id: "e_rt" }), { visibility: "org" });
+  replies.runtime = { status: 200, body: JSON.stringify({ url: "https://a.cloudgrid.io", visibility: "grid" }) };
+  const r1 = await runVisibility(makeCtx({ kind: "agent", entity_id: "e_rt" }), { visibility: "grid" });
   check("runtime: hit the entities/:id/visibility route", runtimeCalls().length === 1);
   check("runtime: NO inspiration route call", inspirationCalls().length === 0);
-  check("runtime: whole-grid 'org' was mapped to 'grid' on the wire", runtimeCalls()[0]?.body?.visibility === "grid");
+  check("runtime: legacy body is { visibility: grid }", runtimeCalls()[0]?.body?.visibility === "grid");
   check("runtime: returns grid as the set visibility", r1.structured.visibility === "grid");
 
-  // 2. Runtime app, explicit kind param, plain value passes through unchanged.
+  // 2. 'org' is REJECTED up front — no wire call (matches the CLI).
   reset();
-  replies.runtime = { status: 200, body: JSON.stringify({ url: "https://b.cloudgrid.io" }) };
-  await runVisibility(makeCtx({ entity_id: "e_rt2" }), { visibility: "authenticated", kind: "app" });
-  check("runtime(explicit kind): entities route used", runtimeCalls().length === 1 && inspirationCalls().length === 0);
-  check("runtime(explicit kind): 'authenticated' passed through", runtimeCalls()[0]?.body?.visibility === "authenticated");
+  let threwOrg = null;
+  try { await runVisibility(makeCtx({ kind: "app", entity_id: "e_org" }), { visibility: "org" }); }
+  catch (e) { threwOrg = e; }
+  check("org: rejected with guidance to use grid", threwOrg !== null && /grid/.test(threwOrg.message));
+  check("org: no wire call made", fetchCalls.length === 0);
 
-  // 3. Inspiration (kind from session) → inspirations route, grid mapped to org.
+  // 3. 'authenticated' is retired → maps to the AXIS body private+link+require_signin.
   reset();
-  replies.inspiration = { status: 200, body: JSON.stringify({ url: "https://c.cloudgrid.io" }) };
-  const r3 = await runVisibility(makeCtx({ kind: "inspiration", entity_id: "e_insp" }), { visibility: "grid" });
-  check("inspiration: hit the inspirations/:id route", inspirationCalls().length === 1);
+  replies.runtime = { status: 200, body: JSON.stringify({ share_scope: "private", external_access: "link", require_signin: true }) };
+  const r3 = await runVisibility(makeCtx({ entity_id: "e_auth" }), { visibility: "authenticated", kind: "app" });
+  const b3 = runtimeCalls()[0]?.body;
+  check("authenticated: sends the axis body it equals",
+    b3?.share_scope === "private" && b3?.external_access === "link" && b3?.require_signin === true && b3?.visibility === undefined);
+  check("authenticated: result surfaces the stored axes", r3.structured.external_access === "link" && r3.structured.require_signin === true);
+
+  // 4. Inspiration realm: SAME vocabulary, realm-scoped /visibility path — no org mapping.
+  reset();
+  replies.inspiration = { status: 200, body: JSON.stringify({ url: "https://c.cloudgrid.io", visibility: "grid" }) };
+  const r4 = await runVisibility(makeCtx({ kind: "inspiration", entity_id: "e_insp" }), { visibility: "grid" });
+  check("inspiration: hit inspirations/:id/visibility", inspirationCalls().length === 1);
   check("inspiration: NO entities route call", runtimeCalls().length === 0);
-  check("inspiration: 'grid' was mapped to 'org' on the wire", inspirationCalls()[0]?.body?.visibility === "org");
-  check("inspiration: reports 'grid' back to the user", r3.structured.visibility === "grid");
+  check("inspiration: sends grid AS grid (no org mapping)", inspirationCalls()[0]?.body?.visibility === "grid");
+  check("inspiration: reports grid back", r4.structured.visibility === "grid");
 
-  // 4. Unknown kind: try runtime first, 404 → fall back to inspiration route.
+  // 5. Unknown kind: runtime first, 404 → inspiration fallback with the same body.
   reset();
   replies.runtime = { status: 404, body: JSON.stringify({ error: { code: "NOT_FOUND", message: "Entity not found." } }) };
-  replies.inspiration = { status: 200, body: JSON.stringify({ url: "https://d.cloudgrid.io" }) };
+  replies.inspiration = { status: 200, body: JSON.stringify({ url: "https://d.cloudgrid.io", visibility: "grid" }) };
   await runVisibility(makeCtx({ entity_id: "e_unknown" }), { visibility: "grid" });
   check("unknown: runtime route tried first", runtimeCalls().length === 1);
   check("unknown: fell back to the inspiration route", inspirationCalls().length === 1);
-  check("unknown: fallback used the inspiration vocab (org)", inspirationCalls()[0]?.body?.visibility === "org");
+  check("unknown: fallback used the SAME vocabulary (grid)", inspirationCalls()[0]?.body?.visibility === "grid");
 
-  // 4b. Unknown kind: runtime route replies 400 NOT_A_RUNTIME → fall back too.
+  // 5b. NOT_A_RUNTIME also falls back.
   reset();
   replies.runtime = { status: 400, body: JSON.stringify({ error: { code: "NOT_A_RUNTIME", message: "This is an Inspiration, not a Runtime." } }) };
-  replies.inspiration = { status: 200, body: JSON.stringify({ url: "https://d2.cloudgrid.io" }) };
+  replies.inspiration = { status: 200, body: JSON.stringify({ url: "https://d2.cloudgrid.io", visibility: "private" }) };
   await runVisibility(makeCtx({ entity_id: "e_not_rt" }), { visibility: "private" });
   check("NOT_A_RUNTIME: runtime tried then inspiration fallback", runtimeCalls().length === 1 && inspirationCalls().length === 1);
 
-  // 5. 'space' is inspiration-only → never touches the runtime route.
+  // 6. Two-axis body: inside/outside (+spaces, require_signin) validated + sent as-is.
   reset();
-  replies.inspiration = { status: 200, body: JSON.stringify({ url: "https://e.cloudgrid.io" }) };
-  await runVisibility(makeCtx({ entity_id: "e_space" }), { visibility: "space" });
-  check("space: inspiration route only", inspirationCalls().length === 1 && runtimeCalls().length === 0);
+  replies.runtime = { status: 200, body: JSON.stringify({ share_scope: "spaces", external_access: "none", visibility_spaces: ["design"] }) };
+  const r6 = await runVisibility(makeCtx({ kind: "app", entity_id: "e_ax" }), { inside: "spaces", outside: "none", spaces: ["Design", "design"] });
+  const b6 = runtimeCalls()[0]?.body;
+  check("axes: sends share_scope/external_access", b6?.share_scope === "spaces" && b6?.external_access === "none");
+  check("axes: spaces deduped + lowercased", Array.isArray(b6?.visibility_spaces) && b6.visibility_spaces.length === 1 && b6.visibility_spaces[0] === "design");
+  check("axes: result carries the stored axes", r6.structured.share_scope === "spaces" && r6.structured.visibility_spaces?.[0] === "design");
 
-  // 6. 'space' on a runtime is a clear up-front error, no wire call.
+  // 6b. Axis validation errors — no wire call.
   reset();
-  let threw6 = null;
-  try { await runVisibility(makeCtx({ kind: "app", entity_id: "e_rt3" }), { visibility: "space" }); }
-  catch (e) { threw6 = e; }
-  check("space+runtime: throws a clear error", threw6 !== null && /space/i.test(threw6.message));
-  check("space+runtime: no wire call made", fetchCalls.length === 0);
+  let threwAx = null;
+  try { await runVisibility(makeCtx({ kind: "app", entity_id: "e_ax2" }), { inside: "grid", outside: "none", require_signin: true }); }
+  catch (e) { threwAx = e; }
+  check("axes: require_signin without outside:link rejected up front", threwAx !== null && /require_signin/.test(threwAx.message) && fetchCalls.length === 0);
+  reset();
+  let threwAx2 = null;
+  try { await runVisibility(makeCtx({ kind: "app", entity_id: "e_ax3" }), { inside: "spaces", outside: "none" }); }
+  catch (e) { threwAx2 = e; }
+  check("axes: inside:spaces without `spaces` rejected up front", threwAx2 !== null && /space/.test(threwAx2.message) && fetchCalls.length === 0);
 
-  // 7. A real runtime error (403) is NOT retried on the inspiration route.
+  // 7. Legacy 'space' mode maps to the spaces axis body and needs the list.
+  reset();
+  replies.runtime = { status: 200, body: JSON.stringify({ share_scope: "spaces", external_access: "none", visibility_spaces: ["team"] }) };
+  await runVisibility(makeCtx({ kind: "app", entity_id: "e_sp" }), { visibility: "space", spaces: ["team"] });
+  const b7 = runtimeCalls()[0]?.body;
+  check("space mode: sends { share_scope: spaces, external_access: none, visibility_spaces }",
+    b7?.share_scope === "spaces" && b7?.external_access === "none" && b7?.visibility_spaces?.[0] === "team");
+  reset();
+  let threwSp = null;
+  try { await runVisibility(makeCtx({ kind: "app", entity_id: "e_sp2" }), { visibility: "space" }); }
+  catch (e) { threwSp = e; }
+  check("space mode without `spaces` list: clear error, no wire call", threwSp !== null && fetchCalls.length === 0);
+
+  // 8. link + indexed → link_indexed on the wire; 'public' mode aliases to link.
+  reset();
+  replies.runtime = { status: 200, body: JSON.stringify({ visibility: "link", link_indexed: true }) };
+  await runVisibility(makeCtx({ kind: "app", entity_id: "e_l" }), { visibility: "public", indexed: true });
+  const b8 = runtimeCalls()[0]?.body;
+  check("public mode: aliases to link with link_indexed", b8?.visibility === "link" && b8?.link_indexed === true);
+
+  // 9. A real runtime error (403) is NOT retried on the inspiration route.
   reset();
   replies.runtime = { status: 403, body: JSON.stringify({ error: { code: "NOT_OWNER", message: "nope" } }) };
-  let threw7 = null;
+  let threw9 = null;
   try { await runVisibility(makeCtx({ kind: "app", entity_id: "e_rt4" }), { visibility: "private" }); }
-  catch (e) { threw7 = e; }
-  check("403: propagates (throws)", threw7 !== null);
+  catch (e) { threw9 = e; }
+  check("403: propagates (throws)", threw9 !== null);
   check("403: NO inspiration fallback", inspirationCalls().length === 0);
+
+  // 10. Axis response renders the two-axis sentence.
+  reset();
+  replies.runtime = { status: 200, body: JSON.stringify({ share_scope: "grid", external_access: "link", require_signin: true, url: "https://f.cloudgrid.io" }) };
+  const r10 = await runVisibility(makeCtx({ kind: "app", entity_id: "e_txt" }), { inside: "grid", outside: "link", require_signin: true });
+  check("axis result text names both axes", /inside the grid: everyone in the grid/.test(r10.text) && /signed-in accounts only/.test(r10.text));
 
   console.log(failures === 0 ? "\nAll set-sharing checks passed." : `\n${failures} set-sharing check(s) FAILED.`);
   process.exit(failures === 0 ? 0 : 1);

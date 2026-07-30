@@ -25,6 +25,13 @@ const PUBLIC_API_BASE = (
   process.env.CLOUDGRID_PUBLIC_API_URL || "https://api.cloudgrid.io"
 ).replace(/\/+$/, "");
 
+// The public URL of the connected (OAuth) MCP host, used in error guidance that
+// suggests the hosted connector as an alternative. Derived from MCP_PUBLIC_URL
+// (set on the deployment) with a fallback.
+const CONNECTED_MCP_HOST =
+  process.env.MCP_PUBLIC_URL?.replace(/\/+$/, "") ||
+  "https://mcp-connected.cloudgrid.io";
+
 export function cloudgridHome() {
   return process.env.CLOUDGRID_HOME || join(homedir(), ".cloudgrid");
 }
@@ -52,7 +59,7 @@ const CERT_ERROR_GUIDANCE =
   "- Install the root CA into your OS trust store (macOS Keychain, Windows " +
   "Certificate Manager, or /usr/local/share/ca-certificates on Linux), or\n" +
   "- Set NODE_EXTRA_CA_CERTS=/path/to/root-ca.pem before launching the MCP, or\n" +
-  "- Use the hosted MCP connector: https://mcp-connected.cloudgrid.io/mcp";
+  `- Use the hosted MCP connector: ${CONNECTED_MCP_HOST}/mcp`;
 
 function throwCertError() {
   const err = new Error(CERT_ERROR_GUIDANCE);
@@ -82,7 +89,7 @@ export async function pollStatusOnce(code) {
     throw new Error(
       `Can't reach api.cloudgrid.io (${cause}). ` +
         `If you are behind a proxy, set HTTPS_PROXY; or use the hosted connector ` +
-        `https://mcp-connected.cloudgrid.io/mcp.`,
+        `${CONNECTED_MCP_HOST}/mcp.`,
     );
   }
   if (res.status === 404) {
@@ -94,14 +101,28 @@ export async function pollStatusOnce(code) {
   return res.json();
 }
 
-// Read the stored credentials, or null if absent/unreadable. Same file the CLI
-// writes, so an MCP can reuse a CLI login (and vice versa).
+// Read the stored credentials, or null if absent/unreadable/expired. Same file
+// the CLI writes, so an MCP can reuse a CLI login (and vice versa).
+// Returns { jwt, email, ... } when valid, null otherwise.
 export async function readCredentials() {
+  const result = await readCredentialsStatus();
+  if (result.expired || !result.creds) return null;
+  return result.creds;
+}
+
+// Like readCredentials, but distinguishes "expired" from "absent" so callers
+// (grid_start) can surface a targeted message.
+export async function readCredentialsStatus() {
   try {
     const creds = JSON.parse(await readFile(credentialsPath(), "utf8"));
-    return creds && creds.jwt ? creds : null;
+    if (!creds || !creds.jwt) return { creds: null, expired: false };
+    const claims = decodeJwt(creds.jwt);
+    if (claims.exp && claims.exp * 1000 <= Date.now()) {
+      return { creds: null, expired: true };
+    }
+    return { creds, expired: false };
   } catch {
-    return null;
+    return { creds: null, expired: false };
   }
 }
 

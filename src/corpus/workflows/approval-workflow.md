@@ -55,7 +55,7 @@ route, server page).
 
 ## 4. Scaffold
 
-`grid_create_project` an app `<name>`. It scaffolds the project folder and writes a `cloudgrid.yaml` with an EMPTY
+`grid new <name>`. It scaffolds the project folder and writes a `cloudgrid.yaml` with an EMPTY
 `services: {}`. No server entity exists yet — the first `grid plug` auto-creates
 it from the manifest (honoring its `name:`) and writes `.cloudgrid/link.json`.
 Then (a) write the app under **`services/web/`**
@@ -113,7 +113,7 @@ before deploying. Don't require it.
 
 Deploy the folder with `grid_plug`. A **runtime deploy is ASYNC**: the first
 response is `status: "building"`, NOT a live URL yet.
-- Poll `grid_status` (or the returned poll_url) until the entity is live.
+- Poll `grid_check_deploy` (or the returned poll_url) until the entity is live.
 - Surface a liveness signal while it builds — never a bare silent wait.
 - Only once it is live, return the deployed app URL (NOT the build/log link).
 

@@ -1,19 +1,21 @@
 # Web edition (hosted MCP)
 
 The MCP server ships in two editions from one codebase. The tool logic lives in
-`src/tools.js`; each edition is a thin entrypoint that injects an identity context.
+`src/tools/register.js`; each edition is a thin entrypoint that injects an
+identity context.
 
 | | Local (`src/index.js`) | Web (`src/web.js`) |
 |---|---|---|
 | Transport | stdio | MCP Streamable HTTP |
 | Runs | as a subprocess on the user's machine | hosted (e.g. GKE) |
 | Reaches | Claude Code, Cursor, Claude Desktop | claude.ai web, any HTTP MCP client |
-| Tools | full set, incl. CLI-wrapping | light set: drop, claim, login, visibility |
+| Tools | full set (36), incl. CLI-wrapping | 14 shared direct-API tools (see README) |
 | Identity | `~/.cloudgrid/credentials` | per-session token in memory |
 
-The web edition omits the CLI-wrapping tools (init, plug, logs, share, feedback,
-brain) — those need a local machine. It keeps the direct-API tools, which need no
-local environment.
+The web edition registers the 14 direct-API tools that call the platform without
+the CLI, including `grid_plug` (the deploy/publish verb). It omits the 22
+CLI-wrapping tools — those need a local machine. The full tool list is generated
+from the registry in [README.md](README.md).
 
 ## Run it
 

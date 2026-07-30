@@ -13,6 +13,7 @@ import {
   AUTHED_HTML_MAX_BYTES,
   CONSOLE_URL,
   VISIBILITY_LABELS,
+  VISIBILITY_OPTIONS,
   APPS_WIDGETS_ENABLED,
   GRID_PICKER_URI,
   PLUG_UPLOAD_TIMEOUT_MS,
@@ -83,7 +84,7 @@ export async function resolveGridOrAsk(ctx, { token, suppliedGrid, edition }, de
       if (a.render_ready !== b.render_ready) return b.render_ready ? 1 : -1;
       return 0;
     });
-    const lines = ["Which grid should this be published to?"];
+    const lines = ["Which grid should this be plugged into?"];
     for (const o of annotated) {
       const tags = [];
       if (o.is_active) tags.push("your active grid");
@@ -94,7 +95,7 @@ export async function resolveGridOrAsk(ctx, { token, suppliedGrid, edition }, de
     lines.push("Pass the grid slug in the `grid` parameter.");
     const readyCount = annotated.filter((o) => o.render_ready).length;
     if (readyCount === 0) {
-      lines.push("Note: none of your grids are fully set up yet. You can use anonymous: true as a fallback.");
+      lines.push("Note: none of your grids are fully set up yet. Wait until provisioning completes (grid_start will show render_ready: true) before plugging.");
     }
     return {
       picker: {
@@ -109,12 +110,103 @@ export async function resolveGridOrAsk(ctx, { token, suppliedGrid, edition }, de
   if (grids.length === 1) {
     return { single: { ...grids[0], is_active: grids[0].slug === activeGrid } };
   }
-  return { proceed: true };
+  // ZERO grids for a signed-in user: do NOT proceed — the plug is a guaranteed
+  // 403 NO_ACTIVE_ORG dead end. Field bug (2026-07-27, first-time user): the
+  // model sent the user to the console to create a grid by hand. Grid creation
+  // is a first-class API action (POST /api/v2/grids) — offer to do it here.
+  return {
+    picker: {
+      text:
+        "This account has no grid yet — a grid is the workspace the user's apps live in, and you can create it right now; do NOT send the user to the console for this. " +
+        "Suggest a short slug from the user's name or the app (3-40 lowercase letters, digits, or hyphens, starting with a letter), confirm it with the user, " +
+        "then call grid_create_grid with that slug and re-call grid_plug with grid: <slug>.",
+      structured: { needs_grid_create: true },
+    },
+  };
+}
+
+// ── grid_create_grid — create the user's first (or another) grid ────────────
+// Mirrors the CLI `grid create grid <slug>` (POST /api/v2/grids; the caller
+// becomes the grid's admin, a "general" space is provisioned server-side).
+const GRID_SLUG_RE = /^[a-z][a-z0-9-]{2,39}$/;
+
+export async function runCreateGrid(ctx, { slug, name } = {}) {
+  const token = await ctx.getToken();
+  if (!token) {
+    return {
+      text: "Creating a grid needs an account — sign the user in first (grid_login), then re-call grid_create_grid.",
+      structured: { needs_auth: true },
+    };
+  }
+  const s = String(slug || "").trim().toLowerCase();
+  if (!GRID_SLUG_RE.test(s)) {
+    return {
+      text: `Invalid grid slug '${s}'. Use 3-40 lowercase letters, digits, or hyphens, starting with a letter.`,
+      structured: { error: { code: "INVALID_SLUG" } },
+    };
+  }
+  const res = await fetch(`${API_BASE}/api/v2/grids`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ slug: s, name: String(name || s).trim() }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const code = data?.error?.code || data?.code || `HTTP_${res.status}`;
+    const msg = data?.error?.message || data?.message || res.statusText || "request failed";
+    return {
+      text: `Could not create grid '${s}' (${code}): ${msg}` + (code === "HTTP_409" || /exists|taken/i.test(msg) ? " Try a different slug." : ""),
+      structured: { error: { code, message: msg } },
+    };
+  }
+  const finalSlug = data.slug ?? s;
+  const lines = [`Created grid ${finalSlug} — the user is its admin.`];
+  if (data.poll_url) lines.push("Its TLS certificate is still provisioning, so the first page may take a minute to serve.");
+  lines.push(`Now re-call grid_plug with grid: ${finalSlug}.`);
+  return {
+    text: lines.join("\n"),
+    structured: { created: true, grid: { slug: finalSlug, name: data.name ?? String(name || s) } },
+  };
+}
+
+// ── Inline-source secret scan ────────────────────────────────────────────────
+// Field bug (2026-07-27): the model embedded the user's OpenRouter API key in
+// a public inline page ("so they can test now"). A plugged page's source is
+// readable by anyone who can open it — a pasted key is leaked the moment the
+// URL is shared. Hard-block the obvious key shapes client-side, before the
+// upload. (Not a guarantee — a determined model can obfuscate — but it stops
+// the good-faith "embed it so it works" path cold.)
+const SECRET_PATTERNS = [
+  [/sk-or-v1-[A-Za-z0-9]{16,}/, "an OpenRouter API key"],
+  [/sk-ant-[A-Za-z0-9_-]{16,}/, "an Anthropic API key"],
+  [/sk-proj-[A-Za-z0-9_-]{16,}/, "an OpenAI API key"],
+  [/\bsk-[A-Za-z0-9]{32,}\b/, "an OpenAI-style secret key"],
+  [/AIza[0-9A-Za-z_-]{30,}/, "a Google API key"],
+  [/ghp_[A-Za-z0-9]{30,}/, "a GitHub token"],
+  [/github_pat_[A-Za-z0-9_]{30,}/, "a GitHub fine-grained token"],
+  [/AKIA[0-9A-Z]{16}/, "an AWS access key id"],
+  [/xox[baprs]-[A-Za-z0-9-]{10,}/, "a Slack token"],
+];
+
+export function scanInlineSecrets(text) {
+  if (typeof text !== "string" || text.length === 0) return null;
+  for (const [re, label] of SECRET_PATTERNS) {
+    if (re.test(text)) return label;
+  }
+  return null;
+}
+
+export function secretBlockMessage(label, where) {
+  return (
+    `Blocked: the ${where} contains what looks like ${label}. A plugged page is PUBLIC — anyone who opens it can read its source, so a pasted API key is leaked the moment the URL is shared. ` +
+    `Remove the key, and if it was ever live, tell the user to rotate it. ` +
+    `If the app needs to call an LLM, that is a RUNTIME app, not an inline page: needs: { ai: true } gives it CloudGrid's managed AI gateway with NO API key at all, and other keys go in grid secrets set — both stay server-side. Runtime apps build on the local edition (Claude Desktop/Code or a terminal).`
+  );
 }
 
 // ── Direct-API tools (both editions) ───────────────────────────────────────────
 function looksLikeFullHtml(s) {
-  const head = s.replace(/^﻿/, "").trimStart().slice(0, 256).toLowerCase();
+  const head = s.replace(/^\uFEFF/, "").trimStart().slice(0, 256).toLowerCase();
   return head.startsWith("<!doctype html") || head.startsWith("<html");
 }
 
@@ -683,10 +775,10 @@ function compileIgnorePattern(line) {
   if (pat.startsWith("/")) pat = pat.slice(1);
   const rx = pat
     .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*\*/g, " ")
+    .replace(/\*\*/g, "\uFFFF")
     .replace(/\*/g, "[^/]*")
     .replace(/\?/g, "[^/]")
-    .replace(/ /g, ".*");
+    .replace(/\uFFFF/g, ".*");
   const body = anchored ? `^${rx}` : `(^|/)${rx}`;
   const re = new RegExp(`${body}(/|$)`);
   return { re, dirOnly };
@@ -787,7 +879,7 @@ async function expandZipToProject(zipPath, inlineHtml) {
   const hasInlineHtml = typeof inlineHtml === "string" && inlineHtml.length > 0;
   if (hasInlineHtml && hasManifest) {
     throw new Error(
-      "The zip already contains a cloudgrid.yaml project — deploy it as-is (drop the `html` param), " +
+      "The zip already contains a cloudgrid.yaml project — plug it as-is (drop the `html` param), " +
         "or re-plug the entity and edit its files instead.",
     );
   }
@@ -895,7 +987,7 @@ async function plugZipProjectViaCli(ctx, { projectDir, name }, input, deps = {})
   const url = parseCliPlugUrl(stdout);
   if (!url) {
     throw new Error(
-      `The zip project deployed via the CLI but no live URL was found in its output.\n${stdout.slice(0, 500)}`,
+      `The zip project was plugged via the CLI but no live URL was found in its output.\n${stdout.slice(0, 500)}`,
     );
   }
   return {
@@ -996,16 +1088,22 @@ export function errorGuidance({ status, code, edition, isEdit, isAnon, signedIn 
   }
   // 409 EDIT_REJECTED — an in-place re-plug the server won't take.
   if (status === 409) {
-    return "The entity cannot be updated right now (a deploy is in progress, or it is archived/expired/claimed). An explicit re-plug never silently creates; retry later, or omit target_entity_id to create a new entity.";
+    return "The entity cannot be updated right now (a plug is in progress, or it is archived/expired/claimed). An explicit re-plug never silently creates; retry later, or omit target_entity_id to create a new entity.";
   }
   // 401 on an edit — the credential didn't authorize this entity.
   if (status === 401) {
     return isEdit
       ? "That did not authorize this entity (wrong entity, expired, or already claimed). Sign in if you own it (grid_login), pass its owner_token for an anonymously-created drop, or omit target_entity_id to create a new entity."
-      : "Not signed in. Ask the user: sign in (grid_login) to publish to their grid, OR publish anonymously now (re-call grid_plug with anon: true) - it goes live immediately with a claim_url + owner_token to claim into their account later. Do not silently fail; offer both.";
+      : "Your sign-in is missing or expired. Run grid_login, then retry the same grid_plug. Do not offer anonymous publishing as a fix for a failed sign-in; anonymous is only for a user who explicitly asks to publish without attribution.";
   }
   if (status === 403) {
-    return "You lack the role to plug this target. To re-plug someone else's entity, pick it up first (grid_edit_existing_app / grid_claim_anonymous_deploy).";
+    // NO_ACTIVE_ORG is not a role problem — the account has no grid at all.
+    // The generic pull/pickup hint here sent a first-time user in circles
+    // (field bug 2026-07-27); route them to in-flow grid creation instead.
+    if (code === "NO_ACTIVE_ORG") {
+      return "The account has no grid yet. Do not send the user to the console — create one from here: suggest a short slug, confirm it with the user, call grid_create_grid, then re-call grid_plug with grid: <slug>.";
+    }
+    return "You lack the role to plug this target. To re-plug someone else's entity, pull it first (grid_pull), or make your own copy (grid_pickup).";
   }
   // ── Consent-gated report offer (Task 34) ──────────────────────────────────
   // GENUINE bugs only: a build/deploy failure, any 5xx, INTERNAL_ERROR, or an
@@ -1142,21 +1240,47 @@ export async function runPlug(ctx, input, deps = {}) {
         "may accompany a .zip `path` — it becomes the index.html over the archive's assets.",
     );
   }
+  // M3: a create/re-plug with NO source at all is a caller mistake — fail it
+  // here with the source list instead of letting it wander into an obscure
+  // downstream error.
+  if (!hasHtml && !hasArtifacts && !hasPath) {
+    throw new Error(
+      "No source to plug. Pass exactly one of: `html` (a single inline HTML document), " +
+        "`artifact_files` (multiple inline files), or `path` (a local file/folder/zip, local edition only).",
+    );
+  }
   if (ctx.edition === "web" && hasPath) {
     throw new Error(
       "The hosted server cannot read local files — pass the source inline via `html` or `artifact_files`.",
     );
+  }
+  // Secret scan on inline sources — a plugged page is public; block pasted API
+  // keys before they leave the machine. (Field bug 2026-07-27: an OpenRouter
+  // key was embedded in a public page "so they can test now".)
+  if (hasHtml) {
+    const hit = scanInlineSecrets(html);
+    if (hit) throw new Error(secretBlockMessage(hit, "inline `html`"));
+  }
+  if (hasArtifacts) {
+    for (const f of artifact_files) {
+      let body = f?.content;
+      if (typeof body === "string" && f?.encoding === "base64") {
+        try { body = Buffer.from(body, "base64").toString("utf8"); } catch { /* scan raw */ }
+      }
+      const hit = scanInlineSecrets(body);
+      if (hit) throw new Error(secretBlockMessage(hit, `artifact file \`${f?.path ?? "?"}\``));
+    }
   }
   let zipSingleHtml = null;
   if (zipSource) {
     if (target_entity_id || (slug && grid)) {
       throw new Error(
         "Re-plugging an existing entity from a zip is not supported yet — pick up the app " +
-          "(grid_edit_existing_app) and re-plug the folder, or deploy the zip as a new entity.",
+          "(grid_edit_existing_app) and re-plug the folder, or plug the zip as a new entity.",
       );
     }
     if (anon) {
-      throw new Error("A zip deploy creates a static app and needs sign-in — it cannot be anonymous.");
+      throw new Error("A zip plug creates a static app and needs sign-in — it cannot be anonymous.");
     }
     const expanded = await expandZipToProject(srcPath, hasHtml ? html : null);
     if (expanded.singleHtml) {
@@ -1182,6 +1306,15 @@ export async function runPlug(ctx, input, deps = {}) {
     artifacts = [art];
   } else if (hasPath) {
     artifacts = collectPathArtifacts(effectivePath);
+    // Same secret scan as the inline sources — a model on the local edition
+    // can write a key into a file and plug the path, bypassing the inline
+    // check. Scan textual files (≤1MB) read from disk too.
+    for (const a of artifacts) {
+      if (a.buffer && a.buffer.length <= 1024 * 1024) {
+        const hit = scanInlineSecrets(a.buffer.toString("utf8"));
+        if (hit) throw new Error(secretBlockMessage(hit, `file \`${a.path}\``));
+      }
+    }
   } else if (hasArtifacts) {
     let total = 0;
     artifacts = artifact_files.map((f) => {
@@ -1231,6 +1364,18 @@ export async function runPlug(ctx, input, deps = {}) {
   }
 
   // ── Auth wire selection ─────────────────────────────────────────────────────
+  // Defence in depth: anon: true must only reach here after the explicit choice
+  // prompt was surfaced (register.js sets authChoiceOffered to true). The flag is
+  // undefined when runPlug is called directly (tests bypass the gate), so only
+  // assert when ctx.state has authChoiceOffered as an own property.
+  if (
+    anon === true &&
+    ctx.state &&
+    "authChoiceOffered" in ctx.state &&
+    ctx.state.authChoiceOffered !== true
+  ) {
+    throw new Error("anon: true reached runPlug without the auth choice being offered first. This is a bug.");
+  }
   const authToken = anon === true ? null : await ctx.getToken();
   let ownerToken = typeof owner_token === "string" && owner_token.length > 0 ? owner_token : null;
   if (isEdit && !ownerToken) {
@@ -1371,9 +1516,9 @@ export async function runPlug(ctx, input, deps = {}) {
   } catch (err) {
     if (err?.name === "AbortError" || err?.name === "TimeoutError") {
       throw new Error(
-        `The deploy request timed out after ${Math.round(uploadTimeoutMs / 1000)}s. ` +
-          `The build may still be running on CloudGrid — check the deploy status ` +
-          `(poll_url / grid_status, or your grid) before deploying again, so you don't create a duplicate.`,
+        `The plug request timed out after ${Math.round(uploadTimeoutMs / 1000)}s. ` +
+          `The build may still be running on CloudGrid — check the build status ` +
+          `(poll_url / grid_status, or your grid) before plugging again, so you don't create a duplicate.`,
       );
     }
     throw new Error(`Could not reach CloudGrid at ${API_BASE}: ${err.message}`);
@@ -1558,7 +1703,7 @@ export async function runPlug(ctx, input, deps = {}) {
         : "npx -y @cloudgrid-io/cli plug";
       cliSteer =
         "Heads-up: this went in INLINE. For a multi-file app the disk-based CLI is more reliable (lockfiles/binaries can't truncate), but it must run where the CLI is already signed in — a terminal or Claude Code that has done `grid login` once. Do NOT try `grid login` inside a chat sandbox: its login poll is long-lived and the sandbox is ephemeral, so it won't stick. " +
-        `If you had to leave any files out to make this inline deploy safe, tell the user — offer the complete deploy from Claude Code or a terminal (\`${replug}\`), or confirm they accept the reduced version. Do not drop files silently.`;
+        `If you had to leave any files out to make this inline plug safe, tell the user — offer the complete plug from Claude Code or a terminal (\`${replug}\`), or confirm they accept the reduced version. Do not drop files silently.`;
     }
   }
 
@@ -1566,8 +1711,8 @@ export async function runPlug(ctx, input, deps = {}) {
   if (isBuilding) {
     lines.push(
       isEdit
-        ? `Building (async): ${url} — the update is deploying, not live yet.`
-        : `Building (async): ${url} — the deploy is in progress, not live yet.`,
+        ? `Building (async): ${url} — the update is plugging, not live yet.`
+        : `Building (async): ${url} — the plug is in progress, not live yet.`,
     );
     // Point at a tool that exists on THIS edition. grid_status is CLI-wrapping,
     // local-only — telling a hosted (ChatGPT/claude.ai) model to "run
@@ -1584,7 +1729,7 @@ export async function runPlug(ctx, input, deps = {}) {
     lines.push(`Updated in place: ${url}`);
   } else if (isInspirationCreate) {
     // Authed inspiration create — owned by the caller. Wording mirrors the drop verb.
-    lines.push(ctx.edition === "web" ? `Your app is live: ${url}` : `Published to your grid: ${url}`);
+    lines.push(ctx.edition === "web" ? `Your app is live: ${url}` : `Plugged into your grid: ${url}`);
     if (ctx.edition !== "web") lines.push("Owned by you.");
   } else {
     lines.push(`Live: ${url}`);
@@ -1611,20 +1756,18 @@ export async function runPlug(ctx, input, deps = {}) {
     const current = typeof data.visibility === "string" ? data.visibility : null;
     structured.console_url = CONSOLE_URL;
     if (current) structured.current_visibility = current;
-    structured.visibility_options = Object.entries(VISIBILITY_LABELS).map(([v, l]) => ({ value: v, label: l }));
+    structured.visibility_options = VISIBILITY_OPTIONS.map((v) => ({ value: v, label: VISIBILITY_LABELS[v] }));
     lines.push(`Manage all your apps in your grid: ${CONSOLE_URL}`);
     lines.push(
       `Now ASK the user who should be able to open this${current ? ` (currently ${VISIBILITY_LABELS[current] ?? current})` : ""}, then set their choice with grid_visibility — do not decide it for them. Options: ${
-        Object.entries(VISIBILITY_LABELS)
-          .map(([v, l]) => `${v} (${l})`)
+        VISIBILITY_OPTIONS
+          .map((v) => `${v} (${VISIBILITY_LABELS[v]})`)
           .join("; ")
-      }.`,
+      }. Finer control: a sign-in-required link (require_signin), search-indexed (indexed), or selected spaces (inside: spaces).`,
     );
   }
   return { text: lines.join("\n"), structured };
 }
-
-// ── grid_copy_app / grid_download_source — direct-API verbs (spec v2 §5–6) ────────
 
 async function authedApiCall(ctx, { method, pathName, body, verb }) {
   const token = await ctx.getToken();
@@ -1711,7 +1854,7 @@ export async function runPickup(ctx, { id, into_org_slug, name, source_version_i
 // direct API — works on the hosted edition where the CLI-wrapping share tool is
 // unavailable. Kind-aware routing (see below). Defaults to the drop made in this
 // session, so "make it private" needs no ids.
-export async function runVisibility(ctx, { target, visibility, kind, org }) {
+export async function runVisibility(ctx, { target, visibility, inside, outside, require_signin, spaces, indexed, kind, org }) {
   const token = await ctx.getToken();
   if (!token) {
     throw new Error("Changing visibility needs an owner. Run grid_login first.");
@@ -1728,32 +1871,78 @@ export async function runVisibility(ctx, { target, visibility, kind, org }) {
     headers["X-CloudGrid-Org"] = orgSlug;
   }
 
-  // Two visibility surfaces with two vocabularies:
-  //   - inspirations: PATCH /api/v2/inspirations/:id       { private|space|authenticated|org|link }
-  //   - runtimes:     PATCH /api/v2/entities/:id/visibility { private|authenticated|grid|link }
-  // Whole-grid visibility is the legacy `org` on inspirations and the canonical
-  // `grid` on runtimes. Normalize the caller's value to `grid`, then map per
-  // route. `space` exists only on inspirations.
-  const vis = visibility === "org" ? "grid" : visibility;
-  const runtimeValue = vis; // private | authenticated | grid | link
-  const inspirationValue = vis === "grid" ? "org" : vis; // private | space | authenticated | org | link
+  // ── Two-axis visibility model ──────────────────────────────────────
+  // A scope is two independent axes:
+  //   inside  (share_scope):     private | spaces | grid   — who in the grid sees it
+  //   outside (external_access): none | link | public      — reach beyond the grid
+  //   require_signin: link only — the link needs a signed-in CloudGrid account
+  // Legacy positional modes (private|grid|link) still ride the { visibility }
+  // body; `authenticated` is RETIRED as a first-class mode and maps to the axis
+  // body it equals (private + link + require_signin); `org` is rejected;
+  // `public` as a mode is an alias of `link` (the axis value `public` is the
+  // indexed one); `space` maps to inside: spaces and needs the `spaces` list.
+  const normSpaces = [...new Set((spaces || []).map((s) => String(s).trim().toLowerCase()).filter(Boolean))];
+  const useAxes = inside !== undefined || outside !== undefined;
+  let body;
+  let requested; // for the result text when the response is sparse
+  if (useAxes) {
+    if (visibility) throw new Error("Pass either `visibility` or the `inside`/`outside` axes, not both.");
+    if (!inside || !outside) {
+      throw new Error("Both axes are required: inside (private|spaces|grid) and outside (none|link|public).");
+    }
+    if (inside === "spaces" && normSpaces.length === 0) {
+      throw new Error("inside: spaces needs at least one space slug in `spaces`.");
+    }
+    if (inside !== "spaces" && normSpaces.length > 0) {
+      throw new Error("`spaces` only applies with inside: spaces.");
+    }
+    if (require_signin === true && outside !== "link") {
+      throw new Error("require_signin only applies when outside is link.");
+    }
+    body = {
+      share_scope: inside,
+      external_access: outside,
+      ...(require_signin === true ? { require_signin: true } : {}),
+      ...(inside === "spaces" ? { visibility_spaces: normSpaces } : {}),
+    };
+    requested = `inside: ${inside}${inside === "spaces" ? ` (${normSpaces.join(", ")})` : ""}, outside: ${outside}${require_signin === true ? " (sign-in required)" : ""}`;
+  } else {
+    let mode = String(visibility || "").trim().toLowerCase();
+    if (!mode) throw new Error("Pass a visibility mode (private | grid | link), or the inside/outside axes.");
+    if (mode === "org") {
+      throw new Error("'org' visibility is deprecated. Use 'grid' (everyone in the grid).");
+    }
+    if (mode === "public") mode = "link"; // alias; `indexed: true` governs search-indexing
+    if (mode === "authenticated") {
+      // Retired as a first-class mode — the axis body it equals.
+      body = { share_scope: "private", external_access: "link", require_signin: true };
+      requested = "link with sign-in required (the retired 'authenticated')";
+    } else if (mode === "space") {
+      if (normSpaces.length === 0) {
+        throw new Error("'space' visibility needs the `spaces` list (which space slugs can see it) — or use inside: spaces with outside: none.");
+      }
+      body = { share_scope: "spaces", external_access: "none", visibility_spaces: normSpaces };
+      requested = `selected spaces (${normSpaces.join(", ")})`;
+    } else if (mode === "private" || mode === "grid" || mode === "link") {
+      body = { visibility: mode };
+      if (mode === "grid" && normSpaces.length > 0) body.visibility_spaces = normSpaces;
+      if (mode === "link") body.link_indexed = indexed === true;
+      requested = mode + (mode === "link" && indexed === true ? " (search-indexed)" : "");
+    } else {
+      throw new Error(`Unknown visibility '${visibility}'. Use private | grid | link (public = link alias), or the inside/outside axes.`);
+    }
+  }
 
   const k = kind || ctx.state.lastDrop?.kind || null;
   const isRuntimeKind = k === "app" || k === "agent";
 
-  if (vis === "space" && isRuntimeKind) {
-    throw new Error(
-      "'space' visibility isn't available for runtime apps/agents. Use grid, authenticated, private, or link.",
-    );
-  }
-
-  const patch = async (pathName, value) => {
+  const patch = async (pathName) => {
     let res;
     try {
       res = await fetch(`${API_BASE}${pathName}`, {
         method: "PATCH",
         headers,
-        body: JSON.stringify({ visibility: value }),
+        body: JSON.stringify(body),
       });
     } catch (err) {
       throw new Error(`Could not reach CloudGrid at ${API_BASE}: ${err.message}`);
@@ -1764,33 +1953,53 @@ export async function runVisibility(ctx, { target, visibility, kind, org }) {
     return { res, data, raw };
   };
 
+  // BOTH realms now take the same realm-scoped visibility PATCH with the
+  // same body vocabulary: /api/v2/entities/:id/visibility (runtimes) and
+  // /api/v2/inspirations/:id/visibility (inspirations).
   const runtimePath = `/api/v2/entities/${encodeURIComponent(id)}/visibility`;
-  const inspirationPath = `/api/v2/inspirations/${encodeURIComponent(id)}`;
+  const inspirationPath = `/api/v2/inspirations/${encodeURIComponent(id)}/visibility`;
 
-  // Route order. `space` is inspiration-only; a known runtime kind goes straight
-  // to the entities route; a known inspiration goes straight to the inspiration
-  // route; an unknown kind tries the runtime route first and falls back to the
-  // inspiration route on a not-found (mirrors runPickup).
+  // Route order: a known runtime kind goes straight to the entities route; a
+  // known inspiration to the inspiration route; unknown tries runtime first and
+  // falls back on a not-found (mirrors runPickup).
   let order;
-  if (vis === "space") order = ["inspiration"];
-  else if (isRuntimeKind) order = ["runtime"];
+  if (isRuntimeKind) order = ["runtime"];
   else if (k === "inspiration") order = ["inspiration"];
   else order = ["runtime", "inspiration"];
 
   let last;
   for (let i = 0; i < order.length; i++) {
     const route = order[i];
-    last = route === "runtime"
-      ? await patch(runtimePath, runtimeValue)
-      : await patch(inspirationPath, inspirationValue);
+    last = await patch(route === "runtime" ? runtimePath : inspirationPath);
     if (last.res.ok) {
-      const lines = [`Visibility is now ${vis}.`];
-      if (last.data?.url) lines.push(last.data.url);
+      const d = last.data || {};
+      // Prefer the server's stored axes (stored axes are authoritative on
+      // the wire); fall back to what we asked for.
+      const lines = [];
+      if (d.share_scope || d.external_access) {
+        const insideLine =
+          d.share_scope === "private" ? "only the owner" :
+          d.share_scope === "spaces" ? `selected spaces${Array.isArray(d.visibility_spaces) && d.visibility_spaces.length ? ` (${d.visibility_spaces.join(", ")})` : ""}` :
+          d.share_scope === "grid" ? "everyone in the grid" : d.share_scope;
+        const outsideLine =
+          d.external_access === "none" ? "no one outside the grid" :
+          d.external_access === "link" ? `anyone with the link${d.require_signin ? " (signed-in accounts only)" : ""}${d.link_indexed ? ", search-indexed" : ""}` :
+          d.external_access === "public" ? "anyone, findable by search engines" : d.external_access;
+        lines.push(`Visibility set — inside the grid: ${insideLine}; outside: ${outsideLine}.`);
+      } else {
+        lines.push(`Visibility is now ${d.visibility || requested}.`);
+      }
+      if (d.url) lines.push(d.url);
       return {
         text: lines.join("\n"),
         structured: {
-          visibility: vis,
-          ...(last.data?.url ? { url: last.data.url } : {}),
+          visibility: d.visibility || (useAxes ? undefined : String(visibility || "").trim().toLowerCase() || undefined),
+          ...(d.share_scope ? { share_scope: d.share_scope } : {}),
+          ...(d.external_access ? { external_access: d.external_access } : {}),
+          ...(d.require_signin !== undefined ? { require_signin: d.require_signin === true } : {}),
+          ...(Array.isArray(d.visibility_spaces) ? { visibility_spaces: d.visibility_spaces } : {}),
+          ...(d.link_indexed !== undefined ? { link_indexed: d.link_indexed === true } : {}),
+          ...(d.url ? { url: d.url } : {}),
         },
       };
     }
@@ -1940,7 +2149,7 @@ export async function runCheckDeploy(ctx, { poll_url, grid } = {}) {
   });
   if (!target) {
     throw new Error(
-      "No build to check. Pass poll_url from a grid_plug result, or deploy something first in this session. (Instant inspiration deploys are live on return and have no build to poll.)",
+      "No build to check. Pass poll_url from a grid_plug result, or plug something first in this session. (Instant inspiration plugs are live on return and have no build to poll.)",
     );
   }
   const verdict = await fetchDeployTrace(ctx, { pollUrl: target, grid: gridSlug });
@@ -1952,9 +2161,18 @@ export async function runCheckDeploy(ctx, { poll_url, grid } = {}) {
     };
   }
   if (verdict.status === "failed") {
+    // The project is NOT lost on a failed build: the source was uploaded
+    // before the build ran and lives on the entity. On the hosted edition
+    // (no filesystem, no way to iterate here) hand the user their files —
+    // the source zip (grid_get_app_source → source_download_url) or the
+    // pull command that downloads + links the folder so the SAME entity
+    // continues locally.
+    const handoff = ctx.edition === "web" && entityId
+      ? `\nThe project files are NOT lost — they are saved on the entity. If it can't be fixed from this chat, hand the user their work: call grid_get_app_source for the source zip (source_download_url), or give them the local continue command: npx -y @cloudgrid-io/cli@latest pull ${gridSlug ? `${gridSlug}/` : ""}${ctx.state.lastDrop?.slug || entityId} — it downloads the project and links the folder so their next plug updates this same entity.`
+      : "";
     return {
-      text: `The build FAILED: ${verdict.error || "no reason reported"}. The URL is not live — do not give it to the user as working. Fix the app (or re-deploy) and try again.` +
-        formatFailureDetail(verdict),
+      text: `The build FAILED: ${verdict.error || "no reason reported"}. The URL is not live — do not give it to the user as working. Fix the app (or re-plug) and try again.` +
+        formatFailureDetail(verdict) + handoff,
       structured: {
         status: "failed",
         live: false,
@@ -1962,6 +2180,7 @@ export async function runCheckDeploy(ctx, { poll_url, grid } = {}) {
         ...(verdict.logTail ? { build_log_tail: verdict.logTail } : {}),
         ...(verdict.fix ? { suggested_fix: verdict.fix } : {}),
         ...(verdict.consoleUrl ? { build_log_url: verdict.consoleUrl } : {}),
+        ...(ctx.edition === "web" && entityId ? { source_recovery: { entity_id: entityId, via: ["grid_get_app_source", "grid pull"] } } : {}),
       },
     };
   }

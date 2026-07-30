@@ -55,6 +55,12 @@ function bearerOf(req) {
   return h && /^Bearer\s+\S+/i.test(h) ? h.replace(/^Bearer\s+/i, "") : null;
 }
 
+function isTokenExpired(jwt) {
+  if (!jwt) return false;
+  const claims = decodeJwt(jwt);
+  return Boolean(claims.exp && claims.exp * 1000 <= Date.now());
+}
+
 // A web session: identity lives in memory for the session's lifetime only. The
 // session id doubles as the stable, opaque end-user id for the trusted-server cap.
 function makeWebContext(sessionId) {
@@ -63,10 +69,17 @@ function makeWebContext(sessionId) {
     edition: "web",
     state: { pendingLoginCode: null, lastAnonClaim: null, lastDrop: null, anonCookie: null },
     canOpenBrowser: false,
-    // Transport OAuth wins; the in-tool login flow is the fallback.
-    getToken: async () => sessionAuth[sessionId] ?? sessionToken,
-    // No local config on a shared host. The user passes `grid`, or the API returns
-    // the list of grids to choose from.
+    getToken: async () => {
+      const jwt = sessionAuth[sessionId] ?? sessionToken;
+      if (jwt && isTokenExpired(jwt)) return null;
+      return jwt;
+    },
+    getCredentialsStatus: async () => {
+      const jwt = sessionAuth[sessionId] ?? sessionToken;
+      if (!jwt) return { creds: null, expired: false };
+      if (isTokenExpired(jwt)) return { creds: null, expired: true };
+      return { creds: { jwt }, expired: false };
+    },
     getActiveGrid: async () => null,
     saveToken: async (jwt) => {
       sessionToken = jwt;
@@ -85,10 +98,11 @@ app.use(express.urlencoded({ extended: false })); // OAuth token exchange is for
 
 app.get("/healthz", (_req, res) => res.json({ ok: true, edition: "web" }));
 
-mountOAuth(app, PUBLIC_BASE);
+mountOAuth(app, PUBLIC_BASE, { requireAuth: REQUIRE_AUTH });
 
 // One transport per MCP session, keyed by the session id.
 const transports = Object.create(null);
+const sessionContexts = Object.create(null);
 
 app.post("/mcp", async (req, res) => {
   const sessionId = req.headers["mcp-session-id"];
@@ -106,7 +120,22 @@ app.post("/mcp", async (req, res) => {
   }
 
   if (transport) {
-    if (jwt) sessionAuth[sessionId] = jwt;
+    if (jwt) {
+      const prev = sessionAuth[sessionId];
+      if (prev) {
+        const prevSub = decodeJwt(prev).sub;
+        const newSub = decodeJwt(jwt).sub;
+        if (prevSub && newSub && prevSub !== newSub) {
+          const ctxForSession = sessionContexts[sessionId];
+          if (ctxForSession) {
+            ctxForSession.state.identityChanged = true;
+            ctxForSession.state.pendingLoginCode = null;
+            ctxForSession.state.authChoiceOffered = false;
+          }
+        }
+      }
+      sessionAuth[sessionId] = jwt;
+    }
     await transport.handleRequest(req, res, req.body);
     return;
   }
@@ -138,10 +167,12 @@ app.post("/mcp", async (req, res) => {
     if (transport.sessionId) {
       delete transports[transport.sessionId];
       delete sessionAuth[transport.sessionId];
+      delete sessionContexts[transport.sessionId];
     }
   };
   const server = new McpServer({ name: "cloudgrid-mcp-web", version }, { instructions: INSTRUCTIONS_WEB });
   const webCtx = makeWebContext(newSessionId);
+  sessionContexts[newSessionId] = webCtx;
   // QA session log for this MCP session (dark by default). Keyed by the session
   // id — the host connection boundary. No seed user_request here: current hosts
   // don't forward the first message. The model-as-courier path fills it instead —
@@ -178,7 +209,22 @@ async function handleSessionRequest(req, res) {
     return;
   }
   const jwt = bearerOf(req);
-  if (jwt) sessionAuth[sessionId] = jwt;
+  if (jwt) {
+    const prev = sessionAuth[sessionId];
+    if (prev) {
+      const prevSub = decodeJwt(prev).sub;
+      const newSub = decodeJwt(jwt).sub;
+      if (prevSub && newSub && prevSub !== newSub) {
+        const ctxForSession = sessionContexts[sessionId];
+        if (ctxForSession) {
+          ctxForSession.state.identityChanged = true;
+          ctxForSession.state.pendingLoginCode = null;
+          ctxForSession.state.authChoiceOffered = false;
+        }
+      }
+    }
+    sessionAuth[sessionId] = jwt;
+  }
   await transport.handleRequest(req, res);
 }
 

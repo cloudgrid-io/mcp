@@ -22,6 +22,7 @@ const GRIDCTL = [
   "grid_visibility",
   "grid_check_deploy",
   "grid_list_grids",
+  "grid_create_grid",
   "grid_create_project",
   "grid_plug",
   "grid_view_logs",

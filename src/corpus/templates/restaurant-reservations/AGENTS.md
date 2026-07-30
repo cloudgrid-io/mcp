@@ -115,9 +115,9 @@ You never provision infra or set connection strings by hand. Declare intent in
   `STRIPE_KEY: stripe-live-key`, `SENDGRID_API_KEY: sendgrid-key`,
   `AUTH_PROVIDER_KEY: auth-provider-secret`. The platform reads the named item
   from the org vault and injects it as that env var at runtime. Store the actual
-  secret value with `grid_set_secret` (or the org vault UI) — never commit it. In
+  secret value with `grid secrets set` (or the org vault UI) — never commit it. In
   code read `process.env.STRIPE_KEY`, `process.env.SENDGRID_API_KEY`, etc. Vault
-  is the CloudGrid-correct path for third-party keys; `grid_set_env` is for
+  is the CloudGrid-correct path for third-party keys; `grid env set` is for
   non-secret config only.
 
 - **AI (optional).** If you add AI (e.g. menu-copy generation, natural-language
@@ -154,7 +154,7 @@ Reserved env var names you must NOT set: `PORT`, `APP_NAME`, `SERVICE_NAME`,
    provider; leave `/`, `/reserve`, `/api/menu`, `/api/reservations` (POST),
    `/api/webhooks/stripe` public.
 3. Initialize the SDK from `process.env.AUTH_PROVIDER_KEY` (+ any public
-   publishable key via `grid_set_env`). The public booking flow needs no login.
+   publishable key via `grid env set`). The public booking flow needs no login.
 
 Keep the public reservation POST open; only staff read/mutate endpoints
 (`GET /api/reservations`, `PATCH/DELETE /api/reservations/[id]`, `/staff/*`) sit
@@ -169,19 +169,19 @@ build is **asynchronous**.
 
 1. `grid_login_status` (→ `grid_login` if needed). Pick the grid if the
    user has more than one.
-2. `grid_create_project` an app `<name>` — scaffolds the project folder and a
+2. `grid new <name>` — scaffolds the project folder and a
    `cloudgrid.yaml` with empty `services: {}`. No server entity exists yet — the
    first plug auto-creates it from the manifest (honoring its `name:`) and
    writes `.cloudgrid/link.json`.
 3. **Fill** — write the app under `services/web/`, then set `cloudgrid.yaml` to
    this blueprint's active fields: `name`, `services.web { type: nextjs, path: / }`,
    `needs: { database: true }`, and the `vault:` mappings you actually use.
-4. Store secrets: `grid_set_secret` for the vault item values (Stripe/SendGrid/
-   auth). Non-secret config (publishable keys, feature flags) → `grid_set_env`.
+4. Store secrets: `grid secrets set` for the vault item values (Stripe/SendGrid/
+   auth). Non-secret config (publishable keys, feature flags) → `grid env set`.
 5. (Optional) `grid dev` — runs Next.js locally with `DATABASE_MONGODB_URL` and
    vault vars injected against dev Mongo. Seed `menu`, test a booking.
 6. `grid_plug` — builds + deploys `services/web/`. **Async**: the first
-   response is `status: building`, not a URL. Poll `grid_status` (or the
+   response is `status: building`, not a URL. Poll `grid_check_deploy` (or the
    returned poll URL) until live; surface a liveness signal while it builds
    (never a bare silent wait). Only then return the **live app URL** (not the
    build/log link).

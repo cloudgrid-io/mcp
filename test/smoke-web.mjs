@@ -50,7 +50,7 @@ try {
     check(`exposes ${t}`, names.includes(t));
   }
   // Tool-name cleanup: the canonical primary names are present (both editions).
-  for (const nm of ["grid_get_template", "grid_get_app_source", "grid_list_grids", "grid_pickup", "grid_pull", "grid_visibility", "grid_check_deploy"]) {
+  for (const nm of ["grid_get_template", "grid_get_app_source", "grid_list_grids", "grid_create_grid", "grid_pickup", "grid_pull", "grid_visibility", "grid_check_deploy"]) {
     check(`exposes ${nm}`, names.includes(nm));
   }
   // Retired copy/source verbs must NOT be advertised (CLI dropped fork/remix/download).
@@ -108,12 +108,25 @@ try {
   check("web deploy has `target_entity_id` param", "target_entity_id" in plugProps);
   check("web deploy has `owner_token` param", "owner_token" in plugProps);
 
+  // AUTH HARD GATE (field bug 2026-07-26, Claude web): the FIRST unauthenticated
+  // create in a session must return the sign-in-vs-guest ask (needs_auth) even
+  // when the model passed anon: true — silent one-call guest publishing is not
+  // possible. A re-call with anon: true after the ask proceeds.
+  const gated = await client.callTool({
+    name: "grid_plug",
+    arguments: { html: "<h1>web edition smoke</h1>", anon: true },
+  });
+  const gatedText = gated.content?.[0]?.text ?? "";
+  console.log("--- web anon plug, first call (expect needs_auth gate) ---\n" + gatedText);
+  check("first unauthenticated create returns the sign-in-vs-guest ask (even with anon: true)",
+    /needs_auth|Ask the user which they want/i.test(gatedText) && !gatedText.includes("guest.cloudgrid.io"));
+
   const drop = await client.callTool({
     name: "grid_plug",
     arguments: { html: "<h1>web edition smoke</h1>", anon: true },
   });
   const text = drop.content?.[0]?.text ?? "";
-  console.log("--- web anonymous plug (html) ---\n" + text);
+  console.log("--- web anonymous plug (html, after gate) ---\n" + text);
   // A 429 means the shared anonymous-drop quota is exhausted — a platform rate
   // limit, not a broken drop. Skip (don't false-fail) so CI isn't gated on quota;
   // any OTHER outcome (401, wrong URL, error) still fails the guest-URL check —

@@ -6,7 +6,7 @@ deploy: runtime
 editions: local
 capabilities_note: "Document search — needs a database (Mongo) for the documents + chunks collections. Two services: a React (Vite) static frontend at / and a FastAPI backend at /backend. Hybrid search = Mongo $text (lexical) + in-app NumPy cosine over chunk embedding arrays (semantic) + metadata filters, blended to the document level. Runtime app, async build, local edition only. Declare needs:{database:true}. NO needs:vector — this template stores embeddings in the Mongo chunks collection and cosine-ranks in-app (vector:pgvector is now available, #1545 shipped, verified live 2026-07-16; the template code does not use it). Two refresh paths: the manager 'Refresh now' endpoint AND a scheduled Python type:cron job (services/refresh, daily 03:00 UTC) that vendors the backend app/ modules and reuses indexing.run_sync — both degrade gracefully. Health is green with no secrets; startup ensure_indexes() so $text never 500s on an empty catalog. Pluggable source (dropbox|local|url) + embeddings (OpenAI-compatible) each behind one config point, all secrets from env."
 summary: "Build a document-search app on the grid — index a folder of PDFs/DOCX/TXT/MD, then search by keyword + meaning + metadata, with a grounded answer mode and manager admin. React static frontend at / + FastAPI backend at /backend, backed by grid-shared Mongo. Edition-gate first, scaffold, put the code under services/web/ + services/backend/, declare needs:{database:true} (no vector — the template uses Mongo embeddings; #1545 shipped), wire the web+backend+refresh services, set the embeddings + source + manager secrets, deploy async, poll to a live URL, then Refresh now (or wait for the daily cron) to index."
-recipe: "edition-gate -> auth+grid -> grid_create_project -> fetch template + read AGENTS.md -> put code under services/web + services/backend, set cloudgrid.yaml active fields -> grid secrets set (embeddings + source + MANAGER_PASSWORD_HASH) -> optional grid dev -> grid plug (async, poll) -> Refresh now to index -> return live URL"
+recipe: "edition-gate -> auth+grid -> grid new -> fetch template + read AGENTS.md -> put code under services/web + services/backend, set cloudgrid.yaml active fields -> grid secrets set (embeddings + source + MANAGER_PASSWORD_HASH) -> optional grid dev -> grid plug (async, poll) -> Refresh now to index -> return live URL"
 ---
 
 # Workflow: semantic-search
@@ -42,7 +42,7 @@ the **local edition** (Claude Desktop / Claude Code) or the CLI.
 
 ## 3. Scaffold
 
-`grid_create_project` an app `<name>` — it scaffolds the project folder and a
+`grid new <name>` — it scaffolds the project folder and a
 starter `cloudgrid.yaml` with empty `services: {}`. No server entity exists yet:
 the first `grid plug` auto-creates it from the manifest (honoring its `name:`)
 and writes `.cloudgrid/link.json`; `grid plug --no-deploy` registers it without
@@ -114,7 +114,7 @@ the cron **vendors** the backend `app/` modules it needs into
 
 Store all of these with `grid secrets set KEY=VALUE` (never commit them; the app
 reads them lazily inside functions, never at import). Non-secret public config →
-`grid_set_env`. Do NOT set `DATABASE_MONGODB_URL` yourself — the grid injects it.
+`grid env set`. Do NOT set `DATABASE_MONGODB_URL` yourself — the grid injects it.
 
 The app starts and passes `GET /backend/health` with **none** of these set;
 search/indexing degrade to a clear "not indexed / missing secret" state.
@@ -128,7 +128,7 @@ before deploying. Don't require it.
 
 Deploy the folder with `grid_plug`. A **runtime deploy is ASYNC**: the first
 response is `status: "building"`, NOT a live URL yet.
-- Poll `grid_status` (or the returned poll_url) until the entity is live.
+- Poll `grid_check_deploy` (or the returned poll_url) until the entity is live.
 - Surface a liveness signal while it builds — never a bare silent wait.
 - Only once it is live, return the deployed app URL (NOT the build/log link).
 

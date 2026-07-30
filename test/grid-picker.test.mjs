@@ -47,8 +47,11 @@ function makeCtx({ token = null, activeOrg = null, edition = "web" } = {}) {
 
 function handlersFor(ctxOpts) {
   const server = makeServer();
-  registerTools(server, makeCtx(ctxOpts));
-  return server.handlers;
+  const ctx = makeCtx(ctxOpts);
+  registerTools(server, ctx);
+  const handlers = server.handlers;
+  handlers.__ctx = ctx;
+  return handlers;
 }
 
 // ── fetch mock ──────────────────────────────────────────────────────────────
@@ -133,10 +136,13 @@ try {
   }
 
   // ── Case 4b: plug + anon → proceeds (guest, no ask, no grid fetch) ───────────
+  // Pre-set authChoiceOffered: the auth gate is tested in create-gates; here we
+  // verify the grid picker is bypassed for anon creates.
   {
     orgsReply = TWO_GRIDS; // even with many grids, anon never asks
     resetCalls();
     const h = handlersFor({ token: "jwt", edition: "web" });
+    h.__ctx.state.authChoiceOffered = true;
     const res = await h.grid_plug({ artifact_files: artifact, anon: true });
     check("plug anon → published, no ask", plugCalled() && !res.structuredContent?.needs_grid);
     check("plug anon did not fetch the grid list", !calls.some((c) => c.url.includes("/api/v2/orgs")));
@@ -196,8 +202,11 @@ try {
     const single = await resolveGridOrAsk(ctx, { token: "jwt", suppliedGrid: undefined, edition: "web" }, { fetchUserOrgs: oneGrid });
     check("resolveGridOrAsk single grid → single decision", single.single?.slug === "acme");
 
+    // Zero grids no longer falls through into a guaranteed 403 NO_ACTIVE_ORG
+    // (field bug 2026-07-27): it returns the create-a-grid ask instead.
     const none = await resolveGridOrAsk(ctx, { token: "jwt", suppliedGrid: undefined, edition: "web" }, { fetchUserOrgs: noGrids });
-    check("resolveGridOrAsk no grids → proceed (fall through)", none.proceed === true && none.grid === undefined);
+    check("resolveGridOrAsk no grids → needs_grid_create ask (never a 403 dead end)",
+      none.picker?.structured?.needs_grid_create === true && /grid_create_grid/.test(none.picker?.text ?? ""));
   }
 } finally {
   globalThis.fetch = realFetch;

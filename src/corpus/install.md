@@ -44,7 +44,18 @@ auto-starts when the plugin is enabled, so no separate `claude mcp add` is neede
 
 ### Codex
 
-Three routes:
+Start here. One command, no install and no account needed:
+
+```
+npx -y @cloudgrid-io/cli@latest agent --yes
+```
+
+Run it in the project folder. It writes `AGENTS.md` (Codex reads it) and a
+project-scoped `sites` skill, so "build me a page" routes to CloudGrid instead of
+Codex's own site builder. Restart Codex afterwards so the skill loads at session
+start; the `AGENTS.md` directive already steers the current session.
+
+Then add the skills or the MCP server:
 
 ```
 codex plugin marketplace add cloudgrid-io/skills      # plugin (manifest: .codex-plugin/)
@@ -125,8 +136,24 @@ npx -y @cloudgrid-io/mcp
 ```
 
 It wraps the same `grid` CLI and uses the same credentials, so no extra login
-is needed. Remote-capable clients can point at `https://mcp.cloudgrid.io/mcp`
-instead. See [USAGE.md](USAGE.md) for per-client snippets.
+is needed. Remote-capable clients can point at one of two hosted endpoints:
+
+- `https://mcp.cloudgrid.io/mcp` — anonymous-first; no account needed to try it.
+- `https://mcp-connected.cloudgrid.io/mcp` — connected; native OAuth sign-in
+  when you add it (for claude.ai org connectors and clients that support OAuth).
+
+**One CloudGrid server per client.** Run either the local (stdio) server — on
+its own or via the Claude Code plugin, which bundles it — or a hosted connector
+in a given client. Never both: the 14 shared `grid_*` tool names appear twice,
+and the two servers hold separate sign-in state (the local edition uses the
+CLI's `~/.cloudgrid/credentials`; the connector holds an OAuth session) — they
+can disagree about whether you are signed in. How to tell: duplicate `grid_*`
+entries in the tool list, or two CloudGrid servers in the client's MCP settings.
+Which to keep: the local edition wherever you build runtime apps from folders
+(it has the full CLI toolset); the connector in chat-only clients where you
+publish single pages.
+
+See [USAGE.md](USAGE.md) for per-client snippets.
 
 ### Claude Desktop — one-click install
 

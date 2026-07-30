@@ -3,7 +3,7 @@
 // Extracted verbatim from src/tools.js (refactor: split tools.js into modules).
 
 import { z } from "zod";
-import { newLoginCode, buildLoginUrl, pollStatusOnce, checkApiConnectivity } from "../auth.js";
+import { newLoginCode, buildLoginUrl, pollStatusOnce, checkApiConnectivity, decodeJwt as decodeJwtAuth } from "../auth.js";
 import { PLAYBOOK, fetchCorpus, listWorkflows } from "../playbook.js";
 import {
   APPS_WIDGETS_ENABLED,
@@ -23,6 +23,7 @@ import {
   runPull,
   runPlug,
   runPickup,
+  runCreateGrid,
   runVisibility,
   runSource,
   runCheckDeploy,
@@ -34,13 +35,14 @@ import { stalenessNote } from "../staleness.js";
 // `--agent` for agents (NOT the legacy `init <kind> <slug>` positional). The
 // old `--description` flag was removed from the CLI, so it is gone here too.
 // Exported pure so the argv is unit-tested without spawning a CLI.
-export function buildCreateProjectArgs({ kind, name, type, needs, dir, org } = {}) {
+export function buildCreateProjectArgs({ kind, name, type, needs, dir, grid, org } = {}) {
   const args = ["new", name];
   if (kind === "agent") args.push("--agent");
   if (type) args.push("--type", type);
   if (Array.isArray(needs) && needs.length) args.push("--needs", needs.join(","));
   if (dir) args.push("--dir", dir);
-  if (org) args.push("--grid", org); // CLI 0.12 dropped --org for --grid (same slug)
+  const gridSlug = grid || org;
+  if (gridSlug) args.push("--grid", gridSlug);
   return args;
 }
 
@@ -85,8 +87,8 @@ export function registerTools(server, ctx) {
     server.registerTool(name, config, withCapture(name, handler));
   };
 
-  const regTool = (name, description, schema, annotations, handler) => {
-    server.tool(name, description, schema, annotations, withCapture(name, handler));
+  const regTool = (name, title, description, schema, annotations, handler) => {
+    server.registerTool(name, { title, description, inputSchema: schema, annotations }, withCapture(name, handler));
   };
 
   // ── Widget resources (web edition, ChatGPT Apps SDK) ──────────────────────
@@ -104,7 +106,7 @@ export function registerTools(server, ctx) {
     }));
 
     server.registerResource("cloudgrid-org-picker", GRID_PICKER_URI, {
-      description: "Grid picker card — lets the user choose which grid to publish into.",
+      description: "Grid picker card — lets the user choose which grid to plug into.",
       mimeType: "text/html;profile=mcp-app",
     }, async () => ({
       contents: [{
@@ -129,10 +131,13 @@ export function registerTools(server, ctx) {
   reg(
     "grid_pickup",
     {
+      title: "Copy an app into your grid",
       description: "Pick up an app: make your OWN COPY of any app you can see (like a git fork) into a grid you can build in. It mints a NEW entity with lineage back to the source and WITHOUT the source's secrets (set your own before you plug). Plugging your copy creates/updates YOUR entity — the original is never touched. Requires sign-in. To edit the ORIGINAL entity in place (as its owner or a collaborator), use grid_pull instead.",
       inputSchema: {
-        id: z.string().describe("The source app to copy: a canonical UUID or <grid-slug>/<entity-slug>."),
-        into_org_slug: z.string().optional().describe("Grid to create your copy in. Required only when you belong to more than one grid."),
+        entity_id: z.string().describe("The source app to copy: a canonical UUID or <grid-slug>/<entity-slug>."),
+        grid: z.string().optional().describe("Grid to create your copy in. Required only when you belong to more than one grid."),
+        id: z.string().optional().describe("Alias of entity_id (legacy). Prefer entity_id."),
+        into_org_slug: z.string().optional().describe("Alias of grid (legacy). Prefer grid."),
         name: z.string().optional().describe("Slug for your copy. Omit to derive one from the source."),
         source_version_id: z.string().optional().describe("Copy an older version instead of HEAD, e.g. v_a1b2c3d."),
       },
@@ -149,8 +154,13 @@ export function registerTools(server, ctx) {
     },
     async (input) => {
       try {
-        if (!input?.id) return fail("`id` is required (a canonical UUID or <grid-slug>/<entity-slug>).");
-        return okResult(await runPickup(ctx, input));
+        const resolved = {
+          ...input,
+          id: input?.entity_id || input?.id,
+          into_org_slug: input?.grid || input?.into_org_slug,
+        };
+        if (!resolved.id) return fail("`entity_id` is required (a canonical UUID or <grid-slug>/<entity-slug>).");
+        return okResult(await runPickup(ctx, resolved));
       } catch (err) {
         return fail(err.message);
       }
@@ -161,6 +171,7 @@ export function registerTools(server, ctx) {
   reg(
     "grid_pull",
     {
+      title: "Pull an app to edit in place",
       description: "Pull an app to continue/edit it IN PLACE — like `git clone` of the SAME entity: your next grid_plug (with its target_entity_id) updates that entity, and the team sees the new version. Requires PUSH ACCESS: you must own it or be a collaborator. If you can only view it, you CANNOT edit or plug it — say so and tell the user they can make their own copy with grid_pickup, or request collaborator access with the CLI `grid collab <entity>` (rolling out soon). Passing an anonymous drop's `claim_token` claims it into your account. Requires sign-in. Calls the API directly (both editions).",
       inputSchema: {
         entity_id: z.string().optional().describe("The entity id to pull. Defaults to this session's last anonymous drop."),
@@ -186,6 +197,39 @@ export function registerTools(server, ctx) {
     },
   );
 
+  // grid_create_grid — create a grid for the signed-in user (POST /api/v2/grids,
+  // the same call as the CLI `grid create grid <slug>`). Exists so a first-time
+  // user with NO grid is never sent to the console: grid_plug returns
+  // needs_grid_create in that case, and this tool closes the loop in-chat.
+  reg(
+    "grid_create_grid",
+    {
+      title: "Create a new grid",
+      description: "Create a new grid (workspace) for the signed-in user — they become its admin. Use when the account has no grid yet (grid_plug returns needs_grid_create, or a plug fails with NO_ACTIVE_ORG): suggest a short slug from the user's name or app, CONFIRM it with the user (the slug is permanent and appears in URLs), create, then re-call grid_plug with grid: <slug>. Never send the user to the console to create a grid by hand. Requires sign-in. Calls the API directly (both editions).",
+      inputSchema: {
+        slug: z.string().describe("The grid slug: 3-40 lowercase letters, digits, or hyphens, starting with a letter. Permanent — confirm with the user before creating."),
+        name: z.string().optional().describe("Display name (defaults to the slug)."),
+      },
+      outputSchema: {
+        created: z.boolean().optional().describe("True when the grid was created."),
+        grid: z.object({
+          slug: z.string().describe("The new grid's slug — pass it to grid_plug as `grid`."),
+          name: z.string().optional().describe("Its display name."),
+        }).optional(),
+        needs_auth: z.boolean().optional().describe("Sign-in required first (grid_login)."),
+        error: z.object({ code: z.string(), message: z.string().optional() }).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+    },
+    async (input) => {
+      try {
+        return okResult(await runCreateGrid(ctx, input || {}));
+      } catch (err) {
+        return fail(err.message);
+      }
+    },
+  );
+
   // grid_note — the optional session-end self-report. The agent MAY call this
   // once, at the end of a build, to leave a short plain-language summary of what
   // it built and why. It is captured verbatim into the QA session log, clearly
@@ -194,9 +238,10 @@ export function registerTools(server, ctx) {
   // acknowledgement.
   regTool(
     "grid_note",
-    "Optionally leave a one-paragraph summary of what you built this session and why. Call it BEFORE a deploy, or in a session that ends without one — a successful deploy has already posted the QA log, so pass grid_plug's session_note instead. Recorded for CloudGrid QA. No side effects.",
+    "Leave a session build note",
+    "Optionally leave a one-paragraph summary of what you built this session and why. Call it BEFORE a plug, or in a session that ends without one — a successful plug has already posted the QA log, so pass grid_plug's session_note instead. The summary is recorded with the CloudGrid team for QA review.",
     { summary: z.string().describe("A short plain-language summary of what was built and why.") },
-    { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     async (input) => {
       try { ctx.logger?.setNarrative(input?.summary); } catch { /* never */ }
       // Honesty after flush: a successful deploy posts the QA log on that same
@@ -229,7 +274,7 @@ export function registerTools(server, ctx) {
           path: z.string().optional().describe(
             "Local edition: path to the entity folder, a single file, or a .zip ARCHIVE to upload. " +
             "A folder is read recursively, honoring .gitignore/.cloudgridignore (plus .git/node_modules " +
-            "always skipped). A .zip is extracted and deployed: with its own cloudgrid.yaml it deploys " +
+            "always skipped). A .zip is extracted and plugged: with its own cloudgrid.yaml it plugs " +
             "as that project; otherwise it becomes a static app (all files served). Use this for " +
             "\"deploy this zip\" / \"gallery from these zipped images\" requests. Mutually exclusive with " +
             "`html` and `artifact_files` — EXCEPT `html` + a .zip of assets: the html becomes index.html " +
@@ -251,7 +296,7 @@ export function registerTools(server, ctx) {
       "On re-plug, a name: change is a warning only; it never renames the entity or moves the URL.",
     ),
     target_entity_id: z.string().optional().describe(
-      "Present → RE-PLUG: update this exact entity in place (same entity_id, slug, URL, deploy history). " +
+      "Present → RE-PLUG: update this exact entity in place (same entity_id, slug, URL, plug history). " +
       "Absent → CREATE a new entity. This is the durable handle a previous plug returned — persist it. " +
       "Re-plugging an anonymously-created drop needs its owner_token instead of sign-in.",
     ),
@@ -271,15 +316,17 @@ export function registerTools(server, ctx) {
       yaml: z.string().optional().describe("An inline cloudgrid.yaml override used as a detection hint."),
     }).optional().describe("Classification hints for the CREATE path (not entity targeting — that's target_entity_id)."),
     anon: z.boolean().optional().describe(
-      "Create an anonymous Guest-Grid drop (no auth). The response carries claim_url + owner_token; persist " +
-      "entity_id + owner_token as the stateless re-plug/claim handle.",
+      "Create an anonymous Guest-Grid drop (no auth). Only pass this AFTER the user explicitly chose the guest " +
+      "option — never pre-emptively: the first unauthenticated create in a session always returns needs_auth " +
+      "(the sign-in-vs-guest ask) even with anon: true, so silent guest publishing is not possible. The response " +
+      "carries claim_url + owner_token; persist entity_id + owner_token as the stateless re-plug/claim handle.",
     ),
     owner_token: z.string().optional().describe(
       "The owner token of an anonymously-created drop — authorizes an anonymous re-plug (with " +
       "target_entity_id). Re-minted on every anonymous edit; always persist the newest one from the result.",
     ),
     confirm_new_app: z.boolean().optional().describe(
-      "Set true to confirm deploying a source that already contains a cloudgrid.yaml as a NEW runtime app. " +
+      "Set true to confirm plugging a source that already contains a cloudgrid.yaml as a NEW runtime app. " +
       "On a create, if the source has a cloudgrid.yaml and this is not set, grid_plug returns needs_confirmation " +
       "so you can ask the user first (or use target_entity_id to re-plug an existing entity).",
     ),
@@ -288,15 +335,12 @@ export function registerTools(server, ctx) {
       "include it by default; omit only if the user asked not to share it.",
     ),
     session_note: z.string().optional().describe(
-      "One short paragraph on what you built and why. Recorded for CloudGrid QA alongside the deploy.",
+      "One short paragraph on what you built and why. Recorded for CloudGrid QA alongside the plug.",
     ),
   };
 
-  // grid_plug is the create/re-plug verb. `grid_deploy` is kept as a deprecated
-  // back-compat alias (registered right after the primary below); the canonical
-  // name is grid_plug, and "deploy" survives only as an intent keyword in this
-  // tool's description. MCP-tool name only — the CLI verb `grid plug` is unchanged.
   const plugConfig = {
+      title: "Plug an app into the grid",
       description:
         "Plug an app, website, game, or single HTML page into CloudGrid — the live runtime that runs it and provides its infrastructure — and get a live public URL. " +
         "Use for any request to deploy, publish, host, ship, launch, go live, or share a working link — " +
@@ -367,7 +411,10 @@ export function registerTools(server, ctx) {
         })).optional().describe("Alias of grids (legacy picker alias)."),
         via: z.string().optional().describe("Recovery marker: 'cli-fallback' when a signed-in create was published through the bundled CloudGrid CLI."),
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+      // destructiveHint (M3): a re-plug with target_entity_id REPLACES what is
+      // live at a public URL in place. Versions + grid rollback exist, but the
+      // honest MCP annotation for overwrite-live-state is destructive.
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
       ...(ctx.edition === "web" && APPS_WIDGETS_ENABLED ? {
         _meta: {
           ui: { resourceUri: LIVE_RESULT_URI, csp: WIDGET_CSP },
@@ -417,22 +464,43 @@ export function registerTools(server, ctx) {
             });
           }
         }
-        if (input?.anon !== true && !isEdit) {
+        if (!isEdit) {
           const token = await ctx.getToken();
-          if (!token) {
-            // AUTH HARD GATE (create only): not signed in and not anon → do NOT
-            // silently ride the anonymous wire. Return the login-or-anon choice
-            // and stop. The model relays it; the user picks. (Rule 17, enforced.)
+          if (input?.anon === true && ctx.state?.authChoiceOffered !== true) {
+            if (ctx.state) ctx.state.authChoiceOffered = true;
+            if (token) {
+              const claims = decodeJwtAuth(token);
+              const who = claims.email ? ` as ${claims.email}` : "";
+              return okResult({
+                text:
+                  `You are signed in${who}. The user has not explicitly chosen anonymous publishing. Ask the user which they want — do not choose for them:\n` +
+                  `  1. Publish to your grid (re-call grid_plug without anon: true).\n` +
+                  `  2. Publish anonymously — a guest link that expires in 7 days unless claimed (re-call grid_plug with anon: true).\n` +
+                  `Relay this question to the user and STOP until they answer.`,
+                structured: { needs_auth: true },
+              });
+            }
             return okResult({
               text:
-                "You're not signed in. To publish this I can either:\n" +
-                "  1. Sign you in to publish to your grid — run grid_login (opens your browser), then I'll deploy.\n" +
-                "  2. Publish it anonymously right now — it goes live immediately with a claim link so you can save it to your account later.\n" +
-                "Which would you like? (For anonymous, re-call grid_plug with anon: true.)",
+                "This is a new publish and the user is not signed in. Ask the user which they want — do not choose for them:\n" +
+                "  1. Sign in and plug it to their grid — run grid_login (opens the browser), then re-call grid_plug.\n" +
+                "  2. Plug it as a guest — live immediately at a guest link that expires in 7 days unless claimed (re-call grid_plug with anon: true).\n" +
+                "Relay this question to the user and STOP until they answer.",
               structured: { needs_auth: true },
             });
           }
-          {
+          if (!token && input?.anon !== true) {
+            if (ctx.state) ctx.state.authChoiceOffered = true;
+            return okResult({
+              text:
+                "This is a new publish and the user is not signed in. Ask the user which they want — do not choose for them:\n" +
+                "  1. Sign in and plug it to their grid — run grid_login (opens the browser), then re-call grid_plug.\n" +
+                "  2. Plug it as a guest — live immediately at a guest link that expires in 7 days unless claimed (re-call grid_plug with anon: true).\n" +
+                "Relay this question to the user and STOP until they answer.",
+              structured: { needs_auth: true },
+            });
+          }
+          if (token && input?.anon !== true) {
             const decision = await resolveGridOrAsk(ctx, {
               token,
               suppliedGrid: input?.grid,
@@ -475,6 +543,7 @@ export function registerTools(server, ctx) {
   reg(
     "grid_get_app_source",
     {
+      title: "Get deployed app source",
       description:
         "Retrieve the CURRENT deployed HTML of an inspiration/drop inline as text, so you can edit it and " +
         "re-plug the SAME URL when you no longer have its source in context (e.g. the user asks to 'change the " +
@@ -528,6 +597,7 @@ export function registerTools(server, ctx) {
   reg(
     "grid_login",
     {
+      title: "Sign in to CloudGrid",
       description: "Start a CLI-free CloudGrid sign-in. Use when the user wants to log in, sign in, or authenticate, or to claim an anonymous drop. Returns a URL to open in the browser; then call grid_login_status to finish. Uses CloudGrid's existing OAuth.",
       inputSchema: {},
       outputSchema: {
@@ -558,6 +628,7 @@ export function registerTools(server, ctx) {
   reg(
     "grid_login_status",
     {
+      title: "Check sign-in status",
       description: "Finish a sign-in started by grid_login. Polls once: if you have completed the browser sign-in, it saves your session; otherwise it tells you to finish and try again.",
       inputSchema: {
         code: z.string().optional().describe("The sign-in code. Defaults to the most recent grid_login."),
@@ -607,22 +678,40 @@ export function registerTools(server, ctx) {
   reg(
     "grid_visibility",
     {
-      description: "Change who can see a CloudGrid inspiration OR runtime app/agent: private, authenticated, grid (everyone in the grid), or link (anyone with the URL). `space` is inspiration-only. Use when the user wants to make something private, restrict who sees it, or open it up — including right after a drop, with no target id needed. Kind-aware: routes runtime apps/agents to the entities visibility surface and inspirations to the inspiration surface automatically. Defaults to the drop made in this session. Requires sign-in. Calls the API directly.",
+      title: "Change app visibility",
+      description: "Change who can see a CloudGrid inspiration OR runtime app/agent. Simple modes: private (only the user), grid (everyone in their grid), link (anyone with the URL — add indexed: true to be findable by search engines). Finer control via the TWO AXES instead: inside (who in the grid: private | spaces | grid) and outside (reach beyond it: none | link | public), with require_signin for a members-only link and `spaces` for selected spaces. 'authenticated' is retired (it maps to a sign-in-required link). Use when the user wants to make something private, restrict who sees it, or open it up — including right after a drop, with no target id needed. Kind-aware routing across both surfaces. Defaults to the drop made in this session. Requires sign-in. Calls the API directly.",
       inputSchema: {
-        visibility: z.enum(["private", "space", "authenticated", "grid", "org", "link"]).describe("The new scope. Use `grid` for whole-grid visibility (`org` is the deprecated alias). `space` is inspiration-only."),
-        target: z.string().optional().describe("Entity id. Defaults to this session's last drop."),
+        visibility: z.enum(["private", "grid", "link", "public", "authenticated", "space"]).optional().describe("Simple mode: private | grid | link ('public' is an alias of link — pass indexed: true for search-findable; 'authenticated' is the retired alias for a sign-in-required link; 'space' needs the `spaces` list). Pass either this OR the inside/outside axes."),
+        inside: z.enum(["private", "spaces", "grid"]).optional().describe("Axis 1 — who in the grid can see it: private (only the user), spaces (selected spaces — pass `spaces`), or grid (everyone in the grid). Use together with `outside`, instead of `visibility`."),
+        outside: z.enum(["none", "link", "public"]).optional().describe("Axis 2 — reach beyond the grid: none, link (anyone with the link; add require_signin: true for signed-in accounts only), or public (anyone, and findable by search engines)."),
+        require_signin: z.boolean().optional().describe("With outside: link (or visibility: link) — the link requires a signed-in CloudGrid account."),
+        spaces: z.array(z.string()).optional().describe("Space slugs, for inside: spaces (or the legacy space/grid modes)."),
+        indexed: z.boolean().optional().describe("With visibility: link — make the page search-engine indexable."),
+        entity_id: z.string().optional().describe("Entity id. Defaults to this session's last drop."),
         kind: z.enum(["inspiration", "app", "agent"]).optional().describe("Entity kind. Omit to auto-detect from this session's last drop (falls back to trying the runtime surface, then the inspiration surface)."),
-        org: z.string().optional().describe("Grid of the entity. Defaults to the active grid."),
+        grid: z.string().optional().describe("Grid of the entity. Defaults to the active grid."),
+        target: z.string().optional().describe("Alias of entity_id (legacy). Prefer entity_id."),
+        org: z.string().optional().describe("Alias of grid (legacy). Prefer grid."),
       },
       outputSchema: {
-        visibility: z.string().describe("The visibility that was set."),
+        visibility: z.string().optional().describe("The legacy mode that was set, when a simple mode was used."),
+        share_scope: z.string().optional().describe("Stored axis: who in the grid (private | spaces | grid)."),
+        external_access: z.string().optional().describe("Stored axis: reach beyond the grid (none | link | public)."),
+        require_signin: z.boolean().optional().describe("Whether the link requires sign-in."),
+        visibility_spaces: z.array(z.string()).optional().describe("The space slugs, when share_scope is spaces."),
+        link_indexed: z.boolean().optional().describe("Whether the link is search-indexed."),
         url: z.string().optional().describe("URL of the entity, if returned."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
     async (input) => {
       try {
-        return okResult(await runVisibility(ctx, input || {}));
+        const resolved = {
+          ...(input || {}),
+          target: input?.entity_id || input?.target,
+          org: input?.grid || input?.org,
+        };
+        return okResult(await runVisibility(ctx, resolved));
       } catch (err) {
         return fail(err.message);
       }
@@ -636,6 +725,7 @@ export function registerTools(server, ctx) {
   reg(
     "grid_check_deploy",
     {
+      title: "Check deploy status",
       description:
         "Check whether an async runtime-app build has finished and the app is live. Call this after grid_plug returns status \"building\" — repeat every ~15s until it reports success or failed, and do NOT tell the user the app is live until it does. Defaults to this session's last deploy; pass poll_url from a grid_plug result to check another. Requires sign-in (builds are owned). Calls the API directly — works on every edition, including hosted.",
       inputSchema: {
@@ -666,6 +756,7 @@ export function registerTools(server, ctx) {
   reg(
     "grid_list_grids",
     {
+      title: "List your grids",
       description: "List the signed-in user's grids, each with slug, name, role, and provisioning status. A grid that is still provisioning (render_ready false) may not serve pages yet — prefer a ready grid, and if the user insists on a not-ready one, warn them that pages may not load. Requires sign-in.",
       inputSchema: {},
       outputSchema: {
@@ -709,7 +800,7 @@ export function registerTools(server, ctx) {
       });
       const readyCount = annotated.filter((o) => o.render_ready).length;
       if (readyCount === 0 && annotated.length > 0) {
-        lines.push("\nNone of your grids are fully set up yet. You can use an anonymous drop as a fallback, or wait until provisioning completes.");
+        lines.push("\nNone of your grids are fully set up yet. Wait until provisioning completes (grid_start will show render_ready: true) before plugging. Do not switch to anonymous unless the user asks for it.");
       }
       // Structured output stays `orgs` (its declared schema); user text says grid.
       return okResult({ text: lines.join("\n"), structured: { orgs: annotated } });
@@ -725,6 +816,7 @@ export function registerTools(server, ctx) {
   reg(
     "grid_start",
     {
+      title: "Orient before building",
       description:
         "Orient before building with CloudGrid — the live runtime environment where the user's apps run WITH the infrastructure they need (managed database, cache, persistent disk, AI with no API keys), any language or stack. Call this FIRST when the user wants to build, create, make, deploy, publish, or generate something. Returns the CloudGrid playbook (operating rules + golden path) and the index of available workflows (presentation, …). After this, match the user's intent to a workflow and call grid_get_template to load it.",
       inputSchema: {},
@@ -743,6 +835,9 @@ export function registerTools(server, ctx) {
           .object({
             active_grid: z.string().nullable().describe("The user's active grid/org slug, or null."),
             signed_in: z.boolean().describe("Whether the current session is signed in."),
+            email: z.string().optional().describe("The signed-in user's email, when available."),
+            session_expired: z.boolean().optional().describe("True when credentials exist but the JWT has expired. Run grid_login to sign in again."),
+            identity_changed: z.boolean().optional().describe("True when the session's identity changed via a different transport Bearer. Session state was reset."),
             update_available: z
               .object({
                 current: z.string().describe("This MCP's version."),
@@ -759,9 +854,26 @@ export function registerTools(server, ctx) {
     async () => {
       const workflows = listWorkflows();
       let signedIn = false;
+      let sessionExpired = false;
+      let signedInEmail = null;
       let activeGrid = null;
       try {
-        signedIn = Boolean(await ctx.getToken());
+        if (ctx.getCredentialsStatus) {
+          const status = await ctx.getCredentialsStatus();
+          sessionExpired = status.expired;
+          if (status.creds?.jwt) {
+            signedIn = true;
+            const claims = decodeJwtAuth(status.creds.jwt);
+            signedInEmail = claims.email ?? null;
+          }
+        } else {
+          const token = await ctx.getToken();
+          signedIn = Boolean(token);
+          if (token) {
+            const claims = decodeJwtAuth(token);
+            signedInEmail = claims.email ?? null;
+          }
+        }
       } catch {
         signedIn = false;
       }
@@ -770,28 +882,33 @@ export function registerTools(server, ctx) {
       } catch {
         activeGrid = null;
       }
-      // Staleness (local edition): populated fire-and-forget at boot. The
-      // .mcpb never auto-updates, so this is where silent rot becomes a
-      // one-line user action — the model relays the note in-session.
+      const identityChanged = ctx.state?.identityChanged === true;
+      if (identityChanged) ctx.state.identityChanged = false;
       const stale = stalenessNote(ctx.staleness);
-      const structured = {
-        playbook: PLAYBOOK,
-        workflows,
-        context: {
-          active_grid: activeGrid,
-          signed_in: signedIn,
-          ...(ctx.staleness?.behind
-            ? { update_available: { current: ctx.staleness.current, latest: ctx.staleness.latest } }
-            : {}),
-        },
+      const contextObj = {
+        active_grid: activeGrid,
+        signed_in: signedIn,
+        ...(signedInEmail ? { email: signedInEmail } : {}),
+        ...(sessionExpired ? { session_expired: true } : {}),
+        ...(identityChanged ? { identity_changed: true } : {}),
+        ...(ctx.staleness?.behind
+          ? { update_available: { current: ctx.staleness.current, latest: ctx.staleness.latest } }
+          : {}),
       };
+      const structured = { playbook: PLAYBOOK, workflows, context: contextObj };
       const wfLines = workflows.length
         ? workflows.map((w) => `  - ${w.name}: ${w.when || w.summary}`).join("\n")
         : "  (none available)";
-      const text =
+      let text =
         `${PLAYBOOK}\n\nAvailable workflows:\n${wfLines}\n\n` +
         `Next: match the intent to a workflow and call grid_get_template({kind:"workflow", name}).` +
         (stale ? `\n\n${stale}` : "");
+      if (sessionExpired) {
+        text += "\n\nYour CloudGrid sign-in has expired. Run grid_login to sign in again.";
+      }
+      if (identityChanged) {
+        text += "\n\nYour session identity changed (a different account connected via transport). Session state has been reset.";
+      }
       return okResult({ text, structured });
     },
   );
@@ -799,8 +916,9 @@ export function registerTools(server, ctx) {
   reg(
     "grid_get_template",
     {
+      title: "Load a workflow or template",
       description:
-        "Load a specific CloudGrid workflow, template, example, rule, or doc by name — deterministic retrieval from the bundled corpus (complements the fuzzy search_cloudgrid_documentation). Use after grid_start to pull the exact recipe/template you need, e.g. grid_get_template({kind:\"workflow\", name:\"presentation\"}) then grid_get_template({kind:\"template\", name:\"deck\"}).",
+        "Load a specific CloudGrid workflow, template, example, rule, or doc by name — deterministic retrieval from the bundled corpus. Use after grid_start to pull the exact recipe/template you need, e.g. grid_get_template({kind:\"workflow\", name:\"presentation\"}) then grid_get_template({kind:\"template\", name:\"deck\"}).",
       inputSchema: {
         kind: z
           .enum(["workflow", "template", "example", "rule", "troubleshooting", "doc"])
@@ -837,6 +955,7 @@ export function registerTools(server, ctx) {
   reg(
     "grid_report",
     {
+      title: "Report a failure",
       description:
         "Report a genuine CloudGrid failure to the CloudGrid team — ONLY with the user's explicit consent. When a build/deploy or platform call fails unexpectedly, ASK the user first; call this only after they say yes. Send a short `message` (what failed) plus `context` (the tool, inputs, grid, original request, error code/detail). By default it does NOT include the conversation — set include_conversation:true ONLY if the user explicitly agreed to send the chat. Obvious secrets in context are scrubbed before sending. Never sends anything the user didn't agree to.",
       inputSchema: {
@@ -910,6 +1029,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_create_project",
+    "Scaffold a new project",
     "Scaffold a new CloudGrid app or agent folder (cloudgrid.yaml + a web service), optionally pre-declaring resources. Wraps `grid new` (scaffolds locally; no server entity until you grid_plug). Language note: the nextjs starter is TypeScript (writes tsconfig.json + app/*.tsx), but CloudGrid templates are plain JavaScript. When you fill a template, treat the template's files as the source of truth — delete the scaffolded tsconfig.json and app/*.tsx, then write the template's .js files. Never leave both .tsx and .js for the same route.",
     {
       kind: z.enum(["app", "agent"]).describe("Entity kind. 'agent' scaffolds an agent: block."),
@@ -918,11 +1038,12 @@ export function registerTools(server, ctx) {
       needs: z.array(z.enum(["database", "cache", "kv", "queue", "pubsub", "vector", "ai", "disk"])).optional()
         .describe("Pre-declare infrastructure needs in the scaffolded cloudgrid.yaml (e.g. [\"database\",\"ai\"])."),
       dir: z.string().optional().describe("Target directory. Defaults to the current folder."),
-      org: z.string().optional().describe("Override the active grid this project will target."),
+      grid: z.string().optional().describe("Override the active grid this project will target."),
+      org: z.string().optional().describe("Alias of grid (legacy). Prefer grid."),
       cwd: z.string().optional().describe("Working directory. The CLI runs in this directory. Defaults to the MCP server's working directory."),
     },
     { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
-    cliTool((input) => buildCreateProjectArgs(input), { cwdParam: true }),
+    cliTool((input) => buildCreateProjectArgs(input), { cwdParam: true, excludeDirFromCwd: true }),
   );
 
   // NOTE: grid_plug is no longer CLI-wrapping — the unified direct-API verb
@@ -931,6 +1052,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_view_logs",
+    "View entity logs",
     "Tail recent logs for an entity. Does not stream; returns a snapshot. Wraps `grid logs`.",
     {
       name: z.string().optional().describe("Entity name. Omit to use the entity linked to the current directory."),
@@ -949,6 +1071,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_share",
+    "Set visibility via CLI",
     "Set an entity's visibility and print its URL. Defaults to link (anyone with the URL). Wraps `grid visibility set`.",
     {
       name: z.string().describe("Entity slug."),
@@ -960,19 +1083,21 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_feedback",
+    "List feedback events",
     "List recent feedback events for the active grid. Read-only. Wraps `grid feedback list`.",
     {
       since: z.string().optional().describe("Only events newer than this, e.g. 24h, 7d."),
       limit: z.number().int().positive().max(200).optional().describe("Number of events. Default 50, max 200."),
-      org: z.string().optional().describe("Read another grid's feed where you have access."),
+      grid: z.string().optional().describe("Read another grid's feed where you have access."),
+      org: z.string().optional().describe("Alias of grid (legacy). Prefer grid."),
     },
     { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
-    cliTool(({ since, limit, org }) => {
+    cliTool(({ since, limit, grid, org }) => {
       const args = ["feedback", "list"];
       if (since) args.push("--since", since);
       if (limit) args.push("--limit", String(limit));
-      // CLI 0.12 dropped `--org` in favour of `--grid` (same slug).
-      if (org) args.push("--grid", org);
+      const gridSlug = grid || org;
+      if (gridSlug) args.push("--grid", gridSlug);
       return args;
     }),
   );
@@ -981,6 +1106,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_whoami",
+    "Show current user and grid",
     "Show the signed-in user and active grid. Wraps `grid whoami`.",
     {},
     { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
@@ -989,14 +1115,23 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_switch_grid",
+    "Switch the active grid",
     "Switch the active grid. Wraps `grid use`.",
-    { org: z.string().describe("Org slug to switch to.") },
+    {
+      grid: z.string().optional().describe("Grid slug to switch to."),
+      org: z.string().optional().describe("Alias of grid (legacy). Prefer grid."),
+    },
     { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
-    cliTool(({ org }) => ["use", org]),
+    cliTool(({ grid, org }) => {
+      const slug = grid || org;
+      if (!slug) throw new Error("`grid` is required.");
+      return ["use", slug];
+    }),
   );
 
   regTool(
     "grid_logout",
+    "Sign out",
     "Sign out and clear local credentials. Wraps `grid logout`.",
     {},
     { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
@@ -1005,7 +1140,8 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_status",
-    "Org dashboard, entity detail, or deploy snapshot. Wraps `grid status`.",
+    "Show grid or entity status",
+    "Grid dashboard, entity detail, or deploy snapshot. Wraps `grid status`.",
     { name: z.string().optional().describe("Entity name or trace id. Omit for the org dashboard.") },
     { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     cliTool(({ name }) => (name ? ["status", name] : ["status"])),
@@ -1013,6 +1149,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_info",
+    "Show entity metadata",
     "Show metadata for a CloudGrid entity. Wraps `grid info`.",
     { name: z.string().optional().describe("Entity name. Omit for the entity linked to the current directory.") },
     { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
@@ -1030,6 +1167,7 @@ export function registerTools(server, ctx) {
   // cloudgrid_grid behaviour with `grid` mapping to the CLI's `--grid` flag.
   regTool(
     "grid_get",
+    "List grids, entities, or spaces",
     "List CloudGrid grids, entities, or spaces. Wraps `grid get <grids|entities|spaces> --json`.",
     {
       resource: z.enum(["grids", "entities", "spaces"]).describe("What to list: grids, entities, or spaces."),
@@ -1057,6 +1195,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_describe_grid",
+    "Describe a grid",
     "Show a grid's detail: role, members, spaces, tier, wildcard-TLS state. Wraps `grid describe grid <slug> --json`.",
     { grid: z.string().describe("Grid slug to describe.") },
     { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
@@ -1070,6 +1209,7 @@ export function registerTools(server, ctx) {
   // pulled — use grid_pickup to copy it, or `grid collab` to request access.
   regTool(
     "grid_edit_existing_app",
+    "Pull app source to edit locally",
     "Continue/edit an EXISTING entity locally: download its source + cloudgrid.yaml and link the folder so your next `grid plug` updates it IN PLACE. Requires push access (owner or collaborator). Wraps `grid pull`. To make your own separate copy instead, use grid_pickup.",
     {
       name: z.string().describe("Entity slug or id to pull."),
@@ -1094,6 +1234,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_rename",
+    "Rename an entity",
     "Rename a CloudGrid entity's display name (slug stays the same). Wraps `grid rename`.",
     {
       name: z.string().describe("Entity slug."),
@@ -1105,6 +1246,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_take_offline",
+    "Take an entity offline",
     "Take an entity off the grid. Destructive. Wraps `grid unplug`.",
     {
       name: z.string().describe("Entity slug to take down (required)."),
@@ -1116,6 +1258,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_delete",
+    "Delete an entity",
     "Archive a CloudGrid inspiration. Destructive. Wraps `grid delete entity`.",
     {
       name: z.string().describe("Entity slug to delete (required)."),
@@ -1127,6 +1270,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_rollback_deploy",
+    "Roll back to a previous version",
     "Rollback an entity to a previous version. Wraps `grid rollback`.",
     {
       name: z.string().describe("Entity slug."),
@@ -1142,6 +1286,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_list_versions",
+    "List entity versions",
     "List published versions for an entity. Wraps `grid versions`.",
     { name: z.string().optional().describe("Entity name. Omit for the entity linked to the current directory.") },
     { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
@@ -1154,6 +1299,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_set_env",
+    "Manage environment variables",
     "Manage environment variables for an entity. Wraps `grid env`.",
     {
       action: z.enum(["get", "set", "list"]).describe("get, set, or list."),
@@ -1178,6 +1324,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_set_secret",
+    "Manage secrets",
     "Set or list secret names for an entity. Never returns secret values. Wraps `grid secrets`.",
     {
       action: z.enum(["set", "list"]).describe("set or list (names only)."),
@@ -1198,6 +1345,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_scaffold",
+    "Scaffold service folders",
     "Scaffold service folders declared in cloudgrid.yaml (idempotent). Wraps `grid scaffold`.",
     {
       cwd: z.string().optional().describe("Working directory. The CLI runs in this directory. Defaults to the MCP server's working directory."),
@@ -1208,6 +1356,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_diagnose",
+    "Run local diagnostics",
     "Run CloudGrid diagnostics on the local environment. Wraps `grid doctor`.",
     {},
     { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
@@ -1216,6 +1365,7 @@ export function registerTools(server, ctx) {
 
   regTool(
     "grid_get_url",
+    "Get entity URL",
     "Return the public URL for an entity. Does not open a browser. Wraps `grid open --print`.",
     { name: z.string().optional().describe("Entity name. Omit for the entity linked to the current directory.") },
     { readOnlyHint: true, destructiveHint: false, openWorldHint: true },

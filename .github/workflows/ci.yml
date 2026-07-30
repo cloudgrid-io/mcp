@@ -9,7 +9,7 @@ jobs:
   license:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: LICENSE is Apache 2.0
         run: |
           if [ ! -f LICENSE ]; then
@@ -25,7 +25,7 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 20
@@ -40,10 +40,10 @@ jobs:
       # and grid_fetch resolves kind:"rule".
       - run: npm run test:self-healing
       # Offline grid-picker parity test (0.7.3): grid_plug asks "which grid?"
-      # on authed multi-grid creates (like grid_drop), never on edits/anon,
+      # on authed multi-grid creates (like grid_plug), never on edits/anon,
       # and proceeds on an explicit/single grid. Drives the real tool handlers.
       - run: npm run test:grid-picker
-      # Offline output-schema regression (grid_deploy -32602): one outputSchema,
+      # Offline output-schema regression (grid_plug -32602): one outputSchema,
       # three response modes (deploy result / grid-picker ask / CLI-fallback). The
       # SDK renders additionalProperties:false and the client validates every
       # result - undeclared picker/fallback keys throw -32602. Real Client<->Server
@@ -69,7 +69,7 @@ jobs:
       # carries a cloudgrid.yaml returns needs_confirmation (does not
       # auto-create) until grid_plug is re-called with confirm_new_app:true.
       - run: npm run test:manifest-confirm
-      # Offline QA courier test (0.20.5): grid_deploy's user_request + session_note
+      # Offline QA courier test (0.20.5): grid_plug's user_request + session_note
       # args reach the flushed QA session log, stay [omitted] in the per-call trail
       # (default-deny allowlist), respect stdio env precedence, and a successful
       # deploy nudges grid_note only when a QA logger is active. Drives the real
@@ -90,7 +90,7 @@ jobs:
       # gracefully on non-200, and the grid_source tool + playbook/drop/plug
       # guidance are wired. Mocks global fetch.
       - run: npm run test:source
-      # Offline set-sharing kind-awareness: grid_set_sharing routes runtime
+      # Offline set-sharing kind-awareness: grid_visibility routes runtime
       # app/agent to PATCH /entities/:id/visibility (grid vocab) and inspirations
       # to PATCH /inspirations/:id (org vocab), maps org<->grid, falls back on a
       # not-found, and keeps space inspiration-only. Mocks global fetch.
@@ -109,6 +109,14 @@ jobs:
       # HTTPS server validates after trusting the CA, cert-error login preflight
       # returns terminal guidance.
       - run: npm run test:system-ca
+      # Auth strictness (WP-A): expired JWT detection, symmetric anon gate,
+      # 401 guidance no longer offers anonymous, CLI verb drift, H6 honest
+      # annotations.
+      - run: npm run test:auth-strictness
+      - run: npm run test:auth
+      # OAuth-route gating (M14): anon host 404s OAuth discovery + registration;
+      # auth host 200s with the right issuer; /healthz 200 on both.
+      - run: npm run test:oauth-gate
       # Offline app-with-data test (0.9.0): the first runtime (DB-backed) build
       # path. Asserts the app-with-data workflow/template/example + persistent-apps
       # troubleshooting resolve via fetchCorpus and the real grid_fetch handler,
@@ -151,11 +159,42 @@ jobs:
       # default (no CLOUDGRID_QA_SLACK_WEBHOOK → no-op), and never throws into the
       # tool path. Drives the real registered handlers + grid_note.
       - run: npm run test:session-log
+      # Offline content-handling test: base64 HTML decoding, large-blob rejection,
+      # @-path steering, anon/authed size limits.
+      - run: npm run test:content
+      # Offline apps-widgets gate: grid_plug text-first default (no openai
+      # outputTemplate), live-result widget resource, MCP_APPS_WIDGETS=1 restore.
+      - run: npm run test:widgets
+      # Tool titles (#201) + targeting-vocabulary convergence (#198): every tool
+      # has a non-empty title, canonical entity_id/grid params work alongside
+      # legacy aliases, org is absent from the published visibility enum.
+      - run: npm run test:tool-titles-and-vocab
+
+  readme-tool-table:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20
+      - run: npm ci
+      - name: README tool table matches the registry
+        run: node scripts/gen-tool-docs.mjs --check
+
+  corpus-tool-names:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20
+      - name: Corpus edition-safety (shared-14 tool names only)
+        run: node .github/scripts/corpus-tool-names.mjs
 
   drift-guard:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 20
@@ -170,7 +209,7 @@ jobs:
   win-cli:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 20
@@ -194,7 +233,7 @@ jobs:
   smoke-web:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 20

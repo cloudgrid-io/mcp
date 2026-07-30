@@ -74,13 +74,21 @@ try {
     check("no-auth create offers sign-in AND anonymous", /grid_login/.test(res?.content?.[0]?.text ?? "") && /anon/i.test(res?.content?.[0]?.text ?? ""));
   }
 
-  // ── AUTH gate bypass: anon:true proceeds (reaches the wire → our mock throws the sentinel) ──
+  // ── AUTH gate is NOT model-bypassable (field bug 2026-07-26, Claude web):
+  //    the FIRST unauthenticated create in a session returns needs_auth EVEN
+  //    with anon:true — the model cannot self-serve a silent guest publish.
+  //    After the ask was surfaced (same session state), anon:true proceeds. ──
   {
     globalThis.__GRIDS__ = [];
     resetPlug();
-    const h = captureDeploy(makeCtx({ token: null }));
+    const ctx = makeCtx({ token: null });
+    const h = captureDeploy(ctx);
+    const first = await h({ ...HTML, anon: true });
+    check("first anon:true create is still gated (no deploy)", globalThis.__PLUG_CALLS__ === 0);
+    check("first anon:true create returns needs_auth", parse(first).needs_auth === true);
+    check("gate marks the session (authChoiceOffered)", ctx.state.authChoiceOffered === true);
     await h({ ...HTML, anon: true });
-    check("anon:true bypasses the auth gate (deploy attempted)", globalThis.__PLUG_CALLS__ === 1);
+    check("anon:true AFTER the ask proceeds (deploy attempted)", globalThis.__PLUG_CALLS__ === 1);
   }
 
   // ── GRID gate: authed, >1 grid, no grid → needs_grid, no deploy ──
@@ -106,6 +114,20 @@ try {
     const h = captureDeploy(makeCtx({ token: "jwt" }));
     await h({ ...HTML, grid: "grid-a" });
     check("explicit valid grid bypasses the grid gate (deploy attempted)", globalThis.__PLUG_CALLS__ === 1);
+  }
+
+  // ── ZERO-GRID gate: signed in but member of no grid → needs_grid_create,
+  //    never a silent 403 NO_ACTIVE_ORG dead end (field bug 2026-07-27: the
+  //    model sent a first-time user to the console to create a grid by hand). ──
+  {
+    globalThis.__GRIDS__ = [];
+    resetPlug();
+    const h = captureDeploy(makeCtx({ token: "jwt" }));
+    const res = await h(HTML);
+    check("authed zero-grid create did NOT deploy", globalThis.__PLUG_CALLS__ === 0);
+    check("authed zero-grid create returns needs_grid_create", parse(res).needs_grid_create === true);
+    check("zero-grid ask routes to grid_create_grid, not the console",
+      /grid_create_grid/.test(res?.content?.[0]?.text ?? "") && !/console\.cloudgrid\.io/.test(res?.content?.[0]?.text ?? ""));
   }
 
   // ── EDIT bypass: target_entity_id skips both gates ──

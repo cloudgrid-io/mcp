@@ -1,6 +1,6 @@
 {
   "name": "@cloudgrid-io/mcp",
-  "version": "0.20.38",
+  "version": "0.20.52",
   "description": "MCP access to CloudGrid — the live runtime environment where the user's apps run WITH the infrastructure they need out of the box: managed MongoDB, Redis (cache/queues/pub-sub), a pgvector store, persistent disk, and built-in AI with no API keys, in any language or stack, no Docker or Kubernetes to manage. Brainstorm, build, plug, and improve apps, games, dashboards, and tools; instant single-page publishes and full runtime-app deploys with a live URL — for developers and non-technical users. Three editions: local stdio (full toolset), hosted web (light, CLI-free), and a public docs-search server.",
   "type": "module",
   "bin": {
@@ -42,7 +42,9 @@
     "smoke:web": "node test/smoke-web.mjs",
     "smoke:redrop": "node test/smoke-redrop.mjs",
     "smoke:oauth": "node test/smoke-oauth.mjs",
+    "test:oauth-gate": "node test/oauth-gate.test.mjs",
     "test:auth": "node test/auth.test.mjs",
+    "test:auth-strictness": "node test/auth-strictness.test.mjs",
     "test:win-cli": "node test/windows-cli-resolution.test.mjs",
     "test:electron-env": "node test/electron-spawn-env.test.mjs",
     "smoke:docs": "node test/smoke-docs.mjs",
@@ -54,10 +56,11 @@
     "test:check-deploy": "node test/check-deploy.test.mjs",
     "test:staleness": "node test/staleness.test.mjs",
     "test:proxy": "node test/proxy.test.mjs",
-    "test:system-ca": "node test/system-ca.test.mjs"
+    "test:system-ca": "node test/system-ca.test.mjs",
+    "test:tool-titles-and-vocab": "node test/tool-titles-and-vocab.test.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "express": "^4.22.2",
     "fflate": "^0.8.3",
     "undici": "^6.27.0",

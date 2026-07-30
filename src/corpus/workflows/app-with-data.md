@@ -43,7 +43,7 @@ Persistent apps are owned entities.
 
 ## 3. Scaffold
 
-`grid_create_project` an app `<name>` (the default `--type` is fine). It scaffolds the project folder and writes a `cloudgrid.yaml` with an EMPTY
+`grid new <name>` (the default `--type` is fine). It scaffolds the project folder and writes a `cloudgrid.yaml` with an EMPTY
 `services: {}`. No server entity exists yet — the first `grid plug` auto-creates
 it from the manifest (honoring its `name:`) and writes `.cloudgrid/link.json`.
 
@@ -95,8 +95,8 @@ and sanity-check before deploying. Don't require it.
 
 ## 6. Config
 
-- API keys / secrets → `grid_set_secret`.
-- Non-secret config → `grid_set_env`.
+- API keys / secrets → `grid secrets set`.
+- Non-secret config → `grid env set`.
 - Do **NOT** set the DB/cache connection vars yourself (`DATABASE_MONGODB_URL`,
   `CACHE_REDIS_URL`, or their legacy `MONGODB_URL` / `REDIS_URL` aliases) — the
   grid injects them.
@@ -105,7 +105,7 @@ and sanity-check before deploying. Don't require it.
 
 Deploy the folder with `grid_plug`. A **runtime deploy is ASYNC**: the first
 response is `status: "building"` with a `poll_url` / entity, NOT a live URL yet.
-- Poll `grid_status` (or the returned poll_url) until the entity is live.
+- Poll `grid_check_deploy` (or the returned poll_url) until the entity is live.
 - Surface a liveness signal while it builds — keep the user informed, never a
   bare silent wait.
 - Only once it is live, return the deployed URL (the app URL, NOT the build/log

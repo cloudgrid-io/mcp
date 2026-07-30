@@ -211,7 +211,7 @@ hosted edition cannot build a runtime container.
 2. The first `grid plug` auto-creates the entity from the manifest (honors its
    `name:`) and writes `.cloudgrid/link.json`. To register without deploying —
    e.g. to set secrets first — use `grid plug --no-deploy` (the
-   `grid_create_project` MCP tool does the same).
+   `grid new` CLI command does the same).
 3. (If you added auth/payments) store the vault secrets with `grid secrets set`;
    non-secret public config → `grid env`. The AI Gateway and Mongo need no secrets
    — they are injected by `needs`.

@@ -205,7 +205,7 @@ hosted edition cannot build a runtime container.
 2. The first `grid plug` auto-creates the entity from the manifest (honors its
    `name:`) and writes `.cloudgrid/link.json`. To register without deploying —
    e.g. to set secrets first — use `grid plug --no-deploy` (the
-   `grid_create_project` MCP tool does the same).
+   `grid new` CLI command does the same).
 3. (If you mapped vault items) store the values:
    `grid secrets set <vault-item-key> <value>`. Non-secret public config → `grid env`.
    Do NOT set `DATABASE_MONGODB_URL` / `MONGODB_URL` yourself — the grid injects them.

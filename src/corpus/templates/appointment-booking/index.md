@@ -26,7 +26,7 @@ Local edition only.
    the getter, never at module top level (top-level read fails `next build`).
 4. **Secrets via the `vault:` block** → env vars. `AUTH_PROVIDER_KEY` (and, for
    deposits, `STRIPE_KEY` / `STRIPE_WEBHOOK_SECRET`) map to vault items; set them
-   with `grid_set_secret`, and the deployer injects them at runtime. Read lazily;
+   with `grid secrets set`, and the deployer injects them at runtime. Read lazily;
    do not commit keys or put secrets in `services.web.env`.
 5. **No double-booking.** `appointments` is the source of truth for "taken";
    compute open slots as availability minus booked, re-check at write time, and
@@ -65,8 +65,8 @@ vault:
 
 ## Deploy (async, local edition)
 
-`grid_create_project` first (creates the entity + link.json), write the app under
-`services/web/`, set the vault secrets with `grid_set_secret`, `grid_plug`
-(async — poll `grid_status` to a live URL). If taking deposits, register the
+`grid new` first (creates the entity + link.json), write the app under
+`services/web/`, set the vault secrets with `grid secrets set`, `grid_plug`
+(async — poll `grid_check_deploy` to a live URL). If taking deposits, register the
 `/api/webhook` URL in Stripe and re-plug. Re-plug the same entity to update the
 same URL.
