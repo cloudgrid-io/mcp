@@ -16,7 +16,7 @@ plug, login, and visibility tools.
 ## CLI compatibility
 
 The MCP uses an installed CLI only when it meets the platform floor
-(`MIN_CLI_VERSION`, currently 0.15.14 — kept in lockstep with the API's live
+(`MIN_CLI_VERSION`, currently 0.15.26 — kept in lockstep with the API's live
 `cli_compat` floor, which rejects older CLIs with HTTP 426). Below the floor it
 skips the local/global CLI and lazily fetches `@cloudgrid-io/cli@latest` via
 npx instead. A CI drift guard (`npm run test:drift-guard`) asserts every
@@ -84,7 +84,7 @@ posted). `CLOUDGRID_QA_IDLE_MS` overrides the abandoned-idle window (default
 <!-- gen:tools -->
 ## Tools
 
-36 tools registered (14 shared across both editions, 22 local-only). No deprecated aliases. MIN_CLI_VERSION: 0.15.14.
+36 tools registered (14 shared across both editions, 22 local-only). No deprecated aliases. MIN_CLI_VERSION: 0.15.26.
 
 ### Direct-API tools (both editions)
 
