@@ -28,8 +28,8 @@ check("exposes grid_login_status", tools.includes("grid_login_status"));
 const start = await client.callTool({ name: "grid_login", arguments: {} });
 const startText = start.content?.[0]?.text ?? "";
 console.log("--- login output ---\n" + startText);
-const m = startText.match(/(https:\/\/\S*\/auth\/login\?code=[0-9a-f-]+)/);
-check("login returns an /auth/login?code= URL", !!m);
+const m = startText.match(/(https:\/\/\S*\/auth\/login\?code=[0-9a-f-]+&source=mcp)/);
+check("login returns an MCP-attributed /auth/login?code= URL", !!m);
 
 const status = await client.callTool({ name: "grid_login_status", arguments: {} });
 const statusText = status.content?.[0]?.text ?? "";

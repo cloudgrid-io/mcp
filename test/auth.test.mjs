@@ -10,7 +10,7 @@ import { join } from "node:path";
 const home = mkdtempSync(join(tmpdir(), "cgmcp-auth-"));
 process.env.CLOUDGRID_HOME = home;
 
-const { decodeJwt, writeCredentials, credentialsPath } = await import("../src/auth.js");
+const { buildLoginUrl, decodeJwt, writeCredentials, credentialsPath } = await import("../src/auth.js");
 
 let failures = 0;
 function check(label, cond) {
@@ -29,6 +29,11 @@ const decoded = decodeJwt(jwt);
 check("decodeJwt reads email", decoded.email === "pm@example.com");
 check("decodeJwt reads sub", decoded.sub === "u_test_123");
 check("decodeJwt is safe on garbage", Object.keys(decodeJwt("not-a-jwt")).length === 0);
+check(
+  "buildLoginUrl attributes MCP-origin signups",
+  buildLoginUrl("code with spaces") ===
+    "https://api.cloudgrid.io/auth/login?code=code%20with%20spaces&source=mcp",
+);
 
 const creds = await writeCredentials(jwt);
 check("writeCredentials returns jwt", creds.jwt === jwt);
