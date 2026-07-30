@@ -60,7 +60,7 @@
     "test:tool-titles-and-vocab": "node test/tool-titles-and-vocab.test.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "express": "^4.22.2",
     "fflate": "^0.8.3",
     "undici": "^6.27.0",
