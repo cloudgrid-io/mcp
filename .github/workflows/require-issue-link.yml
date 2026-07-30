@@ -23,9 +23,16 @@ jobs:
             // 1. Bot-authored PRs are exempt. Dependency and security updates must
             //    never be blocked on an issue that does not exist.
             const BOTS = ["dependabot[bot]", "github-actions[bot]", "renovate[bot]"];
-            if (pr.user && (BOTS.includes(pr.user.login) || pr.user.type === "Bot")) {
-              core.info(`Author ${pr.user.login} is a bot. Exempt.`);
+            if (pr.user && BOTS.includes(pr.user.login)) {
+              core.info(`Author ${pr.user.login} is an allowlisted bot. Exempt.`);
               return;
+            }
+            if (pr.user && pr.user.type === "Bot") {
+              core.warning(
+                `Author ${pr.user.login} is an App identity not on the exemption allowlist. ` +
+                `Not exempt - add it to BOTS deliberately if it should be.`,
+              );
+              // deliberately falls through to the normal check
             }
 
             // 2. Deliberate escape hatch so an emergency is never wedged.
