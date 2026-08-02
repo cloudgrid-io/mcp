@@ -169,6 +169,11 @@ jobs:
       # has a non-empty title, canonical entity_id/grid params work alongside
       # legacy aliases, org is absent from the published visibility enum.
       - run: npm run test:tool-titles-and-vocab
+      # Visibility-mapping drift guard (#192): the playbook's six-row mapping
+      # table matches the live grid_visibility schema (inside/outside enums,
+      # require_signin, spaces param) and presents the two-axis model before
+      # the ask.
+      - run: npm run test:visibility-mapping
 
   readme-tool-table:
     runs-on: ubuntu-latest

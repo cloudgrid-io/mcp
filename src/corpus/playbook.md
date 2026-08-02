@@ -7,7 +7,26 @@ Operating rules:
 3b. No grid yet (first-time signed-in user): grid_plug returns needs_grid_create when the account has no grid, and a plug can fail with 403 NO_ACTIVE_ORG. Do NOT send the user to the console — suggest a short slug (3-40 lowercase letters/digits/hyphens, starting with a letter), confirm it with the user (it is permanent and appears in URLs), call grid_create_grid, then re-call grid_plug with grid: <slug>.
 3c. A failed runtime build never loses the work: the source was uploaded before the build ran and lives on the entity. Read the build log (grid_check_deploy) and fix; if it cannot be fixed from this session (hosted, no filesystem), hand the user their files — grid_get_app_source returns a source zip link (source_download_url), and `npx -y @cloudgrid-io/cli@latest pull <grid>/<slug>` downloads the project AND links the folder so the next plug updates the SAME entity locally. Offer one of these instead of abandoning the build or starting over.
 4. Load specifics on demand. Use grid_get_template({kind, name}) to pull the exact workflow, template, or example you need (kind ∈ workflow|template|example|rule|troubleshooting|doc).
-5. Always return the live share URL at the end — that is the deliverable. On a NEW plug, then ASK the user who should be able to open it — private (only you), your grid, or anyone with the link (optionally sign-in required, or search-indexed for public findability; selected spaces via inside: spaces) — and set their choice with grid_visibility. Never pick the visibility silently. On a re-plug/edit of an existing entity, leave its current visibility as-is unless the user asks to change it. Note the model: visibility is two axes — inside the grid (private | spaces | grid) and outside it (none | link | public); the old 'authenticated' mode is retired (it equals a sign-in-required link) and 'org' is gone (use grid).
+5. Always return the live share URL at the end — that is the deliverable.
+
+   **Visibility model.** Two axes — inside the grid (`private | spaces | grid`) and outside it (`none | link | public`). The old `authenticated` mode is retired (it equals a sign-in-required link) and `org` is gone (use `grid`).
+
+   **On a NEW plug, ask who should see it** — never pick silently. Ask inside first ("who in your grid?"), then outside ("anyone beyond it?"). When the user's intent is already obvious from context (e.g. "share this publicly"), combine into one question. Do not offer `spaces` unless the user references specific people or groups.
+
+   **Answer → `grid_visibility` call:**
+
+   | User says | `inside` | `outside` | extra params |
+   |---|---|---|---|
+   | "just me" / "private" | `private` | `none` | |
+   | "my team" / "my grid" | `grid` | `none` | |
+   | "anyone with the link" | `private` | `link` | |
+   | "link, but they must sign in" | `private` | `link` | `require_signin: true` |
+   | "public, findable on Google" | `grid` | `public` | |
+   | "only these spaces" (+ names) | `spaces` | `none` | `spaces: [<slugs>]` |
+
+   **Default when the user defers** ("whatever you think"): apply the most private option that still satisfies what they asked for — asked to share a link → `inside: private, outside: link`; sharing never mentioned → `inside: private, outside: none`. State the choice: "I've set it to private — say the word if you want it public."
+
+   On a re-plug/edit of an existing entity, leave its current visibility as-is unless the user asks to change it.
 6. Brainstorm first (lightly) for a real app, then minimize questions. For a substantial runtime app, take ONE lightweight beat before generating/plugging: confirm the goal + 3-5 core features in a sentence, check for a matching template/recipe (capability-map), and infer the data/runtime needs and STATE them ("I'll add a database so entries are saved"). Keep it to a line or two; never ask a non-technical user infra questions they can't answer. A simple single page skips this and builds immediately. Otherwise use sensible defaults and build; don't front-load setup questions.
 7. If a signed-in publish fails with a server error, do not fall back to anonymous publishing (it burns the anonymous quota and downgrades ownership); surface the error, use the CLI fallback if offered, or ask the user.
 8. When signed in and the user has more than one grid, do not assume a target. For a NEW app, establish the grid UP FRONT — grid_start returns the grids; if there is more than one, ask "which grid should this go on?" before you start building, and carry that slug into grid_plug. As a backstop, grid_plug hard-gates this: an authed create with >1 grid and no chosen grid returns needs_grid (the picker) instead of plugging; a create with no auth and no anon returns needs_auth (sign-in vs anonymous) instead of silently publishing anonymously. Relay either ask to the user; never pick silently.
