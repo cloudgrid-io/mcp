@@ -1,4 +1,14 @@
-# Default owners for everything in this repo.
-# A PR requires at least one approval from a code owner.
+# NOT ENFORCED — this file is inert until `require_code_owner_review` is enabled
+# on the branch ruleset. It documents intended ownership; it does NOT gate merges
+# today. Do not read it as an active control.
+#
+# Owners: @cloudgrid-io/maintainers (Gilad + Natalie) — founder ruling, 2026-08-02.
+# Membership is changed on the TEAM, never by editing this file per-repo.
+#
+# Verify the owners actually resolve:
+#   gh api repos/cloudgrid-io/<repo>/codeowners/errors   -> {"errors":[]}
+# A team that does not exist, is secret, or lacks write access reports
+# "Unknown owner" and matches NOBODY. That was the live state of this repo
+# before 2026-08-02.
 
 * @cloudgrid-io/maintainers
