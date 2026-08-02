@@ -117,6 +117,12 @@ jobs:
       # OAuth-route gating (M14): anon host 404s OAuth discovery + registration;
       # auth host 200s with the right issuer; /healthz 200 on both.
       - run: npm run test:oauth-gate
+      # Index page + favicon: both postures serve a branded root page whose auth
+      # line is driven by MCP_REQUIRE_AUTH, /favicon.png and the legacy
+      # /favicon.ico serve the same PNG bytes, and the OAuth interstitial declares
+      # the icon. Regression half: /healthz, the POST /mcp 401 challenge, OAuth
+      # discovery gating and unknown-path 404s are unchanged by the new routes.
+      - run: npm run test:index-favicon
       # Offline app-with-data test (0.9.0): the first runtime (DB-backed) build
       # path. Asserts the app-with-data workflow/template/example + persistent-apps
       # troubleshooting resolve via fetchCorpus and the real grid_fetch handler,

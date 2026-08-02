@@ -42,6 +42,7 @@ function interstitialHtml(sid, loginUrl) {
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Connect CloudGrid</title>
+<link rel="icon" type="image/png" href="/favicon.png">
 <style>
   body { margin:0; min-height:100vh; display:grid; place-items:center;
          font-family: Inter, system-ui, sans-serif; background:#0d0d0f; color:#fafafa; }
