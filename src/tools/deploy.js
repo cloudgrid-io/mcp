@@ -1924,10 +1924,25 @@ export async function runVisibility(ctx, { target, visibility, inside, outside, 
       body = { share_scope: "spaces", external_access: "none", visibility_spaces: normSpaces };
       requested = `selected spaces (${normSpaces.join(", ")})`;
     } else if (mode === "private" || mode === "grid" || mode === "link") {
-      body = { visibility: mode };
-      if (mode === "grid" && normSpaces.length > 0) body.visibility_spaces = normSpaces;
-      if (mode === "link") body.link_indexed = indexed === true;
-      requested = mode + (mode === "link" && indexed === true ? " (search-indexed)" : "");
+      if (require_signin === true && mode !== "link") {
+        throw new Error("require_signin only applies with visibility: link (or outside: link).");
+      }
+      if (indexed === true && mode !== "link") {
+        throw new Error("`indexed` only applies with visibility: link.");
+      }
+      if (normSpaces.length > 0 && mode !== "grid") {
+        throw new Error("`spaces` only applies with visibility: grid (or inside: spaces).");
+      }
+      if (mode === "link" && require_signin === true) {
+        body = { share_scope: "private", external_access: "link", require_signin: true };
+        if (indexed === true) body.link_indexed = true;
+        requested = "link with sign-in required" + (indexed === true ? ", search-indexed" : "");
+      } else {
+        body = { visibility: mode };
+        if (mode === "grid" && normSpaces.length > 0) body.visibility_spaces = normSpaces;
+        if (mode === "link") body.link_indexed = indexed === true;
+        requested = mode + (mode === "link" && indexed === true ? " (search-indexed)" : "");
+      }
     } else {
       throw new Error(`Unknown visibility '${visibility}'. Use private | grid | link (public = link alias), or the inside/outside axes.`);
     }

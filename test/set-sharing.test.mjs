@@ -156,6 +156,63 @@ try {
   const r10 = await runVisibility(makeCtx({ kind: "app", entity_id: "e_txt" }), { inside: "grid", outside: "link", require_signin: true });
   check("axis result text names both axes", /inside the grid: everyone in the grid/.test(r10.text) && /signed-in accounts only/.test(r10.text));
 
+  // 11. Legacy visibility:link + require_signin:true → axis body with require_signin.
+  //     THE #2326 FIX: the legacy branch must honour require_signin, not drop it.
+  reset();
+  replies.runtime = { status: 200, body: JSON.stringify({ share_scope: "private", external_access: "link", require_signin: true }) };
+  const r11 = await runVisibility(makeCtx({ kind: "app", entity_id: "e_signin" }), { visibility: "link", require_signin: true });
+  const b11 = runtimeCalls()[0]?.body;
+  check("link+require_signin: body contains require_signin:true",
+    b11?.require_signin === true);
+  check("link+require_signin: body uses the axis shape (share_scope:private, external_access:link)",
+    b11?.share_scope === "private" && b11?.external_access === "link");
+  check("link+require_signin: body does NOT carry legacy { visibility } key",
+    b11?.visibility === undefined);
+  check("link+require_signin: result surfaces require_signin",
+    r11.structured.require_signin === true);
+
+  // 11b. link + require_signin + indexed → both honoured.
+  reset();
+  replies.runtime = { status: 200, body: JSON.stringify({ share_scope: "private", external_access: "link", require_signin: true, link_indexed: true }) };
+  await runVisibility(makeCtx({ kind: "app", entity_id: "e_si2" }), { visibility: "link", require_signin: true, indexed: true });
+  const b11b = runtimeCalls()[0]?.body;
+  check("link+require_signin+indexed: require_signin present", b11b?.require_signin === true);
+  check("link+require_signin+indexed: link_indexed present", b11b?.link_indexed === true);
+
+  // 12. Legacy-mode param validation — same class as #2326: a guard living only
+  //     in the axes branch, so the legacy branch silently ignores the parameter.
+  //     Each mode-scoped param must either apply or throw; none may be ignored.
+
+  // 12a. require_signin with non-link modes → must throw, no wire call.
+  for (const badMode of ["private", "grid"]) {
+    reset();
+    let threw12a = null;
+    try { await runVisibility(makeCtx({ kind: "app", entity_id: "e_rs" }), { visibility: badMode, require_signin: true }); }
+    catch (e) { threw12a = e; }
+    check(`legacy: require_signin + ${badMode} rejected`, threw12a !== null && /require_signin/.test(threw12a.message));
+    check(`legacy: require_signin + ${badMode} no wire call`, fetchCalls.length === 0);
+  }
+
+  // 12b. indexed with non-link modes → must throw, no wire call.
+  for (const badMode of ["private", "grid"]) {
+    reset();
+    let threw12b = null;
+    try { await runVisibility(makeCtx({ kind: "app", entity_id: "e_ix" }), { visibility: badMode, indexed: true }); }
+    catch (e) { threw12b = e; }
+    check(`legacy: indexed + ${badMode} rejected`, threw12b !== null && /indexed/.test(threw12b.message));
+    check(`legacy: indexed + ${badMode} no wire call`, fetchCalls.length === 0);
+  }
+
+  // 12c. spaces with non-grid modes → must throw, no wire call.
+  for (const badMode of ["private", "link"]) {
+    reset();
+    let threw12c = null;
+    try { await runVisibility(makeCtx({ kind: "app", entity_id: "e_sp3" }), { visibility: badMode, spaces: ["team"] }); }
+    catch (e) { threw12c = e; }
+    check(`legacy: spaces + ${badMode} rejected`, threw12c !== null && /spaces/.test(threw12c.message));
+    check(`legacy: spaces + ${badMode} no wire call`, fetchCalls.length === 0);
+  }
+
   console.log(failures === 0 ? "\nAll set-sharing checks passed." : `\n${failures} set-sharing check(s) FAILED.`);
   process.exit(failures === 0 ? 0 : 1);
 } catch (err) {
