@@ -1,7 +1,8 @@
-// Content eval: the playbook's visibility mapping table matches the live
-// grid_visibility schema and cannot drift. Verifies both the instruction
-// content (the mapping is present and correct) and the behavioral mapping
-// (each phrasing produces the expected grid_visibility call).
+// Content eval: the playbook's visibility mapping table. Two layers:
+// Parts 1-5 read the live grid_visibility schema — enum conformance cannot
+// drift. Part 6 checks each row against a dated snapshot of deriveVisibilityAxes
+// (v1-types.ts) — this CAN drift if the platform derivation changes, since the
+// snapshot is not importable from this repo.
 //
 // Run: node test/visibility-mapping.test.mjs
 
