@@ -165,3 +165,41 @@ It needs a logged-in CLI on `$PATH`.
   injection surface.
 - `grid_view_logs` never uses `--follow`; a streaming call would never return.
 - Stateless. Each call is one CLI invocation.
+
+## Privacy Policy
+
+Full policy: <https://cloudgrid.io/privacy>
+
+### What this MCP server does with your data
+
+**Authentication.** `grid_login` opens a browser-based Google sign-in flow via
+CloudGrid's API (`/auth/login`). The returned JWT is stored at
+`~/.cloudgrid/credentials` with `0600` permissions. The web edition holds the
+JWT in memory only for the session duration.
+
+**Deploying.** `grid_plug` uploads your app files (HTML, source, assets) to
+`https://api.cloudgrid.io/api/v2/plug`. Before upload, inline sources are
+scanned for known API-key patterns (OpenRouter, Anthropic, OpenAI, Google,
+GitHub, AWS, Slack, Stripe); a match blocks the deploy. Auth headers
+(Bearer JWT, grid slug) are attached to identify the caller.
+
+**Error reporting.** `grid_report` sends an error report to
+`https://api.cloudgrid.io/api/v2/errors` **only with the user's explicit
+consent**. The payload includes an error summary, diagnostic metadata (platform,
+Node version, transport), and optionally a conversation excerpt (off by default).
+Secrets in the report context are redacted client-side before sending. Setting
+`CLOUDGRID_TELEMETRY=off` disables reporting entirely.
+
+**QA session log.** When `CLOUDGRID_QA_SLACK_WEBHOOK` is set (unset by default,
+fully dark otherwise), the server posts a per-session QA log to an internal
+Slack channel on deploy, error, or idle timeout. The log includes: session
+metadata (user ID, email, grid slug, client name), the user's first message
+(scrubbed, capped at 2 000 chars), a per-tool-call trail with allowlisted arg
+keys only, and an optional narrative set via `grid_note` (capped at 4 000
+chars). All logged values pass through a scrubber that redacts JWTs, PEM keys,
+Bearer tokens, and known provider API-key formats.
+
+**No other data collection.** The server does not phone home, track usage
+analytics, or transmit data beyond the flows listed above. CLI-wrapping tools
+shell out to the locally installed `grid` CLI, which uses its own stored
+credentials and does not send additional telemetry through this server.
