@@ -15,7 +15,14 @@ function check(label, cond) {
 
 // ── Part 1: structural — the playbook encodes the mapping ─────────────────
 
+check("playbook contains the two-axis model line",
+  PLAYBOOK.includes("Two axes"));
+
+check("playbook contains the visibility ask line",
+  PLAYBOOK.includes("ask who should see it"));
+
 check("playbook states the two-axis model BEFORE the ask",
+  PLAYBOOK.indexOf("Two axes") >= 0 &&
   PLAYBOOK.indexOf("Two axes") < PLAYBOOK.indexOf("ask who should see it"));
 
 check("playbook defines a mapping table",
