@@ -25,6 +25,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { registerTools, decodeJwt } from "./tools.js";
 import { mountOAuth, bearerChallenge } from "./oauth.js";
+import { mountLanding } from "./landing.js";
 import { createSessionLogger } from "./session-logger.js";
 import { createSink } from "./log-sink.js";
 import { INSTRUCTIONS_WEB } from "./playbook.js";
@@ -97,6 +98,10 @@ app.use(express.json({ limit: "8mb" }));
 app.use(express.urlencoded({ extended: false })); // OAuth token exchange is form-encoded
 
 app.get("/healthz", (_req, res) => res.json({ ok: true, edition: "web" }));
+
+// The human-facing root page and favicon. Mounted on both postures; the auth line
+// it renders is driven by the same REQUIRE_AUTH flag used below.
+mountLanding(app, PUBLIC_BASE, { requireAuth: REQUIRE_AUTH });
 
 mountOAuth(app, PUBLIC_BASE, { requireAuth: REQUIRE_AUTH });
 
