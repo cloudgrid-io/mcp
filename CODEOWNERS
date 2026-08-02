@@ -2,7 +2,7 @@
 # on the branch ruleset. It documents intended ownership; it does NOT gate merges
 # today. Do not read it as an active control.
 #
-# Owners: @cloudgrid-io/maintainers (Gilad + Natalie) — founder decision 2026-08-02.
+# Owners: @cloudgrid-io/maintainers (Gilad + Natalie) — founder ruling, 2026-08-02.
 # Membership is changed on the TEAM, never by editing this file per-repo.
 #
 # Verify the owners actually resolve:
