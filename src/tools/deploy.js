@@ -186,6 +186,7 @@ const SECRET_PATTERNS = [
   [/github_pat_[A-Za-z0-9_]{30,}/, "a GitHub fine-grained token"],
   [/AKIA[0-9A-Z]{16}/, "an AWS access key id"],
   [/xox[baprs]-[A-Za-z0-9-]{10,}/, "a Slack token"],
+  [/\bsk_(?:live|test)_[0-9A-Za-z]{16,}\b/, "a Stripe secret key"],
 ];
 
 export function scanInlineSecrets(text) {

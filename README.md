@@ -174,32 +174,52 @@ Full policy: <https://cloudgrid.io/privacy>
 
 **Authentication.** `grid_login` opens a browser-based Google sign-in flow via
 CloudGrid's API (`/auth/login`). The returned JWT is stored at
-`~/.cloudgrid/credentials` with `0600` permissions. The web edition holds the
-JWT in memory only for the session duration.
+`~/.cloudgrid/credentials` with `0600` permissions — the CLI and the MCP share
+one credential file by design (`auth.js:7-8`). The web edition holds the JWT in
+memory only for the session duration.
 
 **Deploying.** `grid_plug` uploads your app files (HTML, source, assets) to
 `https://api.cloudgrid.io/api/v2/plug`. Before upload, inline sources are
 scanned for known API-key patterns (OpenRouter, Anthropic, OpenAI, Google,
-GitHub, AWS, Slack, Stripe); a match blocks the deploy. Auth headers
-(Bearer JWT, grid slug) are attached to identify the caller.
+GitHub, AWS, Slack, Stripe); a match blocks the deploy. This is not a guarantee
+— a determined model can obfuscate a key past the scan — but it stops the
+good-faith "embed it so it works" path. Auth headers (Bearer JWT, grid slug) are
+attached to identify the caller.
 
 **Error reporting.** `grid_report` sends an error report to
-`https://api.cloudgrid.io/api/v2/errors` **only with the user's explicit
-consent**. The payload includes an error summary, diagnostic metadata (platform,
-Node version, transport), and optionally a conversation excerpt (off by default).
-Secrets in the report context are redacted client-side before sending. Setting
-`CLOUDGRID_TELEMETRY=off` disables reporting entirely.
+`https://api.cloudgrid.io/api/v2/errors`. The tool description instructs the
+model to call it only with the user's explicit consent, and setting
+`CLOUDGRID_TELEMETRY=off` disables it unconditionally — but there is no
+programmatic consent check in the report handler itself. The payload includes an
+error summary, diagnostic metadata (platform, Node version, transport), and a
+flag recording whether the user agreed to share the conversation
+(`deploy.js:544`). The transcript itself is not sent by this tool. Secrets in
+the report context are redacted client-side before sending.
+
+**Version check.** At startup the local edition makes one request to
+`https://registry.npmjs.org/@cloudgrid-io/mcp/latest` to detect a stale `.mcpb`
+install, which never auto-updates. It sends no account data and no user content.
+The hosted edition does not do this.
 
 **QA session log.** When `CLOUDGRID_QA_SLACK_WEBHOOK` is set (unset by default,
 fully dark otherwise), the server posts a per-session QA log to an internal
 Slack channel on deploy, error, or idle timeout. The log includes: session
 metadata (user ID, email, grid slug, client name), the user's first message
 (scrubbed, capped at 2 000 chars), a per-tool-call trail with allowlisted arg
-keys only, and an optional narrative set via `grid_note` (capped at 4 000
-chars). All logged values pass through a scrubber that redacts JWTs, PEM keys,
-Bearer tokens, and known provider API-key formats.
+keys only, and an optional narrative set via `grid_note` or `grid_plug`'s
+`session_note` (capped at 4 000 chars). The first message is captured from three
+sources: the `CLOUDGRID_USER_REQUEST` environment variable (forwarded by Claude
+Code), `grid_plug`'s `user_request` argument (model-as-courier), or
+`setUserRequest` in the session constructor. Free-text values (the first
+message, the narrative, tool arguments, and error messages) pass through a
+scrubber that redacts JWTs, PEM keys, Bearer tokens, and known provider API-key
+formats. Identity fields (`_keyResult` values and the header block) and
+structured result data bypass the text scrubber.
 
-**No other data collection.** The server does not phone home, track usage
-analytics, or transmit data beyond the flows listed above. CLI-wrapping tools
-shell out to the locally installed `grid` CLI, which uses its own stored
-credentials and does not send additional telemetry through this server.
+**No other data collection by this server.** The server does not track usage
+analytics or transmit data beyond the flows listed above and the authenticated
+CloudGrid API calls the individual tools make (`/orgs`, `/grids`, `/pickup`,
+`/deploys`). CLI-wrapping tools shell out to the locally installed `grid` CLI,
+which shares the same `~/.cloudgrid/credentials` file and does not send
+additional telemetry through this server. Platform-level data handling is covered
+by the linked privacy policy.
