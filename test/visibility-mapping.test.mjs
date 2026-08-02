@@ -32,8 +32,8 @@ check("playbook defines a mapping table",
 const EXPECTED_ROWS = [
   { phrase: "just me",                inside: "private", outside: "none" },
   { phrase: "my team",                inside: "grid",    outside: "none" },
-  { phrase: "anyone with the link",   inside: "grid",    outside: "link" },
-  { phrase: "they must sign in",      inside: "grid",    outside: "link" },
+  { phrase: "anyone with the link",   inside: "private", outside: "link" },
+  { phrase: "they must sign in",      inside: "private", outside: "link" },
   { phrase: "findable on Google",     inside: "grid",    outside: "public" },
   { phrase: "only these spaces",      inside: "spaces",  outside: "none" },
 ];
@@ -45,7 +45,7 @@ for (const row of EXPECTED_ROWS) {
 }
 
 check("mapping table includes require_signin for sign-in row",
-  /sign in[^|]*\|[^|]*grid[^|]*\|[^|]*link[^|]*\|[^|]*require_signin/.test(PLAYBOOK));
+  /sign in[^|]*\|[^|]*private[^|]*\|[^|]*link[^|]*\|[^|]*require_signin/.test(PLAYBOOK));
 
 check("mapping table includes spaces param for spaces row",
   /only these spaces[^|]*\|[^|]*spaces[^|]*\|[^|]*none[^|]*\|[^|]*spaces:/.test(PLAYBOOK));
@@ -55,9 +55,9 @@ check("mapping table includes spaces param for spaces row",
 check("playbook defines an explicit default for the deferred case",
   /default when the user defers/i.test(PLAYBOOK) || /whatever you think/i.test(PLAYBOOK));
 
-check("default: sharing mentioned → grid + link",
-  /share a link.*inside: grid.*outside: link/i.test(PLAYBOOK) ||
-  /asked to share.*inside: grid.*outside: link/i.test(PLAYBOOK));
+check("default: sharing mentioned → private + link",
+  /share a link.*inside: private.*outside: link/i.test(PLAYBOOK) ||
+  /asked to share.*inside: private.*outside: link/i.test(PLAYBOOK));
 
 check("default: sharing not mentioned → private + none",
   /never mentioned.*inside: private.*outside: none/i.test(PLAYBOOK) ||
@@ -116,6 +116,48 @@ check("schema: require_signin param exists", "require_signin" in visProps);
 check("schema: spaces param exists", "spaces" in visProps);
 
 await client.close();
+
+// ── Part 6: derivation — each row matches the platform's deriveVisibilityAxes ─
+// The canonical derivation lives in packages/shared/src/v1-types.ts in the
+// monorepo and is not importable from this repo. The values below are
+// snapshots of deriveVisibilityAxes at v1-types.ts:488-520 (read 2026-08-02).
+// If the derivation changes, update these and reconcile.
+const CANONICAL_DERIVATION = [
+  // v1-types.ts:490-491 — isPrivateVisibility
+  { legacy: "private",       inside: "private", outside: "none",   require_signin: false },
+  // v1-types.ts:493-494 — isOrgVisibility (grid)
+  { legacy: "grid",          inside: "grid",    outside: "none",   require_signin: false },
+  // v1-types.ts:496-498 — isAuthenticatedVisibility (retired, = sign-in link)
+  { legacy: "authenticated", inside: "private", outside: "link",   require_signin: true  },
+  // v1-types.ts:507 — isLinkVisibility, non-indexed
+  { legacy: "link",          inside: "private", outside: "link",   require_signin: false },
+  // v1-types.ts:506 — isLinkVisibility, indexed
+  { legacy: "link_indexed",  inside: "grid",    outside: "public", require_signin: false },
+  // v1-types.ts:500-501 — isSpaceVisibility
+  { legacy: "space",         inside: "spaces",  outside: "none",   require_signin: false },
+];
+
+const ROW_TO_LEGACY = [
+  { rowPhrase: "just me",              legacy: "private" },
+  { rowPhrase: "my team",              legacy: "grid" },
+  { rowPhrase: "anyone with the link", legacy: "link" },
+  { rowPhrase: "they must sign in",    legacy: "authenticated" },
+  { rowPhrase: "findable on Google",   legacy: "link_indexed" },
+  { rowPhrase: "only these spaces",    legacy: "space" },
+];
+
+for (const mapping of ROW_TO_LEGACY) {
+  const row = EXPECTED_ROWS.find(r => r.phrase.includes(mapping.rowPhrase));
+  const canon = CANONICAL_DERIVATION.find(c => c.legacy === mapping.legacy);
+  if (!row || !canon) {
+    check(`derivation: "${mapping.rowPhrase}" row and canon found`, false);
+    continue;
+  }
+  check(`derivation: "${mapping.rowPhrase}" inside matches deriveVisibilityAxes (${canon.inside})`,
+    row.inside === canon.inside);
+  check(`derivation: "${mapping.rowPhrase}" outside matches deriveVisibilityAxes (${canon.outside})`,
+    row.outside === canon.outside);
+}
 
 // ── Summary ───────────────────────────────────────────────────────────────
 

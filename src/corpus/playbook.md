@@ -19,12 +19,12 @@ Operating rules:
    |---|---|---|---|
    | "just me" / "private" | `private` | `none` | |
    | "my team" / "my grid" | `grid` | `none` | |
-   | "anyone with the link" | `grid` | `link` | |
-   | "link, but they must sign in" | `grid` | `link` | `require_signin: true` |
+   | "anyone with the link" | `private` | `link` | |
+   | "link, but they must sign in" | `private` | `link` | `require_signin: true` |
    | "public, findable on Google" | `grid` | `public` | |
    | "only these spaces" (+ names) | `spaces` | `none` | `spaces: [<slugs>]` |
 
-   **Default when the user defers** ("whatever you think"): apply the most private option that still satisfies what they asked for — asked to share a link → `inside: grid, outside: link`; sharing never mentioned → `inside: private, outside: none`. State the choice: "I've set it to private — say the word if you want it public."
+   **Default when the user defers** ("whatever you think"): apply the most private option that still satisfies what they asked for — asked to share a link → `inside: private, outside: link`; sharing never mentioned → `inside: private, outside: none`. State the choice: "I've set it to private — say the word if you want it public."
 
    On a re-plug/edit of an existing entity, leave its current visibility as-is unless the user asks to change it.
 6. Brainstorm first (lightly) for a real app, then minimize questions. For a substantial runtime app, take ONE lightweight beat before generating/plugging: confirm the goal + 3-5 core features in a sentence, check for a matching template/recipe (capability-map), and infer the data/runtime needs and STATE them ("I'll add a database so entries are saved"). Keep it to a line or two; never ask a non-technical user infra questions they can't answer. A simple single page skips this and builds immediately. Otherwise use sensible defaults and build; don't front-load setup questions.
