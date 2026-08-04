@@ -121,6 +121,21 @@ try {
   catch (e) { threwAx2 = e; }
   check("axes: inside:spaces without `spaces` rejected up front", threwAx2 !== null && /space/.test(threwAx2.message) && fetchCalls.length === 0);
 
+  // 6c. `indexed` on the AXIS path is accept-and-drop — the axis model expresses
+  //     search-indexing as `outside: public`, not a flag. The useAxes branch
+  //     never reads `indexed`, so it would build the body without it and drop it
+  //     silently (same class as #2326). Must THROW, no wire call — mirrors the
+  //     CLI (visibility.ts:375-379). Asserting the request body is worthless
+  //     here (the built body never carries `indexed` either way); only the throw
+  //     + zero wire calls can fail against the accept-and-drop code.
+  reset();
+  let threwAxIx = null;
+  try { await runVisibility(makeCtx({ kind: "app", entity_id: "e_ax_ix" }), { inside: "private", outside: "link", require_signin: true, indexed: true }); }
+  catch (e) { threwAxIx = e; }
+  check("axes: indexed rejected (throws, points at outside: public)",
+    threwAxIx !== null && /indexed/.test(threwAxIx.message) && /outside: public/.test(threwAxIx.message));
+  check("axes: indexed makes no wire call", fetchCalls.length === 0);
+
   // 7. Legacy 'space' mode maps to the spaces axis body and needs the list.
   reset();
   replies.runtime = { status: 200, body: JSON.stringify({ share_scope: "spaces", external_access: "none", visibility_spaces: ["team"] }) };

@@ -1890,6 +1890,13 @@ export async function runVisibility(ctx, { target, visibility, inside, outside, 
     if (!inside || !outside) {
       throw new Error("Both axes are required: inside (private|spaces|grid) and outside (none|link|public).");
     }
+    if (indexed === true) {
+      // Search-indexing is the axis value `outside: public`, not a separate
+      // flag. Accepting `indexed` here and building the body without it would
+      // silently drop it (the exact accept-and-ignore class #2326 closes).
+      // Mirror the CLI (visibility.ts:375-379): reject, point at the axis value.
+      throw new Error("indexed does not apply with inside/outside. Use outside: public for a search-indexed link.");
+    }
     if (inside === "spaces" && normSpaces.length === 0) {
       throw new Error("inside: spaces needs at least one space slug in `spaces`.");
     }
