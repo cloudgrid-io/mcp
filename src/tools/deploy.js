@@ -1914,10 +1914,28 @@ export async function runVisibility(ctx, { target, visibility, inside, outside, 
     }
     if (mode === "public") mode = "link"; // alias; `indexed: true` governs search-indexing
     if (mode === "authenticated") {
-      // Retired as a first-class mode — the axis body it equals.
+      // Retired as a first-class mode — the axis body it equals
+      // (private + link + require_signin). Its param guards MUST match that
+      // combo (below): a sign-in-gated link can be neither search-indexed nor
+      // space-scoped, so `indexed`/`spaces` here must throw, not be dropped.
+      if (indexed === true) {
+        throw new Error("require_signin cannot combine with indexed: a sign-in-gated link cannot be search-indexed.");
+      }
+      if (normSpaces.length > 0) {
+        throw new Error("`spaces` only applies with visibility: grid (or inside: spaces).");
+      }
       body = { share_scope: "private", external_access: "link", require_signin: true };
       requested = "link with sign-in required (the retired 'authenticated')";
     } else if (mode === "space") {
+      // `space` is a pure internal audience (share_scope: spaces, external_access:
+      // none). require_signin/indexed are external-link concerns — they have no
+      // cell here, so reject rather than silently ignore (same defect class).
+      if (require_signin === true) {
+        throw new Error("require_signin only applies with visibility: link (or outside: link).");
+      }
+      if (indexed === true) {
+        throw new Error("`indexed` only applies with visibility: link.");
+      }
       if (normSpaces.length === 0) {
         throw new Error("'space' visibility needs the `spaces` list (which space slugs can see it) — or use inside: spaces with outside: none.");
       }
@@ -1934,9 +1952,21 @@ export async function runVisibility(ctx, { target, visibility, inside, outside, 
         throw new Error("`spaces` only applies with visibility: grid (or inside: spaces).");
       }
       if (mode === "link" && require_signin === true) {
+        // A sign-in-gated link is the axis cell (private, link, require_signin);
+        // search-indexing is the (·, public) cell. The two are mutually
+        // exclusive: the server's axis body has NO representable state for both.
+        // `link_indexed` on an axis body is silently DISCARDED —
+        // validateAxisBody (packages/shared/src/visibility-write.ts:113) never
+        // reads it and AxisBody (:23) has no such field, and
+        // axesToLegacyVisibility (:78) for (private, link, require_signin)
+        // returns { visibility: 'authenticated' } with no link_indexed. So the
+        // server resolves link_indexed to null and drops `indexed`. Reject the
+        // combination rather than forward a key the server throws away.
+        if (indexed === true) {
+          throw new Error("require_signin cannot combine with indexed: a sign-in-gated link cannot be search-indexed.");
+        }
         body = { share_scope: "private", external_access: "link", require_signin: true };
-        if (indexed === true) body.link_indexed = true;
-        requested = "link with sign-in required" + (indexed === true ? ", search-indexed" : "");
+        requested = "link with sign-in required";
       } else {
         body = { visibility: mode };
         if (mode === "grid" && normSpaces.length > 0) body.visibility_spaces = normSpaces;

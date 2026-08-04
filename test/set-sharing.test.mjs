@@ -171,13 +171,58 @@ try {
   check("link+require_signin: result surfaces require_signin",
     r11.structured.require_signin === true);
 
-  // 11b. link + require_signin + indexed → both honoured.
+  // 11b. link + require_signin + indexed → UNREPRESENTABLE; must THROW, no wire
+  //      call. A sign-in-gated link is the axis cell (private, link,
+  //      require_signin); search-indexing is the (·, public) cell — mutually
+  //      exclusive. The server DISCARDS link_indexed on an axis body:
+  //      validateAxisBody never reads it and axesToLegacyVisibility for
+  //      (private, link, require_signin) yields { visibility: 'authenticated' }
+  //      with no link_indexed → resolves to null. Forwarding the key would
+  //      silently drop `indexed` (the exact defect class this PR closes), so the
+  //      combo must be rejected. Assert the negative: it never reaches the wire.
+  //      (Regression guard: revert the throw and the else-branch sends
+  //      link_indexed:true, so a request-body assertion would pass either way —
+  //      only asserting the THROW + zero wire calls can actually fail.)
   reset();
-  replies.runtime = { status: 200, body: JSON.stringify({ share_scope: "private", external_access: "link", require_signin: true, link_indexed: true }) };
-  await runVisibility(makeCtx({ kind: "app", entity_id: "e_si2" }), { visibility: "link", require_signin: true, indexed: true });
-  const b11b = runtimeCalls()[0]?.body;
-  check("link+require_signin+indexed: require_signin present", b11b?.require_signin === true);
-  check("link+require_signin+indexed: link_indexed present", b11b?.link_indexed === true);
+  let threw11b = null;
+  try { await runVisibility(makeCtx({ kind: "app", entity_id: "e_si2" }), { visibility: "link", require_signin: true, indexed: true }); }
+  catch (e) { threw11b = e; }
+  check("link+require_signin+indexed: rejected (throws)",
+    threw11b !== null && /require_signin/.test(threw11b.message) && /indexed/.test(threw11b.message));
+  check("link+require_signin+indexed: no wire call", fetchCalls.length === 0);
+
+  // 11c. The retired `authenticated` alias ≡ link+require_signin, so it inherits
+  //      the SAME param guards — indexed and spaces are unrepresentable on a
+  //      sign-in-gated link and must throw, not be silently dropped.
+  reset();
+  let threw11cIdx = null;
+  try { await runVisibility(makeCtx({ kind: "app", entity_id: "e_auth2" }), { visibility: "authenticated", indexed: true }); }
+  catch (e) { threw11cIdx = e; }
+  check("authenticated+indexed: rejected (throws)", threw11cIdx !== null && /indexed/.test(threw11cIdx.message));
+  check("authenticated+indexed: no wire call", fetchCalls.length === 0);
+
+  reset();
+  let threw11cSp = null;
+  try { await runVisibility(makeCtx({ kind: "app", entity_id: "e_auth3" }), { visibility: "authenticated", spaces: ["team"] }); }
+  catch (e) { threw11cSp = e; }
+  check("authenticated+spaces: rejected (throws)", threw11cSp !== null && /spaces/.test(threw11cSp.message));
+  check("authenticated+spaces: no wire call", fetchCalls.length === 0);
+
+  // 11d. `space` mode is a pure internal audience — require_signin/indexed are
+  //      external-link concerns with no cell here; both must throw, not drop.
+  reset();
+  let threw11dRs = null;
+  try { await runVisibility(makeCtx({ kind: "app", entity_id: "e_sp_rs" }), { visibility: "space", spaces: ["team"], require_signin: true }); }
+  catch (e) { threw11dRs = e; }
+  check("space+require_signin: rejected (throws)", threw11dRs !== null && /require_signin/.test(threw11dRs.message));
+  check("space+require_signin: no wire call", fetchCalls.length === 0);
+
+  reset();
+  let threw11dIx = null;
+  try { await runVisibility(makeCtx({ kind: "app", entity_id: "e_sp_ix" }), { visibility: "space", spaces: ["team"], indexed: true }); }
+  catch (e) { threw11dIx = e; }
+  check("space+indexed: rejected (throws)", threw11dIx !== null && /indexed/.test(threw11dIx.message));
+  check("space+indexed: no wire call", fetchCalls.length === 0);
 
   // 12. Legacy-mode param validation — same class as #2326: a guard living only
   //     in the axes branch, so the legacy branch silently ignores the parameter.
