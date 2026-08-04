@@ -191,10 +191,21 @@ attached to identify the caller.
 model to call it only with the user's explicit consent, and setting
 `CLOUDGRID_TELEMETRY=off` disables it unconditionally — but there is no
 programmatic consent check in the report handler itself. The payload includes an
-error summary, diagnostic metadata (platform, Node version, transport), and a
-flag recording whether the user agreed to share the conversation
-(`deploy.js:544`). The transcript itself is not sent by this tool. Secrets in
-the report context are redacted client-side before sending.
+error summary, diagnostic metadata (platform, Node version, transport), a flag
+recording whether the user agreed to share the conversation (`deploy.js:544`),
+and a `context` object the model supplies — which by its declared shape
+(`register.js:964-975`) can carry the failing inputs (for example the HTML or
+args) and the original request. The transcript itself is not sent by this tool.
+The report scrub is **key-name-only**: a value is redacted only when its *key*
+matches a secret-looking name (`password`, `token`, `api_key`, …), so a secret
+embedded in a value — for example an API key inside HTML sent under
+`context.inputs` — is not redacted, and the error summary (`message`) is not
+scrubbed at all. This same key-name filter is applied client-side
+(`deploy.js:439-448`); the platform's error endpoint applies a key-name filter
+too, not a value-based one, so neither layer catches a secret that sits in a
+value. To keep a secret out of a report, do not place it in the `message` or
+`context` you send, or set `CLOUDGRID_TELEMETRY=off` to disable reporting
+entirely.
 
 **Version check.** At startup the local edition makes one request to
 `https://registry.npmjs.org/@cloudgrid-io/mcp/latest` to detect a stale `.mcpb`
@@ -220,7 +231,12 @@ block) and structured result data bypass the text scrubber.
 analytics or transmit data beyond the flows listed above and the authenticated
 CloudGrid API calls the individual tools make (e.g. `/orgs`, `/grids`,
 `/pickup`, `/deploys`, `/inspirations/{id}/source`). CLI-wrapping tools shell
-out to the locally installed `grid` CLI, which shares the same
+out to the CloudGrid `grid` CLI, which shares the same
 `~/.cloudgrid/credentials` file and does not send additional telemetry through
-this server. Platform-level data handling is covered by the linked privacy
-policy.
+this server. They prefer the CLI bundled in the `.mcpb` or a compatible `grid`
+already on your `PATH`; if neither is present or new enough, they fall back to
+`npx -y @cloudgrid-io/cli@latest` (`cli.js:411-424`), which **downloads and runs
+the CLI from the npm registry** (`registry.npmjs.org`) on first use — software
+installation, and the second flow that can reach npm (the startup version check
+above is the first). Platform-level data handling is covered by the linked
+privacy policy.

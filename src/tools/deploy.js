@@ -455,7 +455,8 @@ const REPORT_SECRET_KEY_PATTERNS = [
 
 // Light client-side scrub of obviously secret-looking values in the report
 // context. Redacts values under secret-looking KEYS; leaves everything else
-// intact (the server does the authoritative redaction). Bounded depth so a
+// intact (the server applies the same key-name filter, not a value-based one —
+// a secret embedded in a value transits unredacted). Bounded depth so a
 // pathological object can't loop.
 export function scrubReportContext(obj, depth = 0) {
   if (depth > 5 || obj === null || typeof obj !== "object") return obj;
@@ -481,8 +482,8 @@ export function scrubReportContext(obj, depth = 0) {
 // source (mcp-stdio | mcp-hosted), client (the calling agent from MCP clientInfo),
 // platform, mcp_version. Sent BOTH as top-level fields AND mirrored in
 // `context.origin`. The POST /errors handler only persists known top-level keys
-// (it drops unknown ones), and `context` is stored + secret-stripped server-side,
-// so `context.origin` is the durable carrier — belt-and-suspenders.
+// (it drops unknown ones), and `context` is stored after the server's key-name
+// scrub, so `context.origin` is the durable carrier — belt-and-suspenders.
 //
 // Auth: signed-in → Bearer; anon+web → the trusted-server headers (works once the
 // endpoint accepts the credential; until then a 401 degrades to "sign in to
