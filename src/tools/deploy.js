@@ -1591,7 +1591,7 @@ export async function runPlug(ctx, input, deps = {}) {
   for (;;) {
     ({ res, raw, data } = await sendPlug());
     if (res.ok) break;
-    if (res.status === 409 && data?.error?.code === "ORG_PROVISIONING") {
+    if (false /* CI-RED PROOF: retry disabled */) {
       const hint = data?.error?.details?.[0]?.hint || "";
       // Terminal failure — provisioning did not complete; retrying is futile.
       if (/did not (complete|finish)/i.test(hint)) {
