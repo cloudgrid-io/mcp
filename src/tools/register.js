@@ -957,7 +957,7 @@ export function registerTools(server, ctx) {
     {
       title: "Report a failure",
       description:
-        "Report a genuine CloudGrid failure to the CloudGrid team — ONLY with the user's explicit consent. When a build/deploy or platform call fails unexpectedly, ASK the user first; call this only after they say yes. Send a short `message` (what failed) plus `context` (the tool, inputs, grid, original request, error code/detail). By default it does NOT include the conversation — set include_conversation:true ONLY if the user explicitly agreed to send the chat. Obvious secrets in context are scrubbed before sending. Never sends anything the user didn't agree to.",
+        "Report a genuine CloudGrid failure to the CloudGrid team — ONLY with the user's explicit consent. When a build/deploy or platform call fails unexpectedly, ASK the user first; call this only after they say yes. Send a short `message` (what failed) plus `context` (the tool, inputs, grid, original request, error code/detail). By default it does NOT include the conversation — set include_conversation:true ONLY if the user explicitly agreed to send the chat. Redaction is key-name-only: a value is dropped only when its KEY looks secret, so a secret embedded in a value (e.g. inside HTML) is NOT redacted — do not put secrets in `message` or `context`. Never sends anything the user didn't agree to.",
       inputSchema: {
         message: z
           .string()
@@ -965,7 +965,7 @@ export function registerTools(server, ctx) {
         context: z
           .object({
             tool: z.string().optional().describe("The CloudGrid tool that failed, e.g. grid_plug."),
-            inputs: z.any().optional().describe("The failing inputs (e.g. the HTML/args). Keep it minimal; secrets are scrubbed."),
+            inputs: z.any().optional().describe("The failing inputs (e.g. the HTML/args). Keep it minimal and do NOT include secrets — a secret embedded in a value here is not redacted."),
             grid: z.string().optional().describe("The grid/org slug involved, if any."),
             original_request: z.string().optional().describe("What the user asked for, in one line."),
             error_code: z.string().optional().describe("The server error code, e.g. INTERNAL_ERROR."),
@@ -973,7 +973,7 @@ export function registerTools(server, ctx) {
           })
           .partial()
           .optional()
-          .describe("The failed-request context. Secret-looking values are scrubbed client-side and again server-side."),
+          .describe("The failed-request context. Redaction is key-name-only (a value is dropped only when its KEY looks secret) client-side, and the server applies the same key-name filter — a secret embedded in a value is not redacted by either."),
         include_conversation: z
           .boolean()
           .optional()
