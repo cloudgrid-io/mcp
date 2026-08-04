@@ -54,6 +54,11 @@ jobs:
       # Create-path hard gates: no-auth create -> needs_auth (not silent anon);
       # authed multi-grid create -> needs_grid; anon/edit/explicit-grid bypass.
       - run: npm run test:create-gates
+      # Zero-grid golden path (#235): create on a provisioning grid returns an
+      # honest wait message (not an immediate re-call that fails); grid_plug
+      # retries 409 ORG_PROVISIONING to a bounded budget then succeeds; budget
+      # expiry and terminal-failed provisioning give distinct honest errors.
+      - run: npm run test:grid-provisioning
       # grid_create_project -> grid new argv (init->new migration): agent flag,
       # --needs, no --description, never emits init.
       - run: npm run test:create-project-args
