@@ -160,12 +160,33 @@ export async function runCreateGrid(ctx, { slug, name } = {}) {
     };
   }
   const finalSlug = data.slug ?? s;
+  // A brand-new grid provisions its infrastructure in the background: the API
+  // returns 202 with { status: "provisioning", poll_url } while the org's infra
+  // (bucket/GSA/WI/K8s) is still being set up. Until it is ready, an
+  // infra-dependent write (grid_plug) is refused with 409 ORG_PROVISIONING.
+  // There is no read endpoint that reports this readiness (render_ready and
+  // /orgs/:slug/status.ready are hardwired true under the flat-arch decision),
+  // so we do NOT instruct an immediate re-call that would fail: instead we say
+  // the grid is finishing setup and that grid_plug itself waits for readiness
+  // (it retries ORG_PROVISIONING for a bounded budget) before it deploys. Issue #235.
+  const provisioning = res.status === 202 || data.status === "provisioning" || Boolean(data.poll_url);
   const lines = [`Created grid ${finalSlug} — the user is its admin.`];
-  if (data.poll_url) lines.push("Its TLS certificate is still provisioning, so the first page may take a minute to serve.");
-  lines.push(`Now re-call grid_plug with grid: ${finalSlug}.`);
+  if (provisioning) {
+    lines.push(
+      "It's finishing setup in the background — a brand-new grid provisions its infrastructure, usually within ~30s. " +
+        `Go ahead and call grid_plug with grid: ${finalSlug}: it waits for the grid to be ready, then deploys. ` +
+        "You do NOT need to poll a status or insert a manual delay, and calling it right away will not fail — it holds until the grid is ready.",
+    );
+  } else {
+    lines.push(`The grid is ready — call grid_plug with grid: ${finalSlug} to deploy.`);
+  }
   return {
     text: lines.join("\n"),
-    structured: { created: true, grid: { slug: finalSlug, name: data.name ?? String(name || s) } },
+    structured: {
+      created: true,
+      ...(provisioning ? { provisioning: true } : {}),
+      grid: { slug: finalSlug, name: data.name ?? String(name || s) },
+    },
   };
 }
 
@@ -1086,6 +1107,16 @@ export function errorGuidance({ status, code, edition, isEdit, isAnon, signedIn 
       "If the user is signed in, use the signed-in path instead of anonymous."
     );
   }
+  // 409 ORG_PROVISIONING — the target grid's infrastructure is still being set
+  // up (async org provisioning), so an infra-dependent write (plug) is refused
+  // for now. This is DISTINCT from EDIT_REJECTED below and must be checked first:
+  // it is time-bounded and retryable, not a rejected re-plug. runPlug retries it
+  // internally with a bounded budget; this guidance is the budget-exhausted tail,
+  // so the wording tells the agent to wait and re-call rather than surface a raw
+  // code. (Issue #235.)
+  if (status === 409 && code === "ORG_PROVISIONING") {
+    return "The grid is still finishing setup — a brand-new grid provisions its infrastructure in the background (usually within ~30s). Wait ~15s and call grid_plug again with the SAME parameters; it deploys once the grid is ready. Do not switch to anonymous and do not send the user to the console.";
+  }
   // 409 EDIT_REJECTED — an in-place re-plug the server won't take.
   if (status === 409) {
     return "The entity cannot be updated right now (a plug is in progress, or it is archived/expired/claimed). An explicit re-plug never silently creates; retry later, or omit target_entity_id to create a new entity.";
@@ -1464,6 +1495,9 @@ export async function runPlug(ctx, input, deps = {}) {
   }
 
   // ── Wire assembly ───────────────────────────────────────────────────────────
+  // Built fresh per attempt: the ORG_PROVISIONING retry loop below re-POSTs, and
+  // a FormData body is consumed by a send, so each attempt needs its own.
+  const buildForm = () => {
   const form = new FormData();
   for (const a of artifacts) {
     // Folder-walk / artifact_files parts ride as octet-stream (server sniffs by
@@ -1504,32 +1538,84 @@ export async function runPlug(ctx, input, deps = {}) {
     form.append("hints_kind", hints.kind);
   }
   if (hints?.yaml) form.append("hints_yaml", hints.yaml);
+  return form;
+  };
 
-  let res;
-  try {
-    res = await fetchImpl(`${API_BASE}/api/v2/plug`, {
-      method: "POST",
-      headers,
-      body: form,
-      signal: AbortSignal.timeout(uploadTimeoutMs),
-    });
-  } catch (err) {
-    if (err?.name === "AbortError" || err?.name === "TimeoutError") {
-      throw new Error(
-        `The plug request timed out after ${Math.round(uploadTimeoutMs / 1000)}s. ` +
-          `The build may still be running on CloudGrid — check the build status ` +
-          `(poll_url / grid_status, or your grid) before plugging again, so you don't create a duplicate.`,
-      );
+  // One POST attempt: assemble a fresh body, send, read + parse. Kept as a
+  // closure so the ORG_PROVISIONING retry loop can re-run it (issue #235).
+  const sendPlug = async () => {
+    let res;
+    try {
+      res = await fetchImpl(`${API_BASE}/api/v2/plug`, {
+        method: "POST",
+        headers,
+        body: buildForm(),
+        signal: AbortSignal.timeout(uploadTimeoutMs),
+      });
+    } catch (err) {
+      if (err?.name === "AbortError" || err?.name === "TimeoutError") {
+        throw new Error(
+          `The plug request timed out after ${Math.round(uploadTimeoutMs / 1000)}s. ` +
+            `The build may still be running on CloudGrid — check the build status ` +
+            `(poll_url / grid_status, or your grid) before plugging again, so you don't create a duplicate.`,
+        );
+      }
+      throw new Error(`Could not reach CloudGrid at ${API_BASE}: ${err.message}`);
     }
-    throw new Error(`Could not reach CloudGrid at ${API_BASE}: ${err.message}`);
+    const raw = await res.text();
+    let data = null;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      /* handled below */
+    }
+    return { res, raw, data };
+  };
+
+  // ── ORG_PROVISIONING retry (issue #235) ─────────────────────────────────────
+  // A plug into a brand-new grid whose infra is still provisioning is refused
+  // with 409 ORG_PROVISIONING. That write 409 is the ONLY signal that the grid
+  // is not yet ready (no read endpoint reports it), so the plug IS the readiness
+  // probe: retry the POST with a light backoff until it clears or the budget
+  // runs out. A terminal 'failed' provisioning (hint says setup did not
+  // complete) is NOT retried — it won't recover on its own. The wait is a
+  // bounded server-side block matching the deploy-poll liveness pattern already
+  // used after a create; the caller sees one honest result, never a raw code.
+  const sleep = deps.sleep || sleepMs;
+  const provisionBudgetMs = ctx.plugProvisionBudgetMs ?? PLUG_PROVISION_RETRY_BUDGET_MS;
+  const provisionBaseMs = ctx.plugProvisionIntervalMs ?? PLUG_PROVISION_RETRY_BASE_MS;
+  const provisionMaxMs = ctx.plugProvisionMaxMs ?? PLUG_PROVISION_RETRY_MAX_MS;
+  const provisionStart = Date.now();
+  let attempt = 0;
+  let res, raw, data;
+  for (;;) {
+    ({ res, raw, data } = await sendPlug());
+    if (res.ok) break;
+    if (res.status === 409 && data?.error?.code === "ORG_PROVISIONING") {
+      const hint = data?.error?.details?.[0]?.hint || "";
+      // Terminal failure — provisioning did not complete; retrying is futile.
+      if (/did not (complete|finish)/i.test(hint)) {
+        throw new Error(
+          `The grid "${orgSlug || grid || "your grid"}" did not finish provisioning, so it can't accept a deploy. ${hint} ` +
+            "This won't recover on its own from here — the grid likely needs to be recreated (grid_create_grid with a new slug), or an admin must retry provisioning.",
+        );
+      }
+      const delay = Math.min(
+        provisionMaxMs,
+        Math.round(provisionBaseMs * Math.pow(1.5, attempt)),
+      );
+      if (Date.now() - provisionStart + delay <= provisionBudgetMs) {
+        attempt += 1;
+        await sleep(delay);
+        continue;
+      }
+      // Budget exhausted — fall through to the error handler, which appends the
+      // ORG_PROVISIONING guidance (errorGuidance): honest "still setting up,
+      // wait and re-call", never the raw code or the EDIT_REJECTED wording.
+    }
+    break;
   }
-  const raw = await res.text();
-  let data = null;
-  try {
-    data = JSON.parse(raw);
-  } catch {
-    /* handled below */
-  }
+
   if (!res.ok) {
     const code = data?.error?.code;
     const msg = data?.error?.message || data?.message || raw || `HTTP ${res.status}`;
@@ -2027,6 +2113,21 @@ export async function runVisibility(ctx, { target, visibility, inside, outside, 
 const DEPLOY_POLL_BUDGET_MS = 45_000;
 const DEPLOY_POLL_INTERVAL_MS = 3_000;
 const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// ── Provisioning retry budget (issue #235) ──────────────────────────────────
+// A plug into a brand-new grid is refused with 409 ORG_PROVISIONING until the
+// grid's infra finishes provisioning (field estimate ~15-30s; the platform's
+// own default remaining-time estimate is 30s). Since the ONLY signal that the
+// grid can accept a plug is this write 409 (no read endpoint reports it), the
+// plug retries the write with a light backoff until it clears or the budget
+// runs out. Budget = 45s, matching DEPLOY_POLL_BUDGET_MS — a value the MCP
+// client already tolerates within a single plug call (that post-create deploy
+// poll blocks up to 45s today), and comfortably inside PLUG_UPLOAD_TIMEOUT_MS
+// (120s). The guard rejects BEFORE parsing the upload body (plug.ts), so a
+// retry is cheap server-side.
+const PLUG_PROVISION_RETRY_BUDGET_MS = 45_000;
+const PLUG_PROVISION_RETRY_BASE_MS = 2_000;
+const PLUG_PROVISION_RETRY_MAX_MS = 8_000;
 
 // GET one deploy-trace snapshot. Returns { status, error } — status is the
 // server's word ("queued"/"building"/"success"/"failed"), error is the
