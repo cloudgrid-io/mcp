@@ -122,7 +122,10 @@ export class SessionLogger {
     this.startedMs = now();
     this.calls = [];
     this.header = null;
-    this.userRequest = userRequest ? scrubText(userRequest) : null;
+    // Scrub FIRST, then cap — same rationale as setUserRequest (:252-253): an
+    // uncapped value (the CLOUDGRID_USER_REQUEST path) would push the whole trail
+    // past the Slack 38KB clip. Both entry points now agree on the 2000 cap.
+    this.userRequest = userRequest ? scrubText(userRequest).slice(0, 2000) : null;
     this.narrative = null;
     this.flushed = false;
     this.idleTimer = null;

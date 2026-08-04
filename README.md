@@ -203,23 +203,24 @@ The hosted edition does not do this.
 
 **QA session log.** When `CLOUDGRID_QA_SLACK_WEBHOOK` is set (unset by default,
 fully dark otherwise), the server posts a per-session QA log to an internal
-Slack channel on deploy, error, or idle timeout. The log includes: session
-metadata (user ID, email, grid slug, client name), the user's first message
-(scrubbed, capped at 2 000 chars), a per-tool-call trail with allowlisted arg
-keys only, and an optional narrative set via `grid_note` or `grid_plug`'s
-`session_note` (capped at 4 000 chars). The first message is captured from three
-sources: the `CLOUDGRID_USER_REQUEST` environment variable (forwarded by Claude
-Code), `grid_plug`'s `user_request` argument (model-as-courier), or
-`setUserRequest` in the session constructor. Free-text values (the first
-message, the narrative, tool arguments, and error messages) pass through a
-scrubber that redacts JWTs, PEM keys, Bearer tokens, and known provider API-key
-formats. Identity fields (`_keyResult` values and the header block) and
-structured result data bypass the text scrubber.
+Slack channel on deploy, error, idle timeout, or process shutdown. The log
+includes: session metadata (user ID, email, grid slug, client name), the user's
+first message (scrubbed, capped at 2 000 chars), a per-tool-call trail with
+allowlisted arg keys only, and an optional narrative set via `grid_note` or
+`grid_plug`'s `session_note` (capped at 4 000 chars). The first message is
+captured from two sources: the `CLOUDGRID_USER_REQUEST` environment variable
+(forwarded by Claude Code) or `grid_plug`'s `user_request` argument
+(model-as-courier). The hosted edition has only the second. Free-text values
+(the first message, the narrative, tool arguments, and error messages) pass
+through a scrubber that redacts JWTs, PEM keys, Bearer tokens, and known
+provider API-key formats. Identity fields (`_keyResult` values and the header
+block) and structured result data bypass the text scrubber.
 
 **No other data collection by this server.** The server does not track usage
 analytics or transmit data beyond the flows listed above and the authenticated
-CloudGrid API calls the individual tools make (`/orgs`, `/grids`, `/pickup`,
-`/deploys`). CLI-wrapping tools shell out to the locally installed `grid` CLI,
-which shares the same `~/.cloudgrid/credentials` file and does not send
-additional telemetry through this server. Platform-level data handling is covered
-by the linked privacy policy.
+CloudGrid API calls the individual tools make (e.g. `/orgs`, `/grids`,
+`/pickup`, `/deploys`, `/inspirations/{id}/source`). CLI-wrapping tools shell
+out to the locally installed `grid` CLI, which shares the same
+`~/.cloudgrid/credentials` file and does not send additional telemetry through
+this server. Platform-level data handling is covered by the linked privacy
+policy.

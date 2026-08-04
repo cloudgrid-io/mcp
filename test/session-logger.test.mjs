@@ -228,6 +228,17 @@ test("setUserRequest caps a huge value so the rendered log stays small (trail li
   assert.match(text, /user_request: z/); // capped, not dropped — the line is present
 });
 
+test("constructor caps a >2000-char userRequest (the CLOUDGRID_USER_REQUEST path) at 2000 chars", async () => {
+  const sink = stubSink();
+  // Simulates CLOUDGRID_USER_REQUEST >2000 chars flowing through index.js:68 → constructor :125.
+  const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink, ctx: makeCtx(), userRequest: "z".repeat(5000), now: () => 0 });
+  assert.equal(logger.userRequest.length, 2000, "constructor path must cap at 2000, matching setUserRequest");
+  await logger.recordCall("grid_init", { name: "x" }, { content: [], structuredContent: {} }, 1);
+  await logger.flush("live");
+  assert.equal(sink.sent.length, 1);
+  assert.match(sink.sent[0].text, /user_request: z/); // capped, not dropped — the line is present
+});
+
 test("setNarrative scrubs before capping so a token straddling the 4000 boundary cannot leak", async () => {
   const sink = stubSink();
   const logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink, ctx: makeCtx(), now: () => 0 });
