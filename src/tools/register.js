@@ -205,13 +205,14 @@ export function registerTools(server, ctx) {
     "grid_create_grid",
     {
       title: "Create a new grid",
-      description: "Create a new grid (workspace) for the signed-in user — they become its admin. Use when the account has no grid yet (grid_plug returns needs_grid_create, or a plug fails with NO_ACTIVE_ORG): suggest a short slug from the user's name or app, CONFIRM it with the user (the slug is permanent and appears in URLs), create, then re-call grid_plug with grid: <slug>. Never send the user to the console to create a grid by hand. Requires sign-in. Calls the API directly (both editions).",
+      description: "Create a new grid (workspace) for the signed-in user — they become its admin. Use when the account has no grid yet (grid_plug returns needs_grid_create, or a plug fails with NO_ACTIVE_ORG): suggest a short slug from the user's name or app, CONFIRM it with the user (the slug is permanent and appears in URLs), create, then call grid_plug with grid: <slug>. A brand-new grid provisions in the background (~30s); grid_plug waits for readiness before deploying, so call it right away — no manual delay or polling needed. Never send the user to the console to create a grid by hand. Requires sign-in. Calls the API directly (both editions).",
       inputSchema: {
         slug: z.string().describe("The grid slug: 3-40 lowercase letters, digits, or hyphens, starting with a letter. Permanent — confirm with the user before creating."),
         name: z.string().optional().describe("Display name (defaults to the slug)."),
       },
       outputSchema: {
         created: z.boolean().optional().describe("True when the grid was created."),
+        provisioning: z.boolean().optional().describe("True when the grid is still finishing setup in the background. grid_plug waits for readiness before deploying, so call it right away — no manual polling needed."),
         grid: z.object({
           slug: z.string().describe("The new grid's slug — pass it to grid_plug as `grid`."),
           name: z.string().optional().describe("Its display name."),
