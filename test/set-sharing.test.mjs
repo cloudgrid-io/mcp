@@ -121,6 +121,21 @@ try {
   catch (e) { threwAx2 = e; }
   check("axes: inside:spaces without `spaces` rejected up front", threwAx2 !== null && /space/.test(threwAx2.message) && fetchCalls.length === 0);
 
+  // 6c. `indexed` on the AXIS path is accept-and-drop — the axis model expresses
+  //     search-indexing as `outside: public`, not a flag. The useAxes branch
+  //     never reads `indexed`, so it would build the body without it and drop it
+  //     silently (same class as #2326). Must THROW, no wire call — mirrors the
+  //     CLI (visibility.ts:375-379). Asserting the request body is worthless
+  //     here (the built body never carries `indexed` either way); only the throw
+  //     + zero wire calls can fail against the accept-and-drop code.
+  reset();
+  let threwAxIx = null;
+  try { await runVisibility(makeCtx({ kind: "app", entity_id: "e_ax_ix" }), { inside: "private", outside: "link", require_signin: true, indexed: true }); }
+  catch (e) { threwAxIx = e; }
+  check("axes: indexed rejected (throws, points at outside: public)",
+    threwAxIx !== null && /indexed/.test(threwAxIx.message) && /outside: public/.test(threwAxIx.message));
+  check("axes: indexed makes no wire call", fetchCalls.length === 0);
+
   // 7. Legacy 'space' mode maps to the spaces axis body and needs the list.
   reset();
   replies.runtime = { status: 200, body: JSON.stringify({ share_scope: "spaces", external_access: "none", visibility_spaces: ["team"] }) };
@@ -155,6 +170,108 @@ try {
   replies.runtime = { status: 200, body: JSON.stringify({ share_scope: "grid", external_access: "link", require_signin: true, url: "https://f.cloudgrid.io" }) };
   const r10 = await runVisibility(makeCtx({ kind: "app", entity_id: "e_txt" }), { inside: "grid", outside: "link", require_signin: true });
   check("axis result text names both axes", /inside the grid: everyone in the grid/.test(r10.text) && /signed-in accounts only/.test(r10.text));
+
+  // 11. Legacy visibility:link + require_signin:true → axis body with require_signin.
+  //     THE #2326 FIX: the legacy branch must honour require_signin, not drop it.
+  reset();
+  replies.runtime = { status: 200, body: JSON.stringify({ share_scope: "private", external_access: "link", require_signin: true }) };
+  const r11 = await runVisibility(makeCtx({ kind: "app", entity_id: "e_signin" }), { visibility: "link", require_signin: true });
+  const b11 = runtimeCalls()[0]?.body;
+  check("link+require_signin: body contains require_signin:true",
+    b11?.require_signin === true);
+  check("link+require_signin: body uses the axis shape (share_scope:private, external_access:link)",
+    b11?.share_scope === "private" && b11?.external_access === "link");
+  check("link+require_signin: body does NOT carry legacy { visibility } key",
+    b11?.visibility === undefined);
+  check("link+require_signin: result surfaces require_signin",
+    r11.structured.require_signin === true);
+
+  // 11b. link + require_signin + indexed → UNREPRESENTABLE; must THROW, no wire
+  //      call. A sign-in-gated link is the axis cell (private, link,
+  //      require_signin); search-indexing is the (·, public) cell — mutually
+  //      exclusive. The server DISCARDS link_indexed on an axis body:
+  //      validateAxisBody never reads it and axesToLegacyVisibility for
+  //      (private, link, require_signin) yields { visibility: 'authenticated' }
+  //      with no link_indexed → resolves to null. Forwarding the key would
+  //      silently drop `indexed` (the exact defect class this PR closes), so the
+  //      combo must be rejected. Assert the negative: it never reaches the wire.
+  //      (Regression guard: revert the throw and the else-branch sends
+  //      link_indexed:true, so a request-body assertion would pass either way —
+  //      only asserting the THROW + zero wire calls can actually fail.)
+  reset();
+  let threw11b = null;
+  try { await runVisibility(makeCtx({ kind: "app", entity_id: "e_si2" }), { visibility: "link", require_signin: true, indexed: true }); }
+  catch (e) { threw11b = e; }
+  check("link+require_signin+indexed: rejected (throws)",
+    threw11b !== null && /require_signin/.test(threw11b.message) && /indexed/.test(threw11b.message));
+  check("link+require_signin+indexed: no wire call", fetchCalls.length === 0);
+
+  // 11c. The retired `authenticated` alias ≡ link+require_signin, so it inherits
+  //      the SAME param guards — indexed and spaces are unrepresentable on a
+  //      sign-in-gated link and must throw, not be silently dropped.
+  reset();
+  let threw11cIdx = null;
+  try { await runVisibility(makeCtx({ kind: "app", entity_id: "e_auth2" }), { visibility: "authenticated", indexed: true }); }
+  catch (e) { threw11cIdx = e; }
+  check("authenticated+indexed: rejected (throws)", threw11cIdx !== null && /indexed/.test(threw11cIdx.message));
+  check("authenticated+indexed: no wire call", fetchCalls.length === 0);
+
+  reset();
+  let threw11cSp = null;
+  try { await runVisibility(makeCtx({ kind: "app", entity_id: "e_auth3" }), { visibility: "authenticated", spaces: ["team"] }); }
+  catch (e) { threw11cSp = e; }
+  check("authenticated+spaces: rejected (throws)", threw11cSp !== null && /spaces/.test(threw11cSp.message));
+  check("authenticated+spaces: no wire call", fetchCalls.length === 0);
+
+  // 11d. `space` mode is a pure internal audience — require_signin/indexed are
+  //      external-link concerns with no cell here; both must throw, not drop.
+  reset();
+  let threw11dRs = null;
+  try { await runVisibility(makeCtx({ kind: "app", entity_id: "e_sp_rs" }), { visibility: "space", spaces: ["team"], require_signin: true }); }
+  catch (e) { threw11dRs = e; }
+  check("space+require_signin: rejected (throws)", threw11dRs !== null && /require_signin/.test(threw11dRs.message));
+  check("space+require_signin: no wire call", fetchCalls.length === 0);
+
+  reset();
+  let threw11dIx = null;
+  try { await runVisibility(makeCtx({ kind: "app", entity_id: "e_sp_ix" }), { visibility: "space", spaces: ["team"], indexed: true }); }
+  catch (e) { threw11dIx = e; }
+  check("space+indexed: rejected (throws)", threw11dIx !== null && /indexed/.test(threw11dIx.message));
+  check("space+indexed: no wire call", fetchCalls.length === 0);
+
+  // 12. Legacy-mode param validation — same class as #2326: a guard living only
+  //     in the axes branch, so the legacy branch silently ignores the parameter.
+  //     Each mode-scoped param must either apply or throw; none may be ignored.
+
+  // 12a. require_signin with non-link modes → must throw, no wire call.
+  for (const badMode of ["private", "grid"]) {
+    reset();
+    let threw12a = null;
+    try { await runVisibility(makeCtx({ kind: "app", entity_id: "e_rs" }), { visibility: badMode, require_signin: true }); }
+    catch (e) { threw12a = e; }
+    check(`legacy: require_signin + ${badMode} rejected`, threw12a !== null && /require_signin/.test(threw12a.message));
+    check(`legacy: require_signin + ${badMode} no wire call`, fetchCalls.length === 0);
+  }
+
+  // 12b. indexed with non-link modes → must throw, no wire call.
+  for (const badMode of ["private", "grid"]) {
+    reset();
+    let threw12b = null;
+    try { await runVisibility(makeCtx({ kind: "app", entity_id: "e_ix" }), { visibility: badMode, indexed: true }); }
+    catch (e) { threw12b = e; }
+    check(`legacy: indexed + ${badMode} rejected`, threw12b !== null && /indexed/.test(threw12b.message));
+    check(`legacy: indexed + ${badMode} no wire call`, fetchCalls.length === 0);
+  }
+
+  // 12c. spaces with non-grid modes → must throw, no wire call.
+  for (const badMode of ["private", "link"]) {
+    reset();
+    let threw12c = null;
+    try { await runVisibility(makeCtx({ kind: "app", entity_id: "e_sp3" }), { visibility: badMode, spaces: ["team"] }); }
+    catch (e) { threw12c = e; }
+    check(`legacy: spaces + ${badMode} rejected`, threw12c !== null && /spaces/.test(threw12c.message));
+    check(`legacy: spaces + ${badMode} no wire call`, fetchCalls.length === 0);
+  }
 
   console.log(failures === 0 ? "\nAll set-sharing checks passed." : `\n${failures} set-sharing check(s) FAILED.`);
   process.exit(failures === 0 ? 0 : 1);
