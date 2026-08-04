@@ -13,7 +13,7 @@
 //     when the server left it empty.
 // Run: node test/plug-wire.test.mjs
 
-import { runPlug, resolvePlugUrl, parseManifestName } from "../src/tools.js";
+import { runPlug, resolvePlugUrl, parseManifestName, scanInlineSecrets } from "../src/tools.js";
 
 let failures = 0;
 function check(label, cond) {
@@ -524,6 +524,16 @@ try {
     check("path-read file with an API key is BLOCKED before any network call",
       blocked3 !== null && /Blocked/.test(blocked3 ?? "") && calls.length === before3);
   }
+
+  // ── scanInlineSecrets: Stripe key detection ────────────────────────────────
+  const stripeLive = "sk_live_" + "a1b2c3d4".repeat(4);
+  const stripeTest = "sk_test_" + "x9y8z7w6".repeat(4);
+  check("Stripe sk_live_ key is blocked",
+    scanInlineSecrets(`const key = "${stripeLive}"`) === "a Stripe secret key");
+  check("Stripe sk_test_ key is blocked",
+    scanInlineSecrets(stripeTest) === "a Stripe secret key");
+  check("benign sk_live substring is NOT blocked",
+    scanInlineSecrets("use sk_live mode for production") === null);
 
   // ── parseManifestName unit checks ──────────────────────────────────────────
   check("parseManifestName: top-level name", parseManifestName("name: foo\nservices: {}\n") === "foo");

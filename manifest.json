@@ -18,6 +18,9 @@
   "support": "https://github.com/cloudgrid-io/mcp/issues",
   "icon": "assets/cloudgrid-icon-512.png",
   "license": "Apache-2.0",
+  "privacy_policies": [
+    "https://cloudgrid.io/privacy"
+  ],
   "keywords": [
     "cloudgrid",
     "runtime",
