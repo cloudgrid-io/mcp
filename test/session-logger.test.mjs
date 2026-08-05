@@ -8,9 +8,16 @@ import { createSink, SlackWebhookSink } from "../src/log-sink.js";
 import { registerTools } from "../src/tools.js";
 
 let failures = 0;
+// Queue each test as a thunk and run them sequentially through an awaiting
+// runner (see bottom of file). Awaiting fn() is what makes an async assertion
+// bind: a rejected promise lands in this catch and prints FAIL, instead of
+// resolving as `ok` and surfacing only as an unhandled rejection. See #239.
+const queue = [];
 function test(label, fn) {
-  try { fn(); console.log(`ok   ${label}`); }
-  catch (e) { failures++; console.log(`FAIL ${label}\n     ${e.message}`); }
+  queue.push(async () => {
+    try { await fn(); console.log(`ok   ${label}`); }
+    catch (e) { failures++; console.log(`FAIL ${label}\n     ${e.message}`); }
+  });
 }
 
 test("scrubText redacts a JWT", () => {
@@ -478,6 +485,14 @@ test("createSessionLogger honors CLOUDGRID_QA_IDLE_MS", () => {
   const logger = createSessionLogger({ transport: "stdio", sessionId: "cli-1", sink: stubSink(), ctx: makeCtx(), env: { CLOUDGRID_QA_IDLE_MS: "1234" } });
   assert.equal(logger.idleMs, 1234);
 });
+
+// Run the queued tests in order, awaiting each so async assertions bind, then
+// exit non-zero on any failure. The exit-guard below is a belt-and-suspenders
+// backstop kept per repo convention.
+(async () => {
+  for (const t of queue) await t();
+  if (failures) process.exit(1);
+})();
 
 // keep this at the very bottom of the file across all tasks:
 process.on("exit", () => { if (failures) process.exit(1); });
