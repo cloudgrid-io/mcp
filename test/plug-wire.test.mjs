@@ -71,6 +71,26 @@ try {
     "resolvePlugUrl falls back to client composition when url is empty",
     resolvePlugUrl({ url: "", slug: "s1", grid: null }) === "https://guest.cloudgrid.io/s1",
   );
+  // Runtime (app/agent) fallback composes the FLAT platform host, never the
+  // retired nested `<slug>.<grid>.cloudgrid.io` shape (the nested host has no
+  // cert/ingress under the `*.cloudgrid.io` wildcard, so it dead-ends at a TLS
+  // error). Guards issue #244.
+  {
+    const runtimeUrl = resolvePlugUrl({
+      url: "",
+      slug: "web",
+      grid: "atomic",
+      detection: { kind: "app" },
+    });
+    check(
+      "resolvePlugUrl composes the flat runtime host (not the dead nested shape)",
+      runtimeUrl === "https://web--atomic.cloudgrid.io",
+    );
+    check(
+      "resolvePlugUrl never emits the retired nested runtime host",
+      !runtimeUrl.includes("web.atomic.cloudgrid.io"),
+    );
+  }
 
   // ── html single-file publish: anon create → re-plug (owner-token wire) ──────
   // The inline `html` path is the old drop behavior folded into runPlug: one

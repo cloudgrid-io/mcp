@@ -19,7 +19,7 @@
 
 # Entity slug (REQUIRED). 2-42 chars, lowercase alphanumeric + hyphens.
 # Must start and end with a letter or digit.
-# Becomes part of your public URL: <name>-<4hex>.<org>.cloudgrid.io
+# Becomes part of your public URL: <name>-<4hex>--<org>.cloudgrid.io
 name: simple-semantic-search
 description: Semantic search over a bundled document, backed by pgvector.
 icon: "🔎"
