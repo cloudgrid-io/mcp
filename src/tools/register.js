@@ -132,7 +132,7 @@ export function registerTools(server, ctx) {
     "grid_pickup",
     {
       title: "Copy an app into your grid",
-      description: "Pick up an app: make your OWN COPY of any app you can see (like a git fork) into a grid you can build in. It mints a NEW entity with lineage back to the source and WITHOUT the source's secrets (set your own before you plug). Plugging your copy creates/updates YOUR entity — the original is never touched. Requires sign-in. To edit the ORIGINAL entity in place (as its owner or a collaborator), use grid_pull instead.",
+      description: "Pick up an app: make your OWN COPY of any app you can see (like a git fork) into a grid you can build in. It mints a NEW entity with lineage back to the source and WITHOUT the source's secrets (set your own before you plug). Plugging your copy creates/updates YOUR entity — the original is never touched. Requires sign-in. This is a FORK, not a \"collab\": it never grants you access to anyone else's live entity. Getting PUSH ACCESS to the SAME entity is a different operation — the CLI command `grid collab <entity>` — so do NOT reach for grid_pickup when the user asks to collab. To edit the ORIGINAL entity in place (as its owner or a collaborator), use grid_pull instead.",
       inputSchema: {
         entity_id: z.string().describe("The source app to copy: a canonical UUID or <grid-slug>/<entity-slug>."),
         grid: z.string().optional().describe("Grid to create your copy in. Required only when you belong to more than one grid."),
@@ -172,7 +172,7 @@ export function registerTools(server, ctx) {
     "grid_pull",
     {
       title: "Pull an app to edit in place",
-      description: "Pull an app to continue/edit it IN PLACE — like `git clone` of the SAME entity: your next grid_plug (with its target_entity_id) updates that entity, and the team sees the new version. Requires PUSH ACCESS: you must own it or be a collaborator. If you can only view it, you CANNOT edit or plug it — say so and tell the user they can make their own copy with grid_pickup, or request collaborator access with the CLI `grid collab <entity>` (rolling out soon). Passing an anonymous drop's `claim_token` claims it into your account. Requires sign-in. Calls the API directly (both editions).",
+      description: "Pull an app to continue/edit it IN PLACE — like `git clone` of the SAME entity: your next grid_plug (with its target_entity_id) updates that entity, and the team sees the new version. Requires PUSH ACCESS: you must own it or be a collaborator. If you can only view it, you CANNOT edit or plug it — say so, and offer the two real options: (1) make your own separate copy (a fork) with grid_pickup, or (2) GET push access to the SAME entity with the CLI command `grid collab <entity>` — \"collab\" is a distinct access-control operation that grants permission only and fetches nothing, so once it is granted you run grid_pull again to get the code (and if the owner gates access, `grid collab` becomes a request they approve). Passing an anonymous drop's `claim_token` claims it into your account. Requires sign-in. Calls the API directly (both editions).",
       inputSchema: {
         entity_id: z.string().optional().describe("The entity id to pull. Defaults to this session's last anonymous drop."),
         claim_token: z.string().optional().describe("Anonymous drop only: its owner token — claims that drop into your account (ownership transfer)."),
@@ -1206,11 +1206,13 @@ export function registerTools(server, ctx) {
   // source + cloudgrid.yaml and links the folder, so the next `grid plug` updates
   // the SAME entity in place. Wraps `grid pull` (NOT `grid pickup` — pickup now
   // makes a separate copy). Push access required; a view-only entity can't be
-  // pulled — use grid_pickup to copy it, or `grid collab` to request access.
+  // pulled — use grid_pickup to fork a copy, or the CLI `grid collab` to GET
+  // push access to the same entity (grants permission only — pull again once
+  // granted). `grid collab` is CLI-only; there is no grid_collab MCP tool.
   regTool(
     "grid_edit_existing_app",
     "Pull app source to edit locally",
-    "Continue/edit an EXISTING entity locally: download its source + cloudgrid.yaml and link the folder so your next `grid plug` updates it IN PLACE. Requires push access (owner or collaborator). Wraps `grid pull`. To make your own separate copy instead, use grid_pickup.",
+    "Continue/edit an EXISTING entity locally: download its source + cloudgrid.yaml and link the folder so your next `grid plug` updates it IN PLACE. Requires push access (owner or collaborator). Wraps `grid pull`. To make your own separate copy (a fork) instead, use grid_pickup. To GET push access to an entity you can currently only view, that is a different operation — the CLI `grid collab <entity>`, which grants permission only; run the pull again once it is granted.",
     {
       name: z.string().describe("Entity slug or id to pull."),
       target_dir: z.string().optional().describe("Directory to pull into (relative to cwd). Defaults to the entity name."),

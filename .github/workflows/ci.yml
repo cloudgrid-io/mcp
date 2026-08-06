@@ -185,6 +185,12 @@ jobs:
       # require_signin, spaces param) and presents the two-axis model before
       # the ask.
       - run: npm run test:visibility-mapping
+      # Verb-distinction guard (#242): the three adopt/access verbs (grid_pickup
+      # fork, grid_pull continue-in-place, `grid collab` CLI access-grant) are
+      # distinguishable from the tool surface alone, so a model asked to "collab"
+      # cannot satisfy it by calling grid_pickup; no description carries the stale
+      # "rolling out soon" tag.
+      - run: npm run test:verb-distinction
 
   readme-tool-table:
     runs-on: ubuntu-latest

@@ -630,8 +630,9 @@ export async function runReport(
 // grid_pull — continue/edit an existing entity IN PLACE (POST /entities/:id/pickup).
 // Like `git clone` of the SAME entity: your next grid_plug (target_entity_id)
 // updates it. Needs push access — you must OWN it or be a COLLABORATOR. A
-// view-only caller is told they can't edit/plug it (make a copy with grid_pickup,
-// or request collaborator access with the CLI `grid collab`). A claim_token also
+// view-only caller is told they can't edit/plug it (fork a copy with grid_pickup,
+// or GET collaborator push access with the CLI `grid collab` — grants permission
+// only, pull again once granted). A claim_token also
 // claims an anonymous drop into your account (ownership transfer).
 export async function runPull(ctx, { claim_token, claim_url, entity_id }) {
   const token = await ctx.getToken();
@@ -724,8 +725,9 @@ export async function runPull(ctx, { claim_token, claim_url, entity_id }) {
       return {
         text:
           `You don't have push access to this entity, so you can't edit or plug it. Two options: ` +
-          `make your own separate copy with grid_pickup, or ask the owner for collaborator access with the CLI ` +
-          `\`grid collab <entity>\` (rolling out soon) and pull again once granted.`,
+          `make your own separate copy (a fork) with grid_pickup, or GET collaborator push access to the SAME ` +
+          `entity with the CLI \`grid collab <entity>\` — that grants permission only and fetches nothing, so ` +
+          `pull again once it is granted (if the owner gates access, \`grid collab\` becomes a request they approve).`,
         structured: { can_edit: false, owner_is_you: false, access: "view_only" },
       };
     }
@@ -752,7 +754,7 @@ export async function runPull(ctx, { claim_token, claim_url, entity_id }) {
     head = `You have collaborator push access to ${slug}${where} — your next grid_plug (target_entity_id) updates the SHARED entity; the team sees the new version and can roll it back.`;
     canEdit = true;
   } else {
-    head = `You can view ${slug}${where} but do NOT have push access — you can't edit or plug it. Make your own copy with grid_pickup, or request collaborator access with the CLI \`grid collab ${slug}\` (rolling out soon), then pull again.`;
+    head = `You can view ${slug}${where} but do NOT have push access — you can't edit or plug it. Make your own separate copy (a fork) with grid_pickup, or GET collaborator push access to the SAME entity with the CLI \`grid collab ${slug}\` (it grants permission only and fetches nothing — pull again once granted).`;
     canEdit = false;
   }
   const lines = [head];
