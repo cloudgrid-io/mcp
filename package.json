@@ -58,7 +58,8 @@
     "test:proxy": "node test/proxy.test.mjs",
     "test:system-ca": "node test/system-ca.test.mjs",
     "test:tool-titles-and-vocab": "node test/tool-titles-and-vocab.test.mjs",
-    "test:visibility-mapping": "node test/visibility-mapping.test.mjs"
+    "test:visibility-mapping": "node test/visibility-mapping.test.mjs",
+    "test:verb-distinction": "node test/verb-distinction.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
