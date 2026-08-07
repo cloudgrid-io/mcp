@@ -334,13 +334,17 @@ const GUEST_ORG_SLUG = "guest";
 // path (create + edit, anon + authed) — flat-arch-aware per grid, matching the
 // host that actually serves. ALWAYS prefer `data.url` (see resolvePlugUrl);
 // this client-side derivation exists only for the rare response where `url`
-// came back empty (the server composes it best-effort). It mirrors the legacy
-// `entityUrl()` rules and is WRONG on flat-arch grids (which serve
-// `<slug>--<grid>.cloudgrid.io`), so it must never be the primary source:
+// came back empty (the server composes it best-effort). It mirrors the canonical
+// `entityUrl()` rules (the flat-only platform host), but only the server knows
+// the per-entity nuances (custom domains, guest-org placement), so it must never
+// be the primary source:
 //   - inspiration (HTML drops): path-based at the org apex
 //       https://<grid>.cloudgrid.io/<slug>
-//   - runtime (app/agent):      subdomain
-//       https://<slug>.<grid>.cloudgrid.io
+//   - runtime (app/agent):      flat platform host
+//       https://<slug>--<grid>.cloudgrid.io
+// The old nested `<slug>.<grid>.cloudgrid.io` host is retired — it falls outside
+// the single `*.cloudgrid.io` platform wildcard, so it has no cert and no ingress
+// (matches `composeFlatEntityHost`).
 // Anonymous drops are grid-less in the response (`grid: null`); they live under
 // the Guest Org, so the apex slug is the constant `guest`.
 function composePlugUrl(data) {
@@ -349,7 +353,7 @@ function composePlugUrl(data) {
   const grid = data?.grid || GUEST_ORG_SLUG;
   const kind = data?.detection?.kind;
   if (kind === "app" || kind === "agent") {
-    return `https://${slug}.${grid}.cloudgrid.io`;
+    return `https://${slug}--${grid}.cloudgrid.io`;
   }
   // inspiration (and any unknown/static kind) — path-based at the org apex.
   return `https://${grid}.cloudgrid.io/${slug}`;
