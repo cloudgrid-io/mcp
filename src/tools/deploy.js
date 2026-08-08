@@ -1142,7 +1142,7 @@ export function errorGuidance({ status, code, edition, isEdit, isAnon, signedIn 
     if (code === "NO_ACTIVE_ORG") {
       return "The account has no grid yet. Do not send the user to the console — create one from here: suggest a short slug, confirm it with the user, call grid_create_grid, then re-call grid_plug with grid: <slug>.";
     }
-    return "You lack the role to plug this target. To re-plug someone else's entity, pull it first (grid_pull), or make your own copy (grid_pickup).";
+    return "You lack the role to plug this target. To get push access to the SAME entity, ask the owner to run `grid collab` (grants permission only). To make your own separate copy (a fork), use grid_pickup.";
   }
   // ── Consent-gated report offer (Task 34) ──────────────────────────────────
   // GENUINE bugs only: a build/deploy failure, any 5xx, INTERNAL_ERROR, or an
