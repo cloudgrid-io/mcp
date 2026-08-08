@@ -196,6 +196,11 @@ jobs:
       # no forked_from, and a policy 403 turns into a request via /collab-requests
       # instead of dead-ending.
       - run: npm run test:collab
+      # URL shape guard (#244): template cloudgrid.yaml comments must use the
+      # flat host shape (<name>-<4hex>--<org>.cloudgrid.io), never the retired
+      # nested shape (<name>.<org>.cloudgrid.io). Prevents regression of the
+      # 62-file fix.
+      - run: npm run test:url-shape
 
   readme-tool-table:
     runs-on: ubuntu-latest
