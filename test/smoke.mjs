@@ -16,6 +16,7 @@ const GRIDCTL = [
   "grid_report",
   "grid_pickup",
   "grid_pull",
+  "grid_collab",
   "grid_get_app_source",
   "grid_login",
   "grid_login_status",
