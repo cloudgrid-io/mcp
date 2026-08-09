@@ -798,12 +798,12 @@ export async function runPull(ctx, { claim_token, claim_url, entity_id }) {
 // are grid-boundary problems, not policy denials, so they are surfaced, never
 // converted to a request. Pure authenticated API calls, no CLI or filesystem —
 // so, like grid_pickup / grid_pull, it ships on BOTH editions.
-export async function runCollab(ctx, { entity_id, id, grid } = {}) {
+export async function runCollab(ctx, { entity_id, grid } = {}) {
   const token = await ctx.getToken();
   if (!token) {
     throw new Error("You are not signed in. Run grid_login first, then collab.");
   }
-  const target = entity_id || id;
+  const target = entity_id;
   if (!target) {
     throw new Error("`entity_id` is required (a canonical UUID or <grid-slug>/<entity-slug>).");
   }

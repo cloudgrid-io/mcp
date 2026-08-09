@@ -212,7 +212,6 @@ export function registerTools(server, ctx) {
       inputSchema: {
         entity_id: z.string().describe("The app to get push access to: a canonical UUID or <grid-slug>/<entity-slug>."),
         grid: z.string().optional().describe("Grid to resolve a bare slug in. Required only when a bare slug is ambiguous across grids you belong to."),
-        id: z.string().optional().describe("Alias of entity_id (legacy). Prefer entity_id."),
       },
       outputSchema: {
         entity_id: z.string().optional().describe("The SAME entity you now collaborate on — pass it to grid_pull, then to grid_plug as target_entity_id. Never a new/forked entity."),
