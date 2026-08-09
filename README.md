@@ -84,7 +84,7 @@ posted). `CLOUDGRID_QA_IDLE_MS` overrides the abandoned-idle window (default
 <!-- gen:tools -->
 ## Tools
 
-36 tools registered (14 shared across both editions, 22 local-only). No deprecated aliases. MIN_CLI_VERSION: 0.15.26.
+37 tools registered (15 shared across both editions, 22 local-only). No deprecated aliases. MIN_CLI_VERSION: 0.15.26.
 
 ### Direct-API tools (both editions)
 
@@ -92,6 +92,7 @@ posted). `CLOUDGRID_QA_IDLE_MS` overrides the abandoned-idle window (default
 |---|---|---|
 | `grid_pickup` | API | Pick up an app: make your OWN COPY of any app you can see (like a git fork) into a grid you can build in. |
 | `grid_pull` | API | Pull an app to continue/edit it IN PLACE — like `git clone` of the SAME entity: your next grid_plug (with its target_... |
+| `grid_collab` | API | Collab: GET PUSH ACCESS to the SAME live entity that someone else owns — you become a collaborator on THAT entity, no... |
 | `grid_create_grid` | API | Create a new grid (workspace) for the signed-in user — they become its admin. |
 | `grid_note` | API | Optionally leave a one-paragraph summary of what you built this session and why. |
 | `grid_plug` | API | Plug an app, website, game, or single HTML page into CloudGrid — the live runtime that runs it and provides its infra... |

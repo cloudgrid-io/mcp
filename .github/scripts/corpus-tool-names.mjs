@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Corpus edition-safety guard.
 //
-// The corpus is served on BOTH the local and hosted MCP editions, but only 14
+// The corpus is served on BOTH the local and hosted MCP editions, but only 15
 // tool names exist on both. Any other `grid_*` name in corpus prose causes a
 // hosted agent to call a tool it does not have.
 //
@@ -19,6 +19,7 @@ import { join, relative } from "node:path";
 
 const SHARED = new Set([
   "grid_check_deploy",
+  "grid_collab",
   "grid_create_grid",
   "grid_get_app_source",
   "grid_get_template",
@@ -78,4 +79,4 @@ if (violations.length) {
   process.exit(1);
 }
 
-console.log(`Corpus edition-safety: ${files.length} files scanned, all tool names are shared-14.`);
+console.log(`Corpus edition-safety: ${files.length} files scanned, all tool names are shared-15.`);

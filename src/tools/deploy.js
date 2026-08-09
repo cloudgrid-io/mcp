@@ -635,7 +635,7 @@ export async function runReport(
 // Like `git clone` of the SAME entity: your next grid_plug (target_entity_id)
 // updates it. Needs push access — you must OWN it or be a COLLABORATOR. A
 // view-only caller is told they can't edit/plug it (fork a copy with grid_pickup,
-// or GET collaborator push access with the CLI `grid collab` — grants permission
+// or GET collaborator push access with grid_collab — grants permission
 // only, pull again once granted). A claim_token also
 // claims an anonymous drop into your account (ownership transfer).
 export async function runPull(ctx, { claim_token, claim_url, entity_id }) {
@@ -730,8 +730,8 @@ export async function runPull(ctx, { claim_token, claim_url, entity_id }) {
         text:
           `You don't have push access to this entity, so you can't edit or plug it. Two options: ` +
           `make your own separate copy (a fork) with grid_pickup, or GET collaborator push access to the SAME ` +
-          `entity with the CLI \`grid collab <entity>\` — that grants permission only and fetches nothing, so ` +
-          `pull again once it is granted (if the owner gates access, \`grid collab\` becomes a request they approve).`,
+          `entity with grid_collab (the CLI equivalent is \`grid collab <entity>\`) — that grants permission only and fetches nothing, so ` +
+          `pull again once it is granted (if the owner gates access, grid_collab becomes a request they approve).`,
         structured: { can_edit: false, owner_is_you: false, access: "view_only" },
       };
     }
@@ -758,7 +758,7 @@ export async function runPull(ctx, { claim_token, claim_url, entity_id }) {
     head = `You have collaborator push access to ${slug}${where} — your next grid_plug (target_entity_id) updates the SHARED entity; the team sees the new version and can roll it back.`;
     canEdit = true;
   } else {
-    head = `You can view ${slug}${where} but do NOT have push access — you can't edit or plug it. Make your own separate copy (a fork) with grid_pickup, or GET collaborator push access to the SAME entity with the CLI \`grid collab ${slug}\` (it grants permission only and fetches nothing — pull again once granted).`;
+    head = `You can view ${slug}${where} but do NOT have push access — you can't edit or plug it. Make your own separate copy (a fork) with grid_pickup, or GET collaborator push access to the SAME entity with grid_collab (CLI equivalent: \`grid collab ${slug}\`) — it grants permission only and fetches nothing, so pull again once granted.`;
     canEdit = false;
   }
   const lines = [head];
@@ -777,6 +777,161 @@ export async function runPull(ctx, { claim_token, claim_url, entity_id }) {
       can_edit: canEdit,
     },
   };
+}
+
+
+// grid_collab — GET PUSH ACCESS to the SAME live entity you do NOT own (issue
+// #253). This is the third adopt/access verb, distinct from the other two:
+//   grid_pickup = make your OWN COPY (a fork: new entity, forked_from lineage)
+//   grid_pull   = continue an entity you ALREADY have access to (fetch the code)
+//   grid_collab = grant yourself push access to someone else's SAME entity
+//                 (permission only — fetches nothing; run grid_pull afterwards)
+//
+// Mirrors the CLI reference (packages/cli/src/commands/collab.ts). It records the
+// grant server-side via the CANONICAL join path POST /api/v2/entities/:id/collab
+// — the SAME entity, NOT a fork. The fork route is POST /runtimes/:id/remix
+// (runPickup); collab never touches it, so a collab can never silently become a
+// pickup (the #242 defect). On a POLICY denial (NOT_ALLOWLISTED / PICKUP_DISABLED
+// — the owner gated who may join) it does NOT dead-end on the 403: it turns the
+// denial into a REQUEST the owner approves, via POST /:id/collab-requests, exactly
+// as the CLI does (collab.ts:129). Other 403s (NOT_A_GRID_MEMBER / FORBIDDEN_ROLE)
+// are grid-boundary problems, not policy denials, so they are surfaced, never
+// converted to a request. Pure authenticated API calls, no CLI or filesystem —
+// so, like grid_pickup / grid_pull, it ships on BOTH editions.
+export async function runCollab(ctx, { entity_id, id, grid } = {}) {
+  const token = await ctx.getToken();
+  if (!token) {
+    throw new Error("You are not signed in. Run grid_login first, then collab.");
+  }
+  const target = entity_id || id;
+  if (!target) {
+    throw new Error("`entity_id` is required (a canonical UUID or <grid-slug>/<entity-slug>).");
+  }
+
+  const orgSlug = grid || (await ctx.getActiveGrid());
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+  if (orgSlug) {
+    // Grid-native header + X-CloudGrid-Org alias (same slug) during the soak, so
+    // a bare-slug target resolves in the intended grid (mirrors runPull).
+    headers["X-CloudGrid-Grid"] = orgSlug;
+    headers["X-CloudGrid-Org"] = orgSlug;
+  }
+
+  const collabUrl = `${API_BASE}/api/v2/entities/${encodeURIComponent(target)}/collab`;
+  let res;
+  try {
+    res = await fetch(collabUrl, { method: "POST", headers, body: JSON.stringify({}) });
+  } catch (err) {
+    throw new Error(`Could not reach CloudGrid at ${API_BASE}: ${err.message}`);
+  }
+
+  const raw = await res.text();
+  let data = null;
+  try { data = JSON.parse(raw); } catch { /* handled below */ }
+
+  if (!res.ok) {
+    const code = data?.error?.code || null;
+    // ── Policy denial → REQUEST ACCESS (the whole point of the tool). Scoped to
+    // the two policy codes ONLY: a grid-boundary 403 (NOT_A_GRID_MEMBER /
+    // FORBIDDEN_ROLE) is a different problem and must NOT spam the owner. ──────
+    if (res.status === 403 && (code === "NOT_ALLOWLISTED" || code === "PICKUP_DISABLED")) {
+      return await requestCollabAccess(ctx, target, headers);
+    }
+    if (res.status === 404 || code === "RUNTIME_NOT_FOUND" || code === "NOT_FOUND" || (typeof code === "string" && code.endsWith("_NOT_FOUND"))) {
+      throw new Error(`No entity matched '${target}'. Check the id or grid/slug (a canonical UUID or <grid-slug>/<entity-slug>).`);
+    }
+    if (res.status === 403 && code === "NOT_A_GRID_MEMBER") {
+      throw new Error(data?.error?.message || `You're not a member of the grid that owns '${target}'. Ask its owner to invite you to the grid first, then collab.`);
+    }
+    if (res.status === 403 && code === "FORBIDDEN_ROLE") {
+      throw new Error(data?.error?.message || `Collaborating on '${target}' needs builder or admin role in its grid.`);
+    }
+    if (res.status === 400 && code === "NOT_A_RUNTIME") {
+      throw new Error(data?.error?.message || `'${target}' is an Inspiration, not an app or agent — it has no collaborators. Fork it with grid_pickup instead.`);
+    }
+    const msg = data?.error?.message || data?.message || raw || `HTTP ${res.status}`;
+    throw new Error(`Collab failed (HTTP ${res.status}): ${msg}`);
+  }
+
+  // ── Grant recorded on the SAME entity (permission only — no code fetched) ────
+  // Interpret the unified §4 pickup contract, exactly as runPull does, but frame
+  // it as an access grant and point at grid_pull for the code (founder split
+  // 2026-07-23: collab = permission, pull = code).
+  const slug = data?.slug || target;
+  const where = data?.grid ? ` in ${data.grid}` : "";
+  const ownerIsYou = data?.owner?.is_you === true;
+  const canReplug = data?.capabilities?.replug === true;
+  let head, canEdit;
+  if (ownerIsYou) {
+    head = `${slug}${where} is yours — nothing to grant. Use grid_pull to get the code, then grid_plug (target_entity_id) to update it.`;
+    canEdit = true;
+  } else if (canReplug) {
+    head = `You're now a collaborator on ${slug}${where} — you have PUSH ACCESS to the SAME entity (not a copy). This granted permission only; use grid_pull to get the code, then grid_plug (target_entity_id) updates the shared entity — the team sees the new version and can roll it back.`;
+    canEdit = true;
+  } else {
+    head = `You can view ${slug}${where}, but the grant did not give you push access. Make your own separate copy (a fork) with grid_pickup instead.`;
+    canEdit = false;
+  }
+  const lines = [head];
+  if (data?.url) lines.push(`URL: ${data.url}`);
+  return {
+    text: lines.join("\n"),
+    structured: {
+      ...(data?.entity_id ? { entity_id: data.entity_id } : {}),
+      ...(slug ? { slug } : {}),
+      grid: data?.grid ?? null,
+      ...(data?.url ? { url: data.url } : {}),
+      owner_is_you: ownerIsYou,
+      can_edit: canEdit,
+      access_requested: false,
+      request_pending: false,
+    },
+  };
+}
+
+// Turn a policy 403 into a request: POST /:id/collab-requests and tell the user
+// what happens next (mirrors CLI collab-requests.ts requestCollabAccess). A
+// request IS a success outcome, so this returns a normal result, never throws for
+// the expected 409s (a pending ask, or an access race the owner just opened).
+async function requestCollabAccess(ctx, target, headers) {
+  const url = `${API_BASE}/api/v2/entities/${encodeURIComponent(target)}/collab-requests`;
+  let res;
+  try {
+    res = await fetch(url, { method: "POST", headers, body: JSON.stringify({}) });
+  } catch (err) {
+    throw new Error(`Could not reach CloudGrid at ${API_BASE}: ${err.message}`);
+  }
+  const raw = await res.text();
+  let data = null;
+  try { data = JSON.parse(raw); } catch { /* handled below */ }
+  const code = data?.error?.code || null;
+
+  if (res.ok) {
+    return {
+      text:
+        `The owner gates who can collaborate on '${target}', so I asked them for push access on your behalf. ` +
+        `They've been notified — once they approve, run grid_collab again to join, then grid_pull to get the code.`,
+      structured: { access_requested: true, request_pending: true, owner_is_you: false, can_edit: false },
+    };
+  }
+  if (res.status === 409 && code === "COLLAB_REQUEST_EXISTS") {
+    return {
+      text: `You already asked for access to '${target}'. The owner hasn't decided yet — you'll be able to join once they approve.`,
+      structured: { access_requested: true, request_pending: true, owner_is_you: false, can_edit: false },
+    };
+  }
+  if (res.status === 409 && code === "COLLAB_ALREADY_ALLOWED") {
+    // Race: the owner opened access between the join 403 and this request.
+    return {
+      text: `You already have access to '${target}'. Run grid_collab again to join, then grid_pull to get the code.`,
+      structured: { access_requested: false, request_pending: false, owner_is_you: false, can_edit: false },
+    };
+  }
+  const msg = data?.error?.message || data?.message || raw || `HTTP ${res.status}`;
+  throw new Error(`Couldn't request access to '${target}' (HTTP ${res.status}): ${msg}`);
 }
 
 

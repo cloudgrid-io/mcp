@@ -35,6 +35,7 @@ export {
   runPlug,
   runPickup,
   runPull,
+  runCollab,
   runCreateGrid,
   scanInlineSecrets,
   secretBlockMessage,
