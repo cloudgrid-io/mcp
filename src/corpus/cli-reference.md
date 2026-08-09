@@ -95,7 +95,7 @@ grid grid
 | `env` / `secrets` | Manage runtime env vars and secrets (secret values are never printed) |
 | `grid` / `list` | List what's on your hub / org |
 | `rename` / `delete` / `unplug` | Rename, archive, take off the grid |
-| `pull` / `clone` / `fork` | Download source; clone or fork an entity |
+| `collab` / `pull` / `pickup` | Grant push access (`collab`), continue in place (`pull`), or fork a copy (`pickup`) |
 | `feedback [message]` | Send feedback to the CloudGrid team |
 | `brain refresh <name>` | Re-run Grid Brain metadata (description, tags, diagram) |
 | `doctor` | Diagnostic checks (Node, Docker, API reachability, auth) |
