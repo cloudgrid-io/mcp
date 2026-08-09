@@ -6,7 +6,8 @@
 //
 // The verb model (packages/cli/src/program.ts:156-168, monorepo):
 //   collab  = get PUSH ACCESS to the SAME live entity (grant only; fetches
-//             nothing — run pull afterwards). CLI-only: `grid collab <entity>`.
+//             nothing — run pull afterwards). Since #253 this has an MCP tool,
+//             grid_collab, on BOTH editions (it was previously CLI-only).
 //   pull    = continue an entity you already have access to (fetch + edit).
 //   pickup  = make your OWN COPY, like a git fork (a NEW entity).
 //
@@ -40,14 +41,26 @@ const desc = (name) => tools.find((t) => t.name === name)?.description ?? "";
 const pickup = desc("grid_pickup");
 const pull = desc("grid_pull");
 const edit = desc("grid_edit_existing_app");
+const collab = desc("grid_collab");
 
 check("grid_pickup is a registered tool", pickup.length > 0);
 check("grid_pull is a registered tool", pull.length > 0);
 check("grid_edit_existing_app is a registered tool", edit.length > 0);
 
-// grid_pickup must DISAMBIGUATE itself from collab, naming collab as the
-// separate CLI operation — otherwise "collab" maps onto pickup (the #242 bug).
-check("grid_pickup names the CLI `grid collab` as the distinct verb", /grid collab/i.test(pickup));
+// #253 — collab now has its OWN tool. This is the positive verb the model was
+// missing at #242: an agent asked to "collab" must have a tool to reach for.
+check("grid_collab is a registered tool", collab.length > 0);
+// It must DISTINGUISH itself from the other two verbs, or the three re-conflate.
+check("grid_collab frames itself as SAME-entity push access, not a fork/copy", /same (live )?entity/i.test(collab) && /not a (copy|fork)/i.test(collab));
+check("grid_collab frames itself as permission-only / fetches nothing", /permission only|grants permission|fetches nothing/i.test(collab));
+check("grid_collab names grid_pull as the follow-up for the code", /grid_pull/i.test(collab));
+check("grid_collab names grid_pickup as the fork alternative", /grid_pickup/i.test(collab));
+// The 403 request-access flow is the whole point (#253): the surface must say so.
+check("grid_collab surfaces the request-on-gate flow", /request|approve|gate/i.test(collab));
+
+// grid_pickup must DISAMBIGUATE itself from collab, naming grid_collab as the
+// separate operation — otherwise "collab" maps onto pickup (the #242 bug).
+check("grid_pickup names grid_collab as the distinct verb", /grid_collab/.test(pickup));
 check("grid_pickup still frames itself as a fork/copy", /fork|copy/i.test(pickup));
 // pickup must actively DISCLAIM granting access (access is collab's job). Any
 // mention of granting access in pickup must be a denial ("never grants you
@@ -58,17 +71,17 @@ check(
 );
 
 // grid_pull must frame collab as an ACCESS grant that fetches nothing — not as
-// "rolling out soon", and not as a synonym for pull.
-check("grid_pull names the CLI `grid collab`", /grid collab/i.test(pull));
+// "rolling out soon", and not as a synonym for pull — and point at grid_collab.
+check("grid_pull names grid_collab", /grid_collab/.test(pull));
 check(
   "grid_pull frames collab as permission-only / fetches-nothing",
   /permission only|grants permission|fetches nothing/i.test(pull),
 );
 check("grid_pull mentions push access", /push access/i.test(pull));
 
-// grid_edit_existing_app (the local CLI-wrapping pull) must also point at collab
-// for gaining access, so its surface is consistent with grid_pull's.
-check("grid_edit_existing_app names the CLI `grid collab`", /grid collab/i.test(edit));
+// grid_edit_existing_app (the local CLI-wrapping pull) must also point at
+// grid_collab for gaining access, so its surface is consistent with grid_pull's.
+check("grid_edit_existing_app names grid_collab", /grid_collab/.test(edit));
 
 // The stale "(rolling out soon)" tag must be gone from EVERY tool description:
 // `grid collab` ships in the CLI today (program.ts:169) and the server route is
@@ -99,7 +112,7 @@ check(
   globalThis.fetch = realFetch;
 
   const text = out?.text ?? "";
-  check("runPull view-only guidance names the CLI `grid collab`", /grid collab/i.test(text));
+  check("runPull view-only guidance names grid_collab", /grid_collab/.test(text));
   check(
     "runPull view-only guidance frames collab as permission-only / fetches-nothing",
     /permission only|grants permission|fetches nothing/i.test(text),

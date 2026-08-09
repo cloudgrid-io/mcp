@@ -185,12 +185,17 @@ jobs:
       # require_signin, spaces param) and presents the two-axis model before
       # the ask.
       - run: npm run test:visibility-mapping
-      # Verb-distinction guard (#242): the three adopt/access verbs (grid_pickup
-      # fork, grid_pull continue-in-place, `grid collab` CLI access-grant) are
-      # distinguishable from the tool surface alone, so a model asked to "collab"
-      # cannot satisfy it by calling grid_pickup; no description carries the stale
-      # "rolling out soon" tag.
+      # Verb-distinction guard (#242, extended #253): the three adopt/access
+      # verbs (grid_pickup fork, grid_pull continue-in-place, grid_collab
+      # access-grant) are distinguishable from the tool surface alone, so a model
+      # asked to "collab" cannot satisfy it by calling grid_pickup; no description
+      # carries the stale "rolling out soon" tag.
       - run: npm run test:verb-distinction
+      # grid_collab handler guard (#253): the collab wire hits /entities/:id/collab
+      # (never the /remix fork route), grants push access on the SAME entity with
+      # no forked_from, and a policy 403 turns into a request via /collab-requests
+      # instead of dead-ending.
+      - run: npm run test:collab
 
   readme-tool-table:
     runs-on: ubuntu-latest
@@ -210,7 +215,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 20
-      - name: Corpus edition-safety (shared-14 tool names only)
+      - name: Corpus edition-safety (shared-15 tool names only)
         run: node .github/scripts/corpus-tool-names.mjs
 
   drift-guard:
