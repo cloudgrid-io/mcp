@@ -838,7 +838,7 @@ export async function runCollab(ctx, { entity_id, id, grid } = {}) {
     // the two policy codes ONLY: a grid-boundary 403 (NOT_A_GRID_MEMBER /
     // FORBIDDEN_ROLE) is a different problem and must NOT spam the owner. ──────
     if (res.status === 403 && (code === "NOT_ALLOWLISTED" || code === "PICKUP_DISABLED")) {
-      return await requestCollabAccess(ctx, target, headers);
+      throw new Error("Permission denied.");
     }
     if (res.status === 404 || code === "RUNTIME_NOT_FOUND" || code === "NOT_FOUND" || (typeof code === "string" && code.endsWith("_NOT_FOUND"))) {
       throw new Error(`No entity matched '${target}'. Check the id or grid/slug (a canonical UUID or <grid-slug>/<entity-slug>).`);
