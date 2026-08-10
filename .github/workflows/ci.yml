@@ -229,7 +229,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          # 22, not 20: this job runs `npx @cloudgrid-io/cli@latest`, and the CLI
+          # declares engines.node >=22 since 0.16.0 (execa 10 uses Set.prototype.union,
+          # which lands in Node 22.0). On 20 npx warns EBADENGINE, installs anyway, and
+          # the CLI then dies with `TEXT_ENCODINGS.union is not a function`. See #261.
+          node-version: 22
       - run: npm ci
       - run: npm run test:drift-guard
 
