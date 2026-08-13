@@ -10,7 +10,7 @@
     "src"
   ],
   "engines": {
-    "node": ">=22"
+    "node": ">=22.19"
   },
   "scripts": {
     "start": "node src/index.js",
