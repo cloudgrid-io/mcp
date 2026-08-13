@@ -192,7 +192,74 @@ const restoreFetch = () => { globalThis.fetch = realFetch; };
   check("passthrough-400: original message preserved", /entity_id is not a valid UUID/.test(threw?.message ?? ""));
 }
 
-// ── 7. Tool surface exposes the `grid` parameter ──────────────────────────
+// ── 7. ORG_NOT_ACCESSIBLE returns server message + hint, not push-access advice
+{
+  installFetch([
+    { status: 403, body: {
+      error: {
+        code: "ORG_NOT_ACCESSIBLE",
+        message: "Grid 'teem-grid' is not accessible to this account.",
+        details: [{ hint: "Available: team-grid, personal" }],
+      },
+    } },
+  ]);
+  const out = await expectOk(
+    "org-not-accessible",
+    runPull(makeCtx({ activeGrid: null }), { entity_id: "ent-typo", grid: "teem-grid" }),
+  );
+  restoreFetch();
+
+  check("org-not-accessible: returns result (not throw)", out.text != null);
+  check(
+    "org-not-accessible: surfaces the server message",
+    /teem-grid.*not accessible/i.test(out.text),
+  );
+  check(
+    "org-not-accessible: surfaces the Available hint",
+    /Available:.*team-grid/i.test(out.text),
+  );
+  check(
+    "org-not-accessible: does NOT mention grid_collab",
+    !/grid_collab/i.test(out.text),
+  );
+  check(
+    "org-not-accessible: structured code is ORG_NOT_ACCESSIBLE",
+    out.structured?.error?.code === "ORG_NOT_ACCESSIBLE",
+  );
+}
+
+// ── 8. NO_ACTIVE_ORG routes to grid creation, not push-access advice ─────
+{
+  installFetch([
+    { status: 403, body: {
+      error: {
+        code: "NO_ACTIVE_ORG",
+        message: "This account has no active organization.",
+      },
+    } },
+  ]);
+  const out = await expectOk(
+    "no-active-org",
+    runPull(makeCtx({ activeGrid: null }), { entity_id: "ent-norg" }),
+  );
+  restoreFetch();
+
+  check("no-active-org: returns result (not throw)", out.text != null);
+  check(
+    "no-active-org: mentions grid_create_grid",
+    /grid_create_grid/i.test(out.text),
+  );
+  check(
+    "no-active-org: sets needs_grid_create",
+    out.structured?.needs_grid_create === true,
+  );
+  check(
+    "no-active-org: does NOT mention grid_collab",
+    !/grid_collab/i.test(out.text),
+  );
+}
+
+// ── 9. Tool surface exposes the `grid` parameter ──────────────────────────
 {
   const transport = new StdioClientTransport({ command: "node", args: ["src/index.js"] });
   const client = new Client({ name: "pull-grid-test", version: "0.0.0" });

@@ -727,6 +727,29 @@ export async function runPull(ctx, { claim_token, claim_url, entity_id, grid } =
       };
     }
     const code = data?.error?.code || null;
+    // ORG_NOT_ACCESSIBLE: the `grid` param has a typo or the user isn't a
+    // member of that grid. The server message already contains an "Available:"
+    // hint listing valid grid slugs — surface it so the agent can self-correct.
+    if (code === "ORG_NOT_ACCESSIBLE") {
+      const serverMsg = data?.error?.message || "The specified grid is not accessible.";
+      const hint = data?.error?.details?.[0]?.hint || "";
+      return {
+        text:
+          `${serverMsg}${hint ? ` ${hint}` : ""} ` +
+          `Check the grid slug for typos and retry grid_pull with the correct \`grid\` parameter.`,
+        structured: { error: { code: "ORG_NOT_ACCESSIBLE" } },
+      };
+    }
+    // NO_ACTIVE_ORG: the account has no grid at all — route to in-flow grid
+    // creation instead of the misleading "no push access" advice.
+    if (code === "NO_ACTIVE_ORG") {
+      return {
+        text:
+          "The account has no grid yet. Do not send the user to the console — create one from here: " +
+          "suggest a short slug, confirm it with the user, call grid_create_grid, then re-call grid_pull.",
+        structured: { needs_grid_create: true },
+      };
+    }
     // No push access → not an error to throw; tell the user their options.
     if (res.status === 403 || code === "NOT_ALLOWLISTED" || code === "PICKUP_DISABLED" || code === "FORBIDDEN_ROLE") {
       return {
