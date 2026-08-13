@@ -638,7 +638,7 @@ export async function runReport(
 // or GET collaborator push access with grid_collab — grants permission
 // only, pull again once granted). A claim_token also
 // claims an anonymous drop into your account (ownership transfer).
-export async function runPull(ctx, { claim_token, claim_url, entity_id }) {
+export async function runPull(ctx, { claim_token, claim_url, entity_id, grid } = {}) {
   const token = await ctx.getToken();
   if (!token) {
     throw new Error("You are not signed in. Run grid_login first, then claim.");
@@ -685,8 +685,11 @@ export async function runPull(ctx, { claim_token, claim_url, entity_id }) {
   };
   // The claim re-homes the inspiration into the caller's grid; the platform
   // resolves the destination from the active-org context, so send the org
-  // header (the same header every other authed write uses).
-  const orgSlug = await ctx.getActiveGrid();
+  // header (the same header every other authed write uses). The `grid`
+  // parameter (added for #247: the hosted transport cannot set HTTP headers,
+  // so multi-grid users must pass the grid explicitly) takes precedence, then
+  // the session's active grid.
+  const orgSlug = grid || (await ctx.getActiveGrid());
   // Grid-native header + X-CloudGrid-Org alias (same slug) during the soak.
   if (orgSlug) {
     headers["X-CloudGrid-Grid"] = orgSlug;
@@ -735,7 +738,13 @@ export async function runPull(ctx, { claim_token, claim_url, entity_id }) {
         structured: { can_edit: false, owner_is_you: false, access: "view_only" },
       };
     }
-    const msg = data?.error?.message || data?.message || raw || `HTTP ${res.status}`;
+    let msg = data?.error?.message || data?.message || raw || `HTTP ${res.status}`;
+    // The API's "Set the X-CloudGrid-Grid header" error is unactionable for an
+    // MCP client (no client can set HTTP headers on a tool call). Rewrite it to
+    // name the tool parameter the caller CAN set (#247).
+    if (res.status === 400 && /X-CloudGrid-Grid/i.test(msg)) {
+      msg = "You belong to more than one grid. Pass the `grid` parameter to specify which grid to use.";
+    }
     throw new Error(`Pull failed (HTTP ${res.status}): ${msg}`);
   }
 

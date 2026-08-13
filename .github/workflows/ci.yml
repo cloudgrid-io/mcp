@@ -196,6 +196,10 @@ jobs:
       # no forked_from, and a policy 403 turns into a request via /collab-requests
       # instead of dead-ending.
       - run: npm run test:collab
+      # grid_pull grid parameter (#247): supplied `grid` sets the
+      # X-CloudGrid-Grid header, falls back to active grid, and a 400
+      # mentioning the header is rewritten to name the `grid` parameter.
+      - run: npm run test:pull-grid
       # URL shape guard (#244): template cloudgrid.yaml comments must use the
       # flat host shape (<name>-<4hex>--<org>.cloudgrid.io), never the retired
       # nested shape (<name>.<org>.cloudgrid.io). Prevents regression of the

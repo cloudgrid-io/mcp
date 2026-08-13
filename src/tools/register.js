@@ -176,6 +176,7 @@ export function registerTools(server, ctx) {
       description: "Pull an app to continue/edit it IN PLACE — like `git clone` of the SAME entity: your next grid_plug (with its target_entity_id) updates that entity, and the team sees the new version. Requires PUSH ACCESS: you must own it or be a collaborator. If you can only view it, you CANNOT edit or plug it — say so, and offer the two real options: (1) make your own separate copy (a fork) with grid_pickup, or (2) GET push access to the SAME entity with grid_collab (or the CLI `grid collab <entity>`) — \"collab\" is a distinct access-control operation that grants permission only and fetches nothing, so once it is granted you run grid_pull again to get the code (and if the owner gates access, grid_collab becomes a request they approve). Passing an anonymous drop's `claim_token` claims it into your account. Requires sign-in. Calls the API directly (both editions).",
       inputSchema: {
         entity_id: z.string().optional().describe("The entity id to pull. Defaults to this session's last anonymous drop."),
+        grid: z.string().optional().describe("Grid to resolve a bare slug in. Required only when you belong to more than one grid."),
         claim_token: z.string().optional().describe("Anonymous drop only: its owner token — claims that drop into your account (ownership transfer)."),
         claim_url: z.string().optional().describe("Alternative to claim_token for an anonymous drop — the claim_url; the token is read from it."),
       },
