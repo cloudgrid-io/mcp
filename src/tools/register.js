@@ -187,6 +187,9 @@ export function registerTools(server, ctx) {
         url: z.string().optional().describe("Its public URL."),
         owner_is_you: z.boolean().optional().describe("True if you own it."),
         can_edit: z.boolean().optional().describe("True if you can plug/update it (owner or collaborator). False = view-only."),
+        access: z.string().optional().describe("Access level when can_edit is false (e.g. 'view_only')."),
+        error: z.object({ code: z.string() }).optional().describe("Error envelope when the grid slug is wrong or inaccessible. code is the server error code (e.g. ORG_NOT_ACCESSIBLE)."),
+        needs_grid_create: z.boolean().optional().describe("True when the account has no grid yet — route to grid_create_grid before retrying."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
@@ -449,6 +452,7 @@ export function registerTools(server, ctx) {
           is_active: z.boolean(),
         })).optional().describe("Alias of grids (legacy picker alias)."),
         via: z.string().optional().describe("Recovery marker: 'cli-fallback' when a signed-in create was published through the bundled CloudGrid CLI."),
+        needs_grid_create: z.boolean().optional().describe("Zero-grid ask: the account has no grid yet — suggest a slug, confirm with the user, call grid_create_grid, then re-call grid_plug with grid: <slug>."),
       },
       // destructiveHint (M3): a re-plug with target_entity_id REPLACES what is
       // live at a public URL in place. Versions + grid rollback exist, but the
