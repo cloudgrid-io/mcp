@@ -144,5 +144,30 @@ await (async () => {
   check("plug terminal-failed message is distinct (did not finish / admin)", /did not (finish|complete)|recreat|admin/i.test(failedErr?.message || ""));
 })();
 
+// ── 6. BOTH provisioning codes are honoured (cloudgrid-io/cloudgrid#2673) ────
+//
+// The API is renaming ORG_PROVISIONING -> GRID_PROVISIONING as part of the
+// org->grid retirement. mcp accepting both is what makes that rename safe to
+// land without waiting for adoption: this package is published to npm, so
+// installed copies keep matching whatever they shipped with.
+//
+// These assert the NEW name, which is the half that does not exist in
+// production yet — the old name is covered by tests 1-5 above. If the new name
+// is ever dropped, the API rename silently turns a retryable 409 into a hard
+// plug failure against every brand-new grid.
+{
+  const gNew = errorGuidance({ status: 409, code: "GRID_PROVISIONING", edition: "web", isEdit: false });
+  check("errorGuidance(409 GRID_PROVISIONING) returns guidance", typeof gNew === "string" && gNew.length > 0);
+  check("errorGuidance(409 GRID_PROVISIONING) is NOT the EDIT_REJECTED text", !/cannot be updated/i.test(gNew || ""));
+  check("errorGuidance(409 GRID_PROVISIONING) says to retry grid_plug", /grid_plug/.test(gNew || "") && /wait|again|retry/i.test(gNew || ""));
+
+  const gOld = errorGuidance({ status: 409, code: "ORG_PROVISIONING", edition: "web", isEdit: false });
+  check("both provisioning codes yield identical guidance", gNew === gOld);
+
+  // The predicate must widen to the new NAME, not to every 409.
+  const gEdit = errorGuidance({ status: 409, code: "EDIT_REJECTED", edition: "web", isEdit: true });
+  check("a non-provisioning 409 is still EDIT_REJECTED", /cannot be updated/i.test(gEdit || ""));
+}
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
