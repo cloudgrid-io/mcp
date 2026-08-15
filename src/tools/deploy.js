@@ -21,6 +21,29 @@ import {
 import { okResult } from "./util.js";
 import { runCloudgrid } from "./cli.js";
 
+/**
+ * The API refuses an infra-dependent write while a grid is still provisioning.
+ *
+ * The code is being renamed ORG_PROVISIONING -> GRID_PROVISIONING
+ * (cloudgrid-io/cloudgrid#2673, the org->grid retirement). This accepts BOTH,
+ * which is what makes the API-side rename safe: an mcp that understands both is
+ * version-independent from the API's side, so the rename can land the moment
+ * this ships rather than waiting for adoption.
+ *
+ * Keep both until the API no longer emits the old name AND the floor of
+ * installed mcp versions understands the new one. mcp is published to npm, so
+ * installed copies keep matching whatever they shipped with — dropping the old
+ * name early breaks plugs into brand-new grids, silently, by turning a
+ * retryable 409 into a hard failure.
+ *
+ * One predicate, two call sites, so they cannot drift.
+ */
+const PROVISIONING_CODES = new Set(["GRID_PROVISIONING", "ORG_PROVISIONING"]);
+function isProvisioningCode(code) {
+  return PROVISIONING_CODES.has(code);
+}
+
+
 // ── Org listing (bearer-authed, web edition) ──────────────────────────────────
 // Fetches the signed-in user's orgs via GET /api/v2/orgs. The JWT does not
 // carry orgs (claims: sub, email, name, iat, exp), so the API is the canonical
@@ -1309,7 +1332,7 @@ export function errorGuidance({ status, code, edition, isEdit, isAnon, signedIn 
   // internally with a bounded budget; this guidance is the budget-exhausted tail,
   // so the wording tells the agent to wait and re-call rather than surface a raw
   // code. (Issue #235.)
-  if (status === 409 && code === "ORG_PROVISIONING") {
+  if (status === 409 && isProvisioningCode(code)) {
     return "The grid is still finishing setup — a brand-new grid provisions its infrastructure in the background (usually within ~30s). Wait ~15s and call grid_plug again with the SAME parameters; it deploys once the grid is ready. Do not switch to anonymous and do not send the user to the console.";
   }
   // 409 EDIT_REJECTED — an in-place re-plug the server won't take.
@@ -1786,7 +1809,7 @@ export async function runPlug(ctx, input, deps = {}) {
   for (;;) {
     ({ res, raw, data } = await sendPlug());
     if (res.ok) break;
-    if (res.status === 409 && data?.error?.code === "ORG_PROVISIONING") {
+    if (res.status === 409 && isProvisioningCode(data?.error?.code)) {
       const hint = data?.error?.details?.[0]?.hint || "";
       // Terminal failure — provisioning did not complete; retrying is futile.
       if (/did not (complete|finish)/i.test(hint)) {
