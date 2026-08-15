@@ -638,7 +638,7 @@ export async function runReport(
 // or GET collaborator push access with grid_collab — grants permission
 // only, pull again once granted). A claim_token also
 // claims an anonymous drop into your account (ownership transfer).
-export async function runPull(ctx, { claim_token, claim_url, entity_id }) {
+export async function runPull(ctx, { claim_token, claim_url, entity_id, grid } = {}) {
   const token = await ctx.getToken();
   if (!token) {
     throw new Error("You are not signed in. Run grid_login first, then claim.");
@@ -685,8 +685,11 @@ export async function runPull(ctx, { claim_token, claim_url, entity_id }) {
   };
   // The claim re-homes the inspiration into the caller's grid; the platform
   // resolves the destination from the active-org context, so send the org
-  // header (the same header every other authed write uses).
-  const orgSlug = await ctx.getActiveGrid();
+  // header (the same header every other authed write uses). The `grid`
+  // parameter (added for #247: the hosted transport cannot set HTTP headers,
+  // so multi-grid users must pass the grid explicitly) takes precedence, then
+  // the session's active grid.
+  const orgSlug = grid || (await ctx.getActiveGrid());
   // Grid-native header + X-CloudGrid-Org alias (same slug) during the soak.
   if (orgSlug) {
     headers["X-CloudGrid-Grid"] = orgSlug;
@@ -724,6 +727,29 @@ export async function runPull(ctx, { claim_token, claim_url, entity_id }) {
       };
     }
     const code = data?.error?.code || null;
+    // ORG_NOT_ACCESSIBLE: the `grid` param has a typo or the user isn't a
+    // member of that grid. The server message already contains an "Available:"
+    // hint listing valid grid slugs — surface it so the agent can self-correct.
+    if (code === "ORG_NOT_ACCESSIBLE") {
+      const serverMsg = data?.error?.message || "The specified grid is not accessible.";
+      const hint = data?.error?.details?.[0]?.hint || "";
+      return {
+        text:
+          `${serverMsg}${hint ? ` ${hint}` : ""} ` +
+          `Check the grid slug for typos and retry grid_pull with the correct \`grid\` parameter.`,
+        structured: { error: { code: "ORG_NOT_ACCESSIBLE" } },
+      };
+    }
+    // NO_ACTIVE_ORG: the account has no grid at all — route to in-flow grid
+    // creation instead of the misleading "no push access" advice.
+    if (code === "NO_ACTIVE_ORG") {
+      return {
+        text:
+          "The account has no grid yet. Do not send the user to the console — create one from here: " +
+          "suggest a short slug, confirm it with the user, call grid_create_grid, then re-call grid_pull.",
+        structured: { needs_grid_create: true },
+      };
+    }
     // No push access → not an error to throw; tell the user their options.
     if (res.status === 403 || code === "NOT_ALLOWLISTED" || code === "PICKUP_DISABLED" || code === "FORBIDDEN_ROLE") {
       return {
@@ -735,7 +761,13 @@ export async function runPull(ctx, { claim_token, claim_url, entity_id }) {
         structured: { can_edit: false, owner_is_you: false, access: "view_only" },
       };
     }
-    const msg = data?.error?.message || data?.message || raw || `HTTP ${res.status}`;
+    let msg = data?.error?.message || data?.message || raw || `HTTP ${res.status}`;
+    // The API's "Set the X-CloudGrid-Grid header" error is unactionable for an
+    // MCP client (no client can set HTTP headers on a tool call). Rewrite it to
+    // name the tool parameter the caller CAN set (#247).
+    if (res.status === 400 && /X-CloudGrid-Grid/i.test(msg)) {
+      msg = "You belong to more than one grid. Pass the `grid` parameter to specify which grid to use.";
+    }
     throw new Error(`Pull failed (HTTP ${res.status}): ${msg}`);
   }
 
