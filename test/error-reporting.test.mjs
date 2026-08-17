@@ -134,6 +134,44 @@ try {
     check("key+value: clean field unchanged", combo.clean_field === "no secrets");
     check("key+value: value scrub in html field works",
       combo.html.includes("[REDACTED]") && !combo.html.includes("sk-proj-"));
+
+    // JWT token in a value is redacted.
+    const jwt = 'session=eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.sig';
+    const scrubbedJwt = scrubReportContext({ data: jwt });
+    check("value scrub: JWT token in value is redacted",
+      scrubbedJwt.data.includes("[REDACTED]") && !scrubbedJwt.data.includes("eyJhbGciOi"));
+
+    // PEM private key in a value is redacted.
+    const pem = 'key=-----BEGIN RSA PRIVATE KEY-----\nMIIBogIBAAJBAL...\n-----END RSA PRIVATE KEY-----';
+    const scrubbedPem = scrubReportContext({ config: pem });
+    check("value scrub: PEM private key in value is redacted",
+      scrubbedPem.config.includes("[REDACTED]") && !scrubbedPem.config.includes("BEGIN RSA PRIVATE KEY"));
+
+    // Basic-auth URL creds in a value are redacted.
+    const basicAuth = 'connecting to https://admin:s3cret@db.example.com/mydb';
+    const scrubbedAuth = scrubReportContext({ log: basicAuth });
+    check("value scrub: basic-auth URL creds in value are redacted",
+      scrubbedAuth.log.includes("[REDACTED]@") && !scrubbedAuth.log.includes("admin:s3cret"));
+
+    // Case-insensitive Bearer (lowercase) is redacted.
+    const bearerLower = 'header: bearer mySecretTokenValue1234';
+    const scrubbedBearerLower = scrubReportContext({ hdr: bearerLower });
+    check("value scrub: lowercase bearer token is redacted",
+      scrubbedBearerLower.hdr.includes("[REDACTED]") && !scrubbedBearerLower.hdr.includes("bearer mySecret"));
+  }
+
+  // ═══ 1c. runReport — failed_step containing a secret is scrubbed ═══════════
+  {
+    calls = [];
+    replies = [{ status: 201, body: { status: "recorded" } }];
+    const ctx = makeCtx({ token: "jwt", edition: "local" });
+    await runReport(ctx, {
+      message: "boom",
+      failed_step: "deploy with key sk-ant-ABCDEFGHIJKLMNOP0123",
+    });
+    const c = calls[0];
+    check("failed_step scrubs secret",
+      c.body.failed_step.includes("[REDACTED]") && !c.body.failed_step.includes("sk-ant-ABCDEFGH"));
   }
 
   // ═══ 2. runReport — authed happy path posts the CLI shape + attribution ════

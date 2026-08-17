@@ -197,16 +197,16 @@ recording whether the user agreed to share the conversation (`deploy.js:544`),
 and a `context` object the model supplies — which by its declared shape
 (`register.js:964-975`) can carry the failing inputs (for example the HTML or
 args) and the original request. The transcript itself is not sent by this tool.
-The report scrub is **key-name-only**: a value is redacted only when its *key*
-matches a secret-looking name (`password`, `token`, `api_key`, …), so a secret
-embedded in a value — for example an API key inside HTML sent under
-`context.inputs` — is not redacted, and the error summary (`message`) is not
-scrubbed at all. This same key-name filter is applied client-side
-(`deploy.js:439-448`); the platform's error endpoint applies a key-name filter
-too, not a value-based one, so neither layer catches a secret that sits in a
-value. To keep a secret out of a report, do not place it in the `message` or
-`context` you send, or set `CLOUDGRID_TELEMETRY=off` to disable reporting
-entirely.
+The report scrub is **two-layer**: values AND the `message` field are scanned
+for known secret shapes (API key prefixes such as `sk-ant-`, `sk-proj-`,
+`AKIA…`; JWTs; PEM private-key blocks; Bearer tokens; basic-auth URL
+credentials) and matches are replaced with `[REDACTED]`. Arbitrary or
+unknown-shape secrets that do not match a known pattern still transit
+unredacted. The client-side scrub (`scrubReportContext` + `scrubSecretValues`
+in deploy.js) runs before the POST; the server endpoint applies a server-side
+key-name filter on top. To keep a secret out of a report, do not place it in
+the `message` or `context` you send, or set `CLOUDGRID_TELEMETRY=off` to
+disable reporting entirely.
 
 **Version check.** At startup the local edition makes one request to
 `https://registry.npmjs.org/@cloudgrid-io/mcp/latest` to detect a stale `.mcpb`
