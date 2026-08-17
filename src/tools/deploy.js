@@ -480,13 +480,46 @@ const REPORT_SECRET_KEY_PATTERNS = [
   /access[_-]?key/i,
 ];
 
-// Light client-side scrub of obviously secret-looking values in the report
-// context. Redacts values under secret-looking KEYS; leaves everything else
-// intact (the server applies the same key-name filter, not a value-based one —
-// a secret embedded in a value transits unredacted). Bounded depth so a
-// pathological object can't loop.
+// Value-level secret patterns — adapted from SECRET_PATTERNS (the upload
+// blocker) plus a broad sk- catch-all and Bearer tokens. These run against
+// string VALUES (not key names), replacing matches with [REDACTED] so secrets
+// embedded in e.g. HTML source don't transit to the error store unredacted.
+const REPORT_SECRET_VALUE_PATTERNS = [
+  /sk-ant-[A-Za-z0-9_-]{20,}/g,
+  /sk-or-v1-[A-Za-z0-9]{16,}/g,
+  /sk-proj-[A-Za-z0-9_-]{16,}/g,
+  /\bsk-[A-Za-z0-9]{20,}/g,
+  /AIza[0-9A-Za-z_-]{30,}/g,
+  /ghp_[A-Za-z0-9]{30,}/g,
+  /github_pat_[A-Za-z0-9_]{30,}/g,
+  /AKIA[0-9A-Z]{16}/g,
+  /xox[baprs]-[A-Za-z0-9-]{10,}/g,
+  /\bsk_(?:live|test)_[0-9A-Za-z]{16,}\b/g,
+  /Bearer [A-Za-z0-9._-]{20,}/g,
+];
+
+// Replace known secret shapes inside a string value with [REDACTED].
+// Complementary to the key-name check in scrubReportContext — this catches
+// secrets that live inside values (e.g. an API key pasted into HTML source).
+function scrubSecretValues(str) {
+  if (typeof str !== "string") return str;
+  let out = str;
+  for (const re of REPORT_SECRET_VALUE_PATTERNS) {
+    out = out.replace(re, "[REDACTED]");
+  }
+  return out;
+}
+
+// Client-side scrub of the report context. Two layers:
+//   1. Key-name check: values under secret-looking KEYS are fully redacted.
+//   2. Value scan: string values anywhere in the tree are scanned for known
+//      secret shapes (API keys, Bearer tokens) and matches are replaced.
+// Bounded depth so a pathological object can't loop.
 export function scrubReportContext(obj, depth = 0) {
-  if (depth > 5 || obj === null || typeof obj !== "object") return obj;
+  if (depth > 5 || obj === null || typeof obj !== "object") {
+    // Leaf value — scrub known secret shapes from strings.
+    return typeof obj === "string" ? scrubSecretValues(obj) : obj;
+  }
   if (Array.isArray(obj)) return obj.map((item) => scrubReportContext(item, depth + 1));
   const out = {};
   for (const [key, value] of Object.entries(obj)) {
@@ -575,7 +608,7 @@ export async function runReport(
     // category: default "mcp" (or the failing tool name the agent passes).
     category: typeof category === "string" && category.trim() ? category.trim() : "mcp",
     app: "mcp",
-    message: summary.slice(0, 5000),
+    message: scrubSecretValues(summary.slice(0, 5000)),
     context: safeContext,
     // Diagnostic pivots (match the CLI) — only when the agent forwards them.
     ...(typeof trace_id === "string" && trace_id ? { trace_id } : {}),
