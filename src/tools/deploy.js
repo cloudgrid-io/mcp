@@ -480,13 +480,51 @@ const REPORT_SECRET_KEY_PATTERNS = [
   /access[_-]?key/i,
 ];
 
-// Light client-side scrub of obviously secret-looking values in the report
-// context. Redacts values under secret-looking KEYS; leaves everything else
-// intact (the server applies the same key-name filter, not a value-based one —
-// a secret embedded in a value transits unredacted). Bounded depth so a
-// pathological object can't loop.
+// Value-level secret patterns — must stay in sync with TEXT_SECRET_PATTERNS
+// in session-logger.js (which scrubs free text for session logs). The lists are
+// separate because this module operates on structured object values via
+// scrubReportContext, while session-logger operates on free text via scrubText.
+// Both scan string content for the same secret shapes; if you add a pattern to
+// one, add it to the other.
+const REPORT_SECRET_VALUE_PATTERNS = [
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
+  /eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{0,}/g,
+  /sk-ant-[A-Za-z0-9_-]{16,}/g,
+  /sk-or-v1-[A-Za-z0-9]{16,}/g,
+  /sk-proj-[A-Za-z0-9_-]{16,}/g,
+  /\bsk-[A-Za-z0-9]{20,}/g,
+  /AIza[0-9A-Za-z_-]{30,}/g,
+  /ghp_[A-Za-z0-9]{30,}/g,
+  /github_pat_[A-Za-z0-9_]{30,}/g,
+  /AKIA[0-9A-Z]{16}/g,
+  /xox[baprs]-[A-Za-z0-9-]{10,}/g,
+  /\bsk_(?:live|test)_[0-9A-Za-z]{16,}\b/g,
+  /\bBearer\s+[A-Za-z0-9._-]{8,}/gi,
+];
+
+// Replace known secret shapes inside a string value with [REDACTED].
+// Complementary to the key-name check in scrubReportContext — this catches
+// secrets that live inside values (e.g. an API key pasted into HTML source).
+function scrubSecretValues(str) {
+  if (typeof str !== "string") return str;
+  let out = str;
+  for (const re of REPORT_SECRET_VALUE_PATTERNS) {
+    out = out.replace(re, "[REDACTED]");
+  }
+  out = out.replace(/([a-zA-Z][a-zA-Z0-9+.\-]*:\/\/)[^\s:@/]+:[^\s:@/]+@/g, "$1[REDACTED]@");
+  return out;
+}
+
+// Client-side scrub of the report context. Two layers:
+//   1. Key-name check: values under secret-looking KEYS are fully redacted.
+//   2. Value scan: string values in the tree (up to depth 5) are scanned for known
+//      secret shapes (API keys, Bearer tokens) and matches are replaced.
+// Bounded depth so a pathological object can't loop.
 export function scrubReportContext(obj, depth = 0) {
-  if (depth > 5 || obj === null || typeof obj !== "object") return obj;
+  if (depth > 5 || obj === null || typeof obj !== "object") {
+    // Leaf value — scrub known secret shapes from strings.
+    return typeof obj === "string" ? scrubSecretValues(obj) : obj;
+  }
   if (Array.isArray(obj)) return obj.map((item) => scrubReportContext(item, depth + 1));
   const out = {};
   for (const [key, value] of Object.entries(obj)) {
@@ -575,11 +613,11 @@ export async function runReport(
     // category: default "mcp" (or the failing tool name the agent passes).
     category: typeof category === "string" && category.trim() ? category.trim() : "mcp",
     app: "mcp",
-    message: summary.slice(0, 5000),
+    message: scrubSecretValues(summary).slice(0, 5000),
     context: safeContext,
     // Diagnostic pivots (match the CLI) — only when the agent forwards them.
     ...(typeof trace_id === "string" && trace_id ? { trace_id } : {}),
-    ...(typeof failed_step === "string" && failed_step ? { failed_step } : {}),
+    ...(typeof failed_step === "string" && failed_step ? { failed_step: scrubSecretValues(failed_step) } : {}),
     ...(typeof http_status === "number" && Number.isFinite(http_status) ? { http_status } : {}),
     // Attribution, ALSO top-level (persisted once the handler accepts these keys;
     // context.origin is the fallback until then).

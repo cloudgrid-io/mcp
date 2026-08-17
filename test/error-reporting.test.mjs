@@ -77,6 +77,103 @@ try {
     check("scrub redacts secret inside arrays", scrubbed.list[0].secret === "[REDACTED]" && scrubbed.list[0].label === "y");
   }
 
+  // ═══ 1b. scrubReportContext — value-level secret scanning ════════════════
+  {
+    // An API key inside an HTML string value is redacted.
+    const html = '<div>Config: sk-proj-ABCDEFGHIJKLMNOPx123</div>';
+    const scrubbed = scrubReportContext({ page: html });
+    check("value scrub: OpenAI key in HTML is redacted",
+      scrubbed.page.includes("[REDACTED]") && !scrubbed.page.includes("sk-proj-ABCDEFGH"));
+
+    // Anthropic key in a value.
+    const anthropic = 'key=sk-ant-ABCDEFGHIJKLMNOPQRSTUVWX';
+    const scrubbed2 = scrubReportContext({ config: anthropic });
+    check("value scrub: Anthropic key in value is redacted",
+      scrubbed2.config.includes("[REDACTED]") && !scrubbed2.config.includes("sk-ant-ABCDEFGH"));
+
+    // Bearer token in a value.
+    const bearer = 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5.payload.signature';
+    const scrubbed3 = scrubReportContext({ header: bearer });
+    check("value scrub: Bearer token in value is redacted",
+      scrubbed3.header.includes("[REDACTED]") && !scrubbed3.header.includes("Bearer eyJ"));
+
+    // AWS access key in a value.
+    const aws = 'access_key=AKIAIOSFODNN7EXAMPLE';
+    const scrubbed4 = scrubReportContext({ env: aws });
+    check("value scrub: AWS key in value is redacted",
+      scrubbed4.env.includes("[REDACTED]") && !scrubbed4.env.includes("AKIAIOSFODNN7EXAMPLE"));
+
+    // GitHub token in a value.
+    const ghp = 'token=ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef';
+    const scrubbed5 = scrubReportContext({ log: ghp });
+    check("value scrub: GitHub token in value is redacted",
+      scrubbed5.log.includes("[REDACTED]") && !scrubbed5.log.includes("ghp_"));
+
+    // A clean HTML string is NOT redacted.
+    const clean = '<div class="app"><h1>Hello World</h1><p>No secrets here.</p></div>';
+    const scrubbed6 = scrubReportContext({ page: clean });
+    check("value scrub: clean HTML is NOT redacted", scrubbed6.page === clean);
+
+    // A clean string with short sk- prefix is NOT redacted (too short to match).
+    const shortSk = 'The key is sk-short';
+    const scrubbed7 = scrubReportContext({ note: shortSk });
+    check("value scrub: short sk- string is NOT redacted", scrubbed7.note === shortSk);
+
+    // Nested value scrubbing.
+    const nested = scrubReportContext({ outer: { inner: 'token=sk-ant-ABCDEFGHIJ0123456789XY' } });
+    check("value scrub: nested string values are scrubbed",
+      nested.outer.inner.includes("[REDACTED]") && !nested.outer.inner.includes("sk-ant-"));
+
+    // Existing key-name redaction still works alongside value scrubbing.
+    const combo = scrubReportContext({
+      api_key: "sk-live-abc123",
+      clean_field: "no secrets",
+      html: '<script>const key = "sk-proj-ABCDEF0123456789abcd";</script>',
+    });
+    check("key+value: key-name redaction still works (api_key)", combo.api_key === "[REDACTED]");
+    check("key+value: clean field unchanged", combo.clean_field === "no secrets");
+    check("key+value: value scrub in html field works",
+      combo.html.includes("[REDACTED]") && !combo.html.includes("sk-proj-"));
+
+    // JWT token in a value is redacted.
+    const jwt = 'session=eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.sig';
+    const scrubbedJwt = scrubReportContext({ data: jwt });
+    check("value scrub: JWT token in value is redacted",
+      scrubbedJwt.data.includes("[REDACTED]") && !scrubbedJwt.data.includes("eyJhbGciOi"));
+
+    // PEM private key in a value is redacted.
+    const pem = 'key=-----BEGIN RSA PRIVATE KEY-----\nMIIBogIBAAJBAL...\n-----END RSA PRIVATE KEY-----';
+    const scrubbedPem = scrubReportContext({ config: pem });
+    check("value scrub: PEM private key in value is redacted",
+      scrubbedPem.config.includes("[REDACTED]") && !scrubbedPem.config.includes("BEGIN RSA PRIVATE KEY"));
+
+    // Basic-auth URL creds in a value are redacted.
+    const basicAuth = 'connecting to https://admin:s3cret@db.example.com/mydb';
+    const scrubbedAuth = scrubReportContext({ log: basicAuth });
+    check("value scrub: basic-auth URL creds in value are redacted",
+      scrubbedAuth.log.includes("[REDACTED]@") && !scrubbedAuth.log.includes("admin:s3cret"));
+
+    // Case-insensitive Bearer (lowercase) is redacted.
+    const bearerLower = 'header: bearer mySecretTokenValue1234';
+    const scrubbedBearerLower = scrubReportContext({ hdr: bearerLower });
+    check("value scrub: lowercase bearer token is redacted",
+      scrubbedBearerLower.hdr.includes("[REDACTED]") && !scrubbedBearerLower.hdr.includes("bearer mySecret"));
+  }
+
+  // ═══ 1c. runReport — failed_step containing a secret is scrubbed ═══════════
+  {
+    calls = [];
+    replies = [{ status: 201, body: { status: "recorded" } }];
+    const ctx = makeCtx({ token: "jwt", edition: "local" });
+    await runReport(ctx, {
+      message: "boom",
+      failed_step: "deploy with key sk-ant-ABCDEFGHIJKLMNOP0123",
+    });
+    const c = calls[0];
+    check("failed_step scrubs secret",
+      c.body.failed_step.includes("[REDACTED]") && !c.body.failed_step.includes("sk-ant-ABCDEFGH"));
+  }
+
   // ═══ 2. runReport — authed happy path posts the CLI shape + attribution ════
   {
     calls = [];
@@ -267,6 +364,57 @@ try {
     replies = [{ status: 201, body: { status: "recorded" } }];
     await runReport({ ...ctx, getToken: async () => "jwt", getActiveGrid: async () => null }, { message: "boom" });
     check("captured client attributed in report", calls[0].body.context.origin.client === "cursor 0.42");
+  }
+
+  // ═══ 2i. runReport — message field is scrubbed ════════════════════════════
+  {
+    calls = [];
+    replies = [{ status: 201, body: { status: "recorded" } }];
+    const ctx = makeCtx({ token: "jwt", edition: "local" });
+    await runReport(ctx, {
+      message: 'Deploy failed with config: Bearer eyJhbGciOiJSUzI1NiJ9.abcdefghijklmnop.signature_here',
+    });
+    const c = calls[0];
+    check("message field scrubs Bearer token",
+      c.body.message.includes("[REDACTED]") && !c.body.message.includes("Bearer eyJ"));
+  }
+  {
+    calls = [];
+    replies = [{ status: 201, body: { status: "recorded" } }];
+    const ctx = makeCtx({ token: "jwt", edition: "local" });
+    await runReport(ctx, {
+      message: 'Error in page: <div>sk-proj-ABCDEF0123456789abcd</div>',
+    });
+    const c = calls[0];
+    check("message field scrubs API key",
+      c.body.message.includes("[REDACTED]") && !c.body.message.includes("sk-proj-"));
+  }
+  {
+    calls = [];
+    replies = [{ status: 201, body: { status: "recorded" } }];
+    const ctx = makeCtx({ token: "jwt", edition: "local" });
+    await runReport(ctx, {
+      message: 'Deploy failed: INTERNAL_ERROR at step build',
+    });
+    const c = calls[0];
+    check("message field does NOT scrub clean text",
+      c.body.message === "Deploy failed: INTERNAL_ERROR at step build");
+  }
+
+  // ═══ 2j. runReport — context values are scrubbed ══════════════════════════
+  {
+    calls = [];
+    replies = [{ status: 201, body: { status: "recorded" } }];
+    const ctx = makeCtx({ token: "jwt", edition: "local" });
+    await runReport(ctx, {
+      message: "boom",
+      context: {
+        inputs: '<html><script>fetch("https://api.example.com", {headers: {"Authorization": "Bearer eyJhbGciOiJSUzI1NiJ9.abcdefghijklmnop.sig"}})</script></html>',
+      },
+    });
+    const c = calls[0];
+    check("context value scrubs secrets via runReport wire",
+      c.body.context.inputs.includes("[REDACTED]") && !c.body.context.inputs.includes("Bearer eyJ"));
   }
 
   // ═══ 3. errorGuidance report offer — GENUINE bugs get it ═══════════════════
