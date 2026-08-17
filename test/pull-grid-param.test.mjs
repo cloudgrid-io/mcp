@@ -259,6 +259,52 @@ const restoreFetch = () => { globalThis.fetch = realFetch; };
   );
 }
 
+// ── 8b. Dual-accept: NO_ACTIVE_GRID (the org→grid rename) routes identically ──
+// The API already emits NO_ACTIVE_GRID alongside NO_ACTIVE_ORG (#2673). Without
+// dual-accept the first-time-user "no grid" path silently darks on the new name.
+{
+  installFetch([
+    { status: 403, body: {
+      error: { code: "NO_ACTIVE_GRID", message: "This account has no active grid." },
+    } },
+  ]);
+  const out = await expectOk(
+    "no-active-grid",
+    runPull(makeCtx({ activeGrid: null }), { entity_id: "ent-nogrid" }),
+  );
+  restoreFetch();
+
+  check("no-active-grid: returns result (not throw)", out.text != null);
+  check("no-active-grid: mentions grid_create_grid", /grid_create_grid/i.test(out.text));
+  check("no-active-grid: sets needs_grid_create", out.structured?.needs_grid_create === true);
+}
+
+// ── 8c. Dual-accept: GRID_NOT_ACCESSIBLE routes like ORG_NOT_ACCESSIBLE ───────
+{
+  installFetch([
+    { status: 403, body: {
+      error: {
+        code: "GRID_NOT_ACCESSIBLE",
+        message: "Grid 'teem-grid' is not accessible to this account.",
+        details: [{ hint: "Available: team-grid, personal" }],
+      },
+    } },
+  ]);
+  const out = await expectOk(
+    "grid-not-accessible",
+    runPull(makeCtx({ activeGrid: null }), { entity_id: "ent-typo2", grid: "teem-grid" }),
+  );
+  restoreFetch();
+
+  check("grid-not-accessible: surfaces the server message", /teem-grid.*not accessible/i.test(out.text));
+  check("grid-not-accessible: surfaces the Available hint", /Available:.*team-grid/i.test(out.text));
+  check("grid-not-accessible: does NOT mention grid_collab", !/grid_collab/i.test(out.text));
+  check(
+    "grid-not-accessible: structured code echoes GRID_NOT_ACCESSIBLE",
+    out.structured?.error?.code === "GRID_NOT_ACCESSIBLE",
+  );
+}
+
 // ── 9. Tool surface exposes the `grid` parameter ──────────────────────────
 {
   const transport = new StdioClientTransport({ command: "node", args: ["src/index.js"] });

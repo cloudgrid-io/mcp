@@ -43,6 +43,22 @@ function isProvisioningCode(code) {
   return PROVISIONING_CODES.has(code);
 }
 
+// Same org->grid rename, same dual-accept safety (cloudgrid-io/cloudgrid#2673).
+// These two codes gate the first-time-user "no grid" path and the wrong-grid
+// path — if the MCP recognizes only the old ORG_* spelling, the API renaming it
+// silently darks those paths (the account-has-no-grid guidance and the typo
+// hint stop firing). NO_ACTIVE_GRID is ALREADY emitted by the API alongside
+// NO_ACTIVE_ORG; GRID_NOT_ACCESSIBLE is the anticipated rename of
+// ORG_NOT_ACCESSIBLE. Accept both spellings so the API rename can land anytime.
+const NO_ACTIVE_GRID_CODES = new Set(["NO_ACTIVE_GRID", "NO_ACTIVE_ORG"]);
+function isNoActiveGridCode(code) {
+  return NO_ACTIVE_GRID_CODES.has(code);
+}
+const GRID_NOT_ACCESSIBLE_CODES = new Set(["GRID_NOT_ACCESSIBLE", "ORG_NOT_ACCESSIBLE"]);
+function isGridNotAccessibleCode(code) {
+  return GRID_NOT_ACCESSIBLE_CODES.has(code);
+}
+
 
 // ── Org listing (bearer-authed, web edition) ──────────────────────────────────
 // Fetches the signed-in user's orgs via GET /api/v2/orgs. The JWT does not
@@ -788,22 +804,23 @@ export async function runPull(ctx, { claim_token, claim_url, entity_id, grid } =
       };
     }
     const code = data?.error?.code || null;
-    // ORG_NOT_ACCESSIBLE: the `grid` param has a typo or the user isn't a
-    // member of that grid. The server message already contains an "Available:"
-    // hint listing valid grid slugs — surface it so the agent can self-correct.
-    if (code === "ORG_NOT_ACCESSIBLE") {
+    // ORG_NOT_ACCESSIBLE / GRID_NOT_ACCESSIBLE: the `grid` param has a typo or
+    // the user isn't a member of that grid. The server message already contains
+    // an "Available:" hint listing valid grid slugs — surface it so the agent
+    // can self-correct.
+    if (isGridNotAccessibleCode(code)) {
       const serverMsg = data?.error?.message || "The specified grid is not accessible.";
       const hint = data?.error?.details?.[0]?.hint || "";
       return {
         text:
           `${serverMsg}${hint ? ` ${hint}` : ""} ` +
           `Check the grid slug for typos and retry grid_pull with the correct \`grid\` parameter.`,
-        structured: { error: { code: "ORG_NOT_ACCESSIBLE" } },
+        structured: { error: { code } },
       };
     }
-    // NO_ACTIVE_ORG: the account has no grid at all — route to in-flow grid
-    // creation instead of the misleading "no push access" advice.
-    if (code === "NO_ACTIVE_ORG") {
+    // NO_ACTIVE_ORG / NO_ACTIVE_GRID: the account has no grid at all — route to
+    // in-flow grid creation instead of the misleading "no push access" advice.
+    if (isNoActiveGridCode(code)) {
       return {
         text:
           "The account has no grid yet. Do not send the user to the console — create one from here: " +
@@ -1384,10 +1401,10 @@ export function errorGuidance({ status, code, edition, isEdit, isAnon, signedIn 
       : "Your sign-in is missing or expired. Run grid_login, then retry the same grid_plug. Do not offer anonymous publishing as a fix for a failed sign-in; anonymous is only for a user who explicitly asks to publish without attribution.";
   }
   if (status === 403) {
-    // NO_ACTIVE_ORG is not a role problem — the account has no grid at all.
-    // The generic pull/pickup hint here sent a first-time user in circles
-    // (field bug 2026-07-27); route them to in-flow grid creation instead.
-    if (code === "NO_ACTIVE_ORG") {
+    // NO_ACTIVE_ORG / NO_ACTIVE_GRID is not a role problem — the account has no
+    // grid at all. The generic pull/pickup hint here sent a first-time user in
+    // circles (field bug 2026-07-27); route them to in-flow grid creation instead.
+    if (isNoActiveGridCode(code)) {
       return "The account has no grid yet. Do not send the user to the console — create one from here: suggest a short slug, confirm it with the user, call grid_create_grid, then re-call grid_plug with grid: <slug>.";
     }
     return "You lack the role to plug this target. To get push access to the SAME entity, use `grid_collab` — it grants permission only and fetches nothing, so run `grid_pull` again once it is granted (if the owner gates access, it becomes a request they approve). To make your own separate copy (a fork), use `grid_pickup`.";
