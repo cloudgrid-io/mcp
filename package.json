@@ -63,7 +63,8 @@
     "test:collab": "node test/collab.test.mjs",
     "test:url-shape": "node test/url-shape-guard.test.mjs",
     "test:pull-grid": "node test/pull-grid-param.test.mjs",
-    "test:pull-output-schema": "node test/pull-output-schema.test.mjs"
+    "test:pull-output-schema": "node test/pull-output-schema.test.mjs",
+    "test:web-identity": "node --test test/web-identity.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
