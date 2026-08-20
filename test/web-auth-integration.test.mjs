@@ -41,13 +41,17 @@ const rotatedD = jwt({
 
 let mock;
 let child;
+let childClosed;
 let baseUrl;
-let childStderr = "";
 let actualStatusCalls = 0;
 let client;
 let transport;
 let requestHeaders;
 let rawGetController;
+
+const CHILD_START_ATTEMPTS = 5;
+const CHILD_STOP_TIMEOUT_MS = 1_000;
+const CHILD_KILL_TIMEOUT_MS = 2_000;
 
 async function listen(server, port = 0) {
   await new Promise((resolve, reject) => {
@@ -69,10 +73,10 @@ async function reservePort() {
   return port;
 }
 
-async function waitForHealth() {
+async function waitForHealth(proc, getStderr) {
   for (let attempt = 0; attempt < 80; attempt++) {
-    if (child.exitCode !== null) {
-      throw new Error(`web child exited before becoming healthy (${child.exitCode}):\n${childStderr}`);
+    if (proc.exitCode !== null || proc.signalCode !== null) {
+      throw new Error(`web child exited before becoming healthy (${proc.exitCode}):\n${getStderr()}`);
     }
     try {
       const response = await fetch(`${baseUrl}/healthz`);
@@ -82,14 +86,87 @@ async function waitForHealth() {
     }
     await sleep(50);
   }
-  throw new Error(`web child did not become healthy:\n${childStderr}`);
+  throw new Error(`web child did not become healthy:\n${getStderr()}`);
+}
+
+async function waitForClose(timeoutMs) {
+  if (!childClosed) return true;
+  let timer;
+  try {
+    return await Promise.race([
+      childClosed.then(() => true),
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve(false), timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function stopChild() {
-  if (!child || child.exitCode !== null) return;
-  const exited = new Promise((resolve) => child.once("exit", resolve));
+  if (!child) return;
+  if (child.exitCode !== null || child.signalCode !== null) {
+    if (!await waitForClose(CHILD_KILL_TIMEOUT_MS)) {
+      throw new Error("web child stdio did not close after exit");
+    }
+    return;
+  }
+
   child.kill("SIGTERM");
-  await exited;
+  if (await waitForClose(CHILD_STOP_TIMEOUT_MS)) return;
+
+  if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+  if (!await waitForClose(CHILD_KILL_TIMEOUT_MS)) {
+    throw new Error("web child did not close after SIGKILL");
+  }
+}
+
+function childEnv({ mcpPort, mockPort }) {
+  const loopback = `http://127.0.0.1:${mockPort}`;
+  return {
+    PORT: String(mcpPort),
+    MCP_PUBLIC_URL: `http://127.0.0.1:${mcpPort}`,
+    MCP_REQUIRE_AUTH: "0",
+    CLOUDGRID_API_URL: loopback,
+    CLOUDGRID_PUBLIC_API_URL: loopback,
+    CLOUDGRID_QA_SLACK_WEBHOOK: "",
+    MCP_TRUSTED_SERVER_SECRET: "",
+    HTTPS_PROXY: "",
+    HTTP_PROXY: "",
+    ALL_PROXY: "",
+    https_proxy: "",
+    http_proxy: "",
+    all_proxy: "",
+    NO_PROXY: "localhost,127.0.0.1",
+    no_proxy: "localhost,127.0.0.1",
+  };
+}
+
+async function startChild(mockPort) {
+  for (let attempt = 1; attempt <= CHILD_START_ATTEMPTS; attempt++) {
+    const mcpPort = await reservePort();
+    baseUrl = `http://127.0.0.1:${mcpPort}`;
+    let attemptStderr = "";
+    child = spawn(process.execPath, ["src/web.js"], {
+      env: childEnv({ mcpPort, mockPort }),
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    childClosed = new Promise((resolve) => child.once("close", resolve));
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => {
+      attemptStderr += chunk;
+    });
+
+    try {
+      await waitForHealth(child, () => attemptStderr);
+      return;
+    } catch (err) {
+      await stopChild();
+      if (attempt < CHILD_START_ATTEMPTS && /EADDRINUSE/.test(attemptStderr)) continue;
+      throw err;
+    }
+  }
 }
 
 function structured(result) {
@@ -149,24 +226,17 @@ before(async () => {
     res.statusCode = 404;
     res.end();
   });
-  const mockPort = await listen(mock);
-  const mcpPort = await reservePort();
-  baseUrl = `http://127.0.0.1:${mcpPort}`;
-  child = spawn(process.execPath, ["src/web.js"], {
-    env: {
-      ...process.env,
-      PORT: String(mcpPort),
-      MCP_PUBLIC_URL: baseUrl,
-      CLOUDGRID_API_URL: `http://127.0.0.1:${mockPort}`,
-      CLOUDGRID_PUBLIC_API_URL: `http://127.0.0.1:${mockPort}`,
-    },
-    stdio: ["ignore", "ignore", "pipe"],
-  });
-  child.stderr.setEncoding("utf8");
-  child.stderr.on("data", (chunk) => {
-    childStderr += chunk;
-  });
-  await waitForHealth();
+  try {
+    const mockPort = await listen(mock);
+    await startChild(mockPort);
+  } catch (err) {
+    try {
+      await stopChild();
+    } finally {
+      await closeServer(mock);
+    }
+    throw err;
+  }
 });
 
 beforeEach(() => {
@@ -186,8 +256,11 @@ afterEach(async () => {
 });
 
 after(async () => {
-  await stopChild();
-  await closeServer(mock);
+  try {
+    await stopChild();
+  } finally {
+    await closeServer(mock);
+  }
 });
 
 test("explicit in-tool login survives later POST and GET transport Bearer rotation", async () => {
