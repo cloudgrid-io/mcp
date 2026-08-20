@@ -23,12 +23,13 @@ import express from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
-import { registerTools, decodeJwt } from "./tools.js";
+import { registerTools } from "./tools.js";
 import { mountOAuth, bearerChallenge } from "./oauth.js";
 import { mountLanding } from "./landing.js";
 import { createSessionLogger } from "./session-logger.js";
 import { createSink } from "./log-sink.js";
 import { INSTRUCTIONS_WEB } from "./playbook.js";
+import { createWebIdentity } from "./web-identity.js";
 
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url)));
 
@@ -47,45 +48,24 @@ const REQUIRE_AUTH = process.env.MCP_REQUIRE_AUTH === "1";
 // server-side, so it is safe to leave unset.
 const TRUSTED_SERVER_SECRET = process.env.MCP_TRUSTED_SERVER_SECRET || null;
 
-// Transport-level identity per MCP session: a Bearer presented on /mcp requests
-// becomes the session's CloudGrid identity (takes precedence over in-tool login).
-const sessionAuth = Object.create(null); // sid -> jwt
-
 function bearerOf(req) {
   const h = req.headers.authorization;
   return h && /^Bearer\s+\S+/i.test(h) ? h.replace(/^Bearer\s+/i, "") : null;
 }
 
-function isTokenExpired(jwt) {
-  if (!jwt) return false;
-  const claims = decodeJwt(jwt);
-  return Boolean(claims.exp && claims.exp * 1000 <= Date.now());
-}
-
 // A web session: identity lives in memory for the session's lifetime only. The
 // session id doubles as the stable, opaque end-user id for the trusted-server cap.
-function makeWebContext(sessionId) {
-  let sessionToken = null;
+function makeWebContext(sessionId, initialTransportToken = null) {
+  const identity = createWebIdentity({ initialTransportToken });
   return {
     edition: "web",
     state: { pendingLoginCode: null, lastAnonClaim: null, lastDrop: null, anonCookie: null },
     canOpenBrowser: false,
-    getToken: async () => {
-      const jwt = sessionAuth[sessionId] ?? sessionToken;
-      if (jwt && isTokenExpired(jwt)) return null;
-      return jwt;
-    },
-    getCredentialsStatus: async () => {
-      const jwt = sessionAuth[sessionId] ?? sessionToken;
-      if (!jwt) return { creds: null, expired: false };
-      if (isTokenExpired(jwt)) return { creds: null, expired: true };
-      return { creds: { jwt }, expired: false };
-    },
+    identity,
+    getToken: identity.getToken,
+    getCredentialsStatus: identity.getCredentialsStatus,
     getActiveGrid: async () => null,
-    saveToken: async (jwt) => {
-      sessionToken = jwt;
-      return decodeJwt(jwt);
-    },
+    saveToken: identity.saveToken,
     savedLocationNote: () => "You are signed in for this session.",
     trustedServer: TRUSTED_SERVER_SECRET
       ? { secret: TRUSTED_SERVER_SECRET, endUserId: sessionId }
@@ -109,6 +89,18 @@ mountOAuth(app, PUBLIC_BASE, { requireAuth: REQUIRE_AUTH });
 const transports = Object.create(null);
 const sessionContexts = Object.create(null);
 
+function captureRequestIdentity(sessionId, jwt) {
+  if (!jwt) return;
+  const ctx = sessionContexts[sessionId];
+  if (!ctx) return;
+  const { identityChanged } = ctx.identity.captureTransportToken(jwt);
+  if (identityChanged) {
+    ctx.state.identityChanged = true;
+    ctx.state.pendingLoginCode = null;
+    ctx.state.authChoiceOffered = false;
+  }
+}
+
 app.post("/mcp", async (req, res) => {
   const sessionId = req.headers["mcp-session-id"];
   let transport = sessionId ? transports[sessionId] : undefined;
@@ -125,22 +117,7 @@ app.post("/mcp", async (req, res) => {
   }
 
   if (transport) {
-    if (jwt) {
-      const prev = sessionAuth[sessionId];
-      if (prev) {
-        const prevSub = decodeJwt(prev).sub;
-        const newSub = decodeJwt(jwt).sub;
-        if (prevSub && newSub && prevSub !== newSub) {
-          const ctxForSession = sessionContexts[sessionId];
-          if (ctxForSession) {
-            ctxForSession.state.identityChanged = true;
-            ctxForSession.state.pendingLoginCode = null;
-            ctxForSession.state.authChoiceOffered = false;
-          }
-        }
-      }
-      sessionAuth[sessionId] = jwt;
-    }
+    captureRequestIdentity(sessionId, jwt);
     await transport.handleRequest(req, res, req.body);
     return;
   }
@@ -158,7 +135,6 @@ app.post("/mcp", async (req, res) => {
   // id up front so it is also the trusted-server end-user id. (Distinct name from
   // the incoming `sessionId` header above.)
   const newSessionId = randomUUID();
-  if (jwt) sessionAuth[newSessionId] = jwt;
   transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: () => newSessionId,
     onsessioninitialized: (sid) => {
@@ -171,12 +147,11 @@ app.post("/mcp", async (req, res) => {
     try { webCtx.logger?.flush("abandoned").catch(() => {}); } catch { /* never */ }
     if (transport.sessionId) {
       delete transports[transport.sessionId];
-      delete sessionAuth[transport.sessionId];
       delete sessionContexts[transport.sessionId];
     }
   };
   const server = new McpServer({ name: "cloudgrid-mcp-web", version }, { instructions: INSTRUCTIONS_WEB });
-  const webCtx = makeWebContext(newSessionId);
+  const webCtx = makeWebContext(newSessionId, jwt);
   sessionContexts[newSessionId] = webCtx;
   // QA session log for this MCP session (dark by default). Keyed by the session
   // id — the host connection boundary. No seed user_request here: current hosts
@@ -214,22 +189,7 @@ async function handleSessionRequest(req, res) {
     return;
   }
   const jwt = bearerOf(req);
-  if (jwt) {
-    const prev = sessionAuth[sessionId];
-    if (prev) {
-      const prevSub = decodeJwt(prev).sub;
-      const newSub = decodeJwt(jwt).sub;
-      if (prevSub && newSub && prevSub !== newSub) {
-        const ctxForSession = sessionContexts[sessionId];
-        if (ctxForSession) {
-          ctxForSession.state.identityChanged = true;
-          ctxForSession.state.pendingLoginCode = null;
-          ctxForSession.state.authChoiceOffered = false;
-        }
-      }
-    }
-    sessionAuth[sessionId] = jwt;
-  }
+  captureRequestIdentity(sessionId, jwt);
   await transport.handleRequest(req, res);
 }
 
