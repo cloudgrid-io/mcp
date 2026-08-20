@@ -20,13 +20,19 @@ const freshExplicit = jwt({
   email: "chosen-user@example.com",
   exp: NOW / 1000 + 3600,
 });
-const rotatedTransport = jwt({
+const refreshedTransport = jwt({
+  sub: "old-user",
+  email: "old-user@example.com",
+  exp: NOW / 1000 + 3600,
+  jti: "refreshed",
+});
+const differentTransport = jwt({
   sub: "other-user",
   email: "other-user@example.com",
   exp: NOW / 1000 + 3600,
 });
 
-test("explicit login overrides an expired and later rotating transport token", async () => {
+test("explicit login survives a same-subject transport refresh", async () => {
   const identity = createWebIdentity({
     initialTransportToken: expiredTransport,
     now: () => NOW,
@@ -38,7 +44,7 @@ test("explicit login overrides an expired and later rotating transport token", a
   const saved = await identity.saveToken(freshExplicit);
   assert.equal(saved.email, "chosen-user@example.com");
 
-  const captured = identity.captureTransportToken(rotatedTransport);
+  const captured = identity.captureTransportToken(refreshedTransport);
   assert.equal(captured.identityChanged, false);
   assert.equal(await identity.getToken(), freshExplicit);
   assert.deepEqual(await identity.getCredentialsStatus(), {
@@ -49,7 +55,7 @@ test("explicit login overrides an expired and later rotating transport token", a
 
 test("expired explicit login does not silently fall back to transport identity", async () => {
   const identity = createWebIdentity({
-    initialTransportToken: rotatedTransport,
+    initialTransportToken: differentTransport,
     now: () => NOW,
   });
   const expiredExplicit = jwt({
@@ -64,6 +70,23 @@ test("expired explicit login does not silently fall back to transport identity",
   assert.deepEqual(await identity.getCredentialsStatus(), { creds: null, expired: true });
 });
 
+test("a different transport subject clears the explicit login", async () => {
+  const identity = createWebIdentity({
+    initialTransportToken: refreshedTransport,
+    now: () => NOW,
+  });
+  await identity.saveToken(freshExplicit);
+
+  const captured = identity.captureTransportToken(differentTransport);
+
+  assert.equal(captured.identityChanged, true);
+  assert.equal(await identity.getToken(), differentTransport);
+  assert.deepEqual(await identity.getCredentialsStatus(), {
+    creds: { jwt: differentTransport },
+    expired: false,
+  });
+});
+
 test("transport identity changes are reported before explicit login", async () => {
   const firstTransport = jwt({
     sub: "first-user",
@@ -75,8 +98,8 @@ test("transport identity changes are reported before explicit login", async () =
     now: () => NOW,
   });
 
-  const captured = identity.captureTransportToken(rotatedTransport);
+  const captured = identity.captureTransportToken(differentTransport);
 
   assert.equal(captured.identityChanged, true);
-  assert.equal(await identity.getToken(), rotatedTransport);
+  assert.equal(await identity.getToken(), differentTransport);
 });

@@ -13,6 +13,9 @@ export function createWebIdentity({
   let explicitToken = null;
   let hasExplicitLogin = false;
 
+  // An explicit login wins over transport-token refreshes for the same subject.
+  // A genuine transport subject change ends that override so credentials from
+  // the previous person cannot persist on a connection now owned by another.
   function effectiveToken() {
     return hasExplicitLogin ? explicitToken : transportToken;
   }
@@ -21,11 +24,13 @@ export function createWebIdentity({
     captureTransportToken(jwt) {
       const previousSub = decodeJwt(transportToken).sub;
       const nextSub = decodeJwt(jwt).sub;
+      const identityChanged = Boolean(previousSub && nextSub && previousSub !== nextSub);
       transportToken = jwt;
-      return {
-        identityChanged:
-          !hasExplicitLogin && Boolean(previousSub && nextSub && previousSub !== nextSub),
-      };
+      if (identityChanged && hasExplicitLogin) {
+        explicitToken = null;
+        hasExplicitLogin = false;
+      }
+      return { identityChanged };
     },
 
     async getToken() {

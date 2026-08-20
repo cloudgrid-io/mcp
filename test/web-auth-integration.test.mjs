@@ -28,14 +28,21 @@ const explicitB = jwt({
   email: "chosen@example.com",
   exp: nowSeconds + 3600,
 });
-const rotatedC = jwt({
+const refreshedTransportC = jwt({
+  sub: "first-user",
+  email: "first@example.com",
+  exp: nowSeconds + 3600,
+  jti: "refresh-c",
+});
+const refreshedTransportD = jwt({
+  sub: "first-user",
+  email: "first@example.com",
+  exp: nowSeconds + 3600,
+  jti: "refresh-d",
+});
+const differentTransportC = jwt({
   sub: "rotated-user-c",
   email: "rotated-c@example.com",
-  exp: nowSeconds + 3600,
-});
-const rotatedD = jwt({
-  sub: "rotated-user-d",
-  email: "rotated-d@example.com",
   exp: nowSeconds + 3600,
 });
 
@@ -207,7 +214,7 @@ async function issueSessionGet(bearer) {
 
 before(async () => {
   mock = createServer((req, res) => {
-    const url = new URL(req.url, "http://mock.local");
+    const url = new URL(req.url, "http://mock.invalid");
     if (url.pathname === "/auth/status") {
       res.setHeader("Content-Type", "application/json");
       if (url.searchParams.get("code") === "connectivity-probe") {
@@ -240,6 +247,7 @@ before(async () => {
 });
 
 beforeEach(() => {
+  actualStatusCalls = 0;
   client = null;
   transport = null;
   requestHeaders = null;
@@ -263,21 +271,21 @@ after(async () => {
   }
 });
 
-test("explicit in-tool login survives later POST and GET transport Bearer rotation", async () => {
+test("explicit in-tool login survives later same-subject POST and GET transport refreshes", async () => {
   await connectSession(expiredTransportA);
 
   await client.callTool({ name: "grid_login", arguments: {} });
   const authenticated = structured(await client.callTool({ name: "grid_login_status", arguments: {} }));
   assert.deepEqual(authenticated, { status: "authenticated", email: "chosen@example.com" });
 
-  requestHeaders.set("Authorization", `Bearer ${rotatedC}`);
+  requestHeaders.set("Authorization", `Bearer ${refreshedTransportC}`);
   const start = structured(await client.callTool({ name: "grid_start", arguments: {} }));
   assert.equal(start.context.signed_in, true);
   assert.equal(start.context.email, "chosen@example.com");
   assert.equal(start.context.identity_changed, undefined);
 
   await client.callTool({ name: "grid_login", arguments: {} });
-  await issueSessionGet(rotatedD);
+  await issueSessionGet(refreshedTransportD);
 
   const pending = structured(await client.callTool({ name: "grid_login_status", arguments: {} }));
   assert.equal(pending.status, "pending");
@@ -286,11 +294,26 @@ test("explicit in-tool login survives later POST and GET transport Bearer rotati
 test("GET transport identity capture still resets state before explicit login", async () => {
   await connectSession(freshTransportA);
 
-  await issueSessionGet(rotatedC);
+  await issueSessionGet(differentTransportC);
   requestHeaders.set("Authorization", `Bearer ${freshTransportA}`);
 
   const start = structured(await client.callTool({ name: "grid_start", arguments: {} }));
   assert.equal(start.context.signed_in, true);
   assert.equal(start.context.email, "first@example.com");
+  assert.equal(start.context.identity_changed, true);
+});
+
+test("a different transport subject clears an explicit login", async () => {
+  await connectSession(expiredTransportA);
+
+  await client.callTool({ name: "grid_login", arguments: {} });
+  const authenticated = structured(await client.callTool({ name: "grid_login_status", arguments: {} }));
+  assert.deepEqual(authenticated, { status: "authenticated", email: "chosen@example.com" });
+
+  requestHeaders.set("Authorization", `Bearer ${differentTransportC}`);
+  const start = structured(await client.callTool({ name: "grid_start", arguments: {} }));
+
+  assert.equal(start.context.signed_in, true);
+  assert.equal(start.context.email, "rotated-c@example.com");
   assert.equal(start.context.identity_changed, true);
 });
