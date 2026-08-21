@@ -29,7 +29,7 @@ function check(label, cond) {
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url) => {
   const u = String(url);
-  if (u.endsWith("/api/v2/orgs")) {
+  if ((u.endsWith("/api/v2/grids") || u.endsWith("/api/v2/orgs"))) {
     return new Response(JSON.stringify({
       grids: [
         { slug: "grid-a", name: "Grid A", role: "owner", render_ready: true },

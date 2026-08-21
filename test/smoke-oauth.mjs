@@ -41,7 +41,7 @@ const mock = createServer((req, res) => {
     res.end(JSON.stringify(statusCalls < 2 ? { status: "pending" } : { status: "authenticated", jwt: FAKE_JWT }));
     return;
   }
-  if (req.url.startsWith("/api/v2/orgs")) {
+  if ((req.url.startsWith("/api/v2/grids") || req.url.startsWith("/api/v2/orgs"))) {
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify({ grids: [{ slug: "e2e-bot", name: "e2e-bot", role: "owner", render_ready: true }] }));
     return;

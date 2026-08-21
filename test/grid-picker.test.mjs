@@ -55,14 +55,14 @@ function handlersFor(ctxOpts) {
 }
 
 // ── fetch mock ──────────────────────────────────────────────────────────────
-// Serves GET /api/v2/orgs (the grid list) and POST /api/v2/plug (publish).
+// Serves GET /api/v2/grids (the grid list; /orgs accepted too during the transition) and POST /api/v2/plug (publish).
 const calls = [];
 let orgsReply = { orgs: [] };
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url, opts = {}) => {
   const u = String(url);
   calls.push({ url: u, method: opts.method || "GET" });
-  if (u.includes("/api/v2/orgs")) {
+  if ((u.includes("/api/v2/grids") || u.includes("/api/v2/orgs"))) {
     return new Response(JSON.stringify(orgsReply), {
       status: 200,
       headers: { "content-type": "application/json" },
@@ -123,7 +123,7 @@ try {
     check("plug EDIT (target_entity_id) did NOT ask", !res.structuredContent?.needs_grid);
     check("plug EDIT (target_entity_id) proceeded to publish", plugCalled());
     // The orgs endpoint must not even be consulted for an edit.
-    check("plug EDIT did not fetch the grid list", !calls.some((c) => c.url.includes("/api/v2/orgs")));
+    check("plug EDIT did not fetch the grid list", !calls.some((c) => c.url.includes("/api/v2/grids") || c.url.includes("/api/v2/orgs")));
   }
 
   // ── Case 4a: plug + single grid → proceeds (no ask) ─────────────────────────
@@ -145,7 +145,7 @@ try {
     h.__ctx.state.authChoiceOffered = true;
     const res = await h.grid_plug({ artifact_files: artifact, anon: true });
     check("plug anon → published, no ask", plugCalled() && !res.structuredContent?.needs_grid);
-    check("plug anon did not fetch the grid list", !calls.some((c) => c.url.includes("/api/v2/orgs")));
+    check("plug anon did not fetch the grid list", !calls.some((c) => c.url.includes("/api/v2/grids") || c.url.includes("/api/v2/orgs")));
   }
 
   // ── Case 4c: plug + single grid NOT ready → proceeds with a warning ─────────

@@ -60,13 +60,19 @@ function isGridNotAccessibleCode(code) {
 }
 
 
-// ── Org listing (bearer-authed, web edition) ──────────────────────────────────
-// Fetches the signed-in user's orgs via GET /api/v2/orgs. The JWT does not
-// carry orgs (claims: sub, email, name, iat, exp), so the API is the canonical
+// ── Grid listing (bearer-authed, web edition) ─────────────────────────────────
+// Fetches the signed-in user's grids via GET /api/v2/grids. The JWT does not
+// carry them (claims: sub, email, name, iat, exp), so the API is the canonical
 // source. Returns [{slug, name, role, render_ready}].
+//
+// cloudgrid-io/cloudgrid#2550 — this used to call `/api/v2/orgs`. That mount is
+// being retired, and unlike a renamed FIELD a retired URL cannot be papered over
+// by any client-side compatibility shim: the request simply 404s. Both mounts
+// answer identically today, so moving now is a no-op that stops this tool
+// breaking when `/orgs` goes.
 export async function fetchUserOrgs(token) {
   try {
-    const res = await fetch(`${API_BASE}/api/v2/orgs`, {
+    const res = await fetch(`${API_BASE}/api/v2/grids`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return [];

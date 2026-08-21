@@ -101,7 +101,7 @@ function makeJwt(claims) {
   let plugCalls = 0;
   globalThis.fetch = async (url) => {
     const u = String(url);
-    if (u.endsWith("/api/v2/orgs")) {
+    if ((u.endsWith("/api/v2/grids") || u.endsWith("/api/v2/orgs"))) {
       return new Response(JSON.stringify({ grids: [{ slug: "my-grid", name: "My Grid", role: "owner", render_ready: true }] }), {
         status: 200, headers: { "content-type": "application/json" },
       });
