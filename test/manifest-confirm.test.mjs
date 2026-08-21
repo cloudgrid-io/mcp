@@ -73,7 +73,7 @@ const calls = [];
 globalThis.fetch = async (url, opts = {}) => {
   const u = String(url);
   calls.push({ url: u, method: opts.method || "GET" });
-  if (u.includes("/api/v2/orgs")) {
+  if ((u.includes("/api/v2/grids") || u.includes("/api/v2/orgs"))) {
     return new Response(JSON.stringify(orgsReply), { status: 200, headers: { "content-type": "application/json" } });
   }
   if (u.includes("/api/v2/plug")) {

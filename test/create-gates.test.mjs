@@ -47,7 +47,7 @@ const realFetch = globalThis.fetch;
 globalThis.__PLUG_CALLS__ = 0;
 globalThis.fetch = async (url) => {
   const u = String(url);
-  if (u.endsWith("/api/v2/orgs")) {
+  if ((u.endsWith("/api/v2/grids") || u.endsWith("/api/v2/orgs"))) {
     return new Response(JSON.stringify({ grids: globalThis.__GRIDS__ ?? [] }), {
       status: 200, headers: { "content-type": "application/json" },
     });
