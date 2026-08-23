@@ -128,6 +128,19 @@ jobs:
       # the icon. Regression half: /healthz, the POST /mcp 401 challenge, OAuth
       # discovery gating and unknown-path 404s are unchanged by the new routes.
       - run: npm run test:index-favicon
+      # Web identity (#279): an explicit in-session login is authoritative over
+      # transport-token refreshes for the same subject; a genuine subject change
+      # ends that override. Plus hasUsableCredential (#286): the transport guard's
+      # "is there any usable credential right now?" — false for an expired,
+      # missing, or undecodable token, true when a valid explicit login shadows an
+      # expired transport Bearer.
+      - run: npm run test:web-identity
+      # Web transport auth guard, connected + anonymous edges (#279/#286): the
+      # POST /mcp handler challenges (401 + WWW-Authenticate) an expired/invalid/
+      # missing Bearer that leaves no usable credential, but NOT when a valid
+      # explicit login shadows an expired Bearer (the #279 regression guard), and
+      # the anonymous edge is unaffected.
+      - run: npm run test:web-auth-integration
       # Offline app-with-data test (0.9.0): the first runtime (DB-backed) build
       # path. Asserts the app-with-data workflow/template/example + persistent-apps
       # troubleshooting resolve via fetchCorpus and the real grid_fetch handler,

@@ -5,6 +5,19 @@ function isTokenExpired(jwt, now) {
   return decodeJwt(jwt).exp * 1000 <= now();
 }
 
+// Is this token a credential the server can actually authenticate with right
+// now? A present, decodable token whose numeric `exp` is still in the future.
+// Anything else — absent, undecodable, or lacking a real expiry — is unusable.
+// Unlike isTokenExpired (which treats an undecodable token as "not expired"
+// because NaN <= now is false), this answers the transport guard's question,
+// where a token we cannot vouch for must not pass.
+function isCredentialUsable(jwt, now) {
+  if (!jwt) return false;
+  const { exp } = decodeJwt(jwt);
+  if (typeof exp !== "number" || !Number.isFinite(exp)) return false;
+  return exp * 1000 > now();
+}
+
 export function createWebIdentity({
   initialTransportToken = null,
   now = () => Date.now(),
@@ -31,6 +44,15 @@ export function createWebIdentity({
         hasExplicitLogin = false;
       }
       return { identityChanged };
+    },
+
+    // Whether the session currently holds any credential the server can use:
+    // the effective token (explicit login shadowing transport per #279) is
+    // present, decodable, and unexpired. The transport guard asks this before
+    // accepting a request, so an expired/invalid Bearer with no valid explicit
+    // login is challenged rather than degrading to an in-band login link.
+    hasUsableCredential() {
+      return isCredentialUsable(effectiveToken(), now);
     },
 
     async getToken() {

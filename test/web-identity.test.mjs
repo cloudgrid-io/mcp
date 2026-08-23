@@ -103,3 +103,63 @@ test("transport identity changes are reported before explicit login", async () =
   assert.equal(captured.identityChanged, true);
   assert.equal(await identity.getToken(), differentTransport);
 });
+
+// hasUsableCredential answers the transport guard's question: "is there any
+// usable credential right now?" — so the guard consults the identity object
+// rather than inspecting the raw Bearer in isolation.
+
+test("hasUsableCredential is false when the only credential is an expired transport token", () => {
+  const identity = createWebIdentity({
+    initialTransportToken: expiredTransport,
+    now: () => NOW,
+  });
+
+  assert.equal(identity.hasUsableCredential(), false);
+});
+
+test("hasUsableCredential is true when a valid explicit login shadows an expired transport token", async () => {
+  const identity = createWebIdentity({
+    initialTransportToken: expiredTransport,
+    now: () => NOW,
+  });
+
+  await identity.saveToken(freshExplicit);
+
+  // #279: the explicit credential is authoritative, so a usable credential
+  // exists even though the transport Bearer has expired.
+  assert.equal(identity.hasUsableCredential(), true);
+});
+
+test("hasUsableCredential is false when there is no credential at all", () => {
+  const identity = createWebIdentity({ now: () => NOW });
+
+  assert.equal(identity.hasUsableCredential(), false);
+});
+
+test("hasUsableCredential is false for a malformed, undecodable token", () => {
+  const identity = createWebIdentity({
+    initialTransportToken: "not-a-real-jwt",
+    now: () => NOW,
+  });
+
+  assert.equal(identity.hasUsableCredential(), false);
+});
+
+test("hasUsableCredential is false for a well-formed token missing an exp claim", () => {
+  const noExp = jwt({ sub: "old-user", email: "old-user@example.com" });
+  const identity = createWebIdentity({
+    initialTransportToken: noExp,
+    now: () => NOW,
+  });
+
+  assert.equal(identity.hasUsableCredential(), false);
+});
+
+test("hasUsableCredential is true for a valid transport token", () => {
+  const identity = createWebIdentity({
+    initialTransportToken: refreshedTransport,
+    now: () => NOW,
+  });
+
+  assert.equal(identity.hasUsableCredential(), true);
+});

@@ -55,8 +55,9 @@ function bearerOf(req) {
 
 // A web session: identity lives in memory for the session's lifetime only. The
 // session id doubles as the stable, opaque end-user id for the trusted-server cap.
-function makeWebContext(sessionId, initialTransportToken = null) {
-  const identity = createWebIdentity({ initialTransportToken });
+// The identity is built by the caller so the transport auth guard can consult it
+// (hasUsableCredential) before the session is wired up.
+function makeWebContext(sessionId, identity) {
   return {
     edition: "web",
     state: { pendingLoginCode: null, lastAnonClaim: null, lastDrop: null, anonCookie: null },
@@ -89,6 +90,19 @@ mountOAuth(app, PUBLIC_BASE, { requireAuth: REQUIRE_AUTH });
 const transports = Object.create(null);
 const sessionContexts = Object.create(null);
 
+// Per the MCP authorization spec, a resource server that receives no usable
+// credential answers 401 with a Bearer WWW-Authenticate challenge — the signal
+// Claude web needs to re-run OAuth and render its native login UI. Reused for
+// the missing, expired, and invalid transport-token cases.
+function sendAuthChallenge(res) {
+  res.setHeader("WWW-Authenticate", bearerChallenge(PUBLIC_BASE));
+  res.status(401).json({
+    jsonrpc: "2.0",
+    error: { code: -32001, message: "Authorization required. Complete the OAuth connect." },
+    id: null,
+  });
+}
+
 function captureRequestIdentity(sessionId, jwt) {
   if (!jwt) return;
   const ctx = sessionContexts[sessionId];
@@ -107,17 +121,22 @@ app.post("/mcp", async (req, res) => {
   const jwt = bearerOf(req);
 
   if (REQUIRE_AUTH && !jwt) {
-    res.setHeader("WWW-Authenticate", bearerChallenge(PUBLIC_BASE));
-    res.status(401).json({
-      jsonrpc: "2.0",
-      error: { code: -32001, message: "Authorization required. Complete the OAuth connect." },
-      id: null,
-    });
+    sendAuthChallenge(res);
     return;
   }
 
   if (transport) {
     captureRequestIdentity(sessionId, jwt);
+    // An expired/invalid transport token with no valid explicit login means the
+    // session holds no usable credential — challenge so the client re-runs OAuth,
+    // rather than proceeding and degrading to an in-band copy-paste login link
+    // (#286). Consult the identity, not the raw Bearer: an explicit in-session
+    // login stays authoritative over an expired transport token (#279/#280).
+    const ctx = sessionContexts[sessionId];
+    if (REQUIRE_AUTH && ctx && !ctx.identity.hasUsableCredential()) {
+      sendAuthChallenge(res);
+      return;
+    }
     await transport.handleRequest(req, res, req.body);
     return;
   }
@@ -135,6 +154,13 @@ app.post("/mcp", async (req, res) => {
   // id up front so it is also the trusted-server end-user id. (Distinct name from
   // the incoming `sessionId` header above.)
   const newSessionId = randomUUID();
+  const identity = createWebIdentity({ initialTransportToken: jwt });
+  // A brand-new session has no explicit login yet, so the transport Bearer is the
+  // only possible credential — challenge if it is expired or undecodable (#286).
+  if (REQUIRE_AUTH && !identity.hasUsableCredential()) {
+    sendAuthChallenge(res);
+    return;
+  }
   transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: () => newSessionId,
     onsessioninitialized: (sid) => {
@@ -151,7 +177,7 @@ app.post("/mcp", async (req, res) => {
     }
   };
   const server = new McpServer({ name: "cloudgrid-mcp-web", version }, { instructions: INSTRUCTIONS_WEB });
-  const webCtx = makeWebContext(newSessionId, jwt);
+  const webCtx = makeWebContext(newSessionId, identity);
   sessionContexts[newSessionId] = webCtx;
   // QA session log for this MCP session (dark by default). Keyed by the session
   // id — the host connection boundary. No seed user_request here: current hosts
