@@ -358,13 +358,20 @@ test("a different transport subject clears an explicit login", async () => {
   assert.equal(start.context.identity_changed, true);
 });
 
-// --- Connected edge (MCP_REQUIRE_AUTH=1) — issue #286 ------------------------
+// --- Connected edge (MCP_REQUIRE_AUTH=1) — #288 transport gate reverted -------
 //
-// An expired or invalid transport Bearer with no valid explicit login must draw
-// a 401 + WWW-Authenticate challenge so Claude web re-runs OAuth, instead of the
-// request proceeding and degrading to an in-band copy-paste login link. The
-// challenge must NOT fire when the session still holds a usable credential — a
-// valid Bearer, or a valid explicit login shadowing an expired Bearer (#279).
+// #288 added a transport-level 401 on an expired/invalid Bearer (the "#286
+// challenge"). It shipped in 0.21.3/0.21.4, was pulled from production hours later
+// (monorepo manifests re-pinned to 0.21.2 — a deployment-only rollback; the code
+// stayed on main), and #286 is closed not-planned. Auth on this connector is
+// IN-BAND via grid_login / grid_plug (2026-08-23 founder decision), so a
+// transport 401 on an expired-but-present Bearer is wrong by design: it bricks the
+// client, with grid_login itself stuck behind the same 401 and no in-conversation
+// recovery. This PR removes the gate. The ONLY connected-edge auth gate is the
+// deployed missing-Bearer guard (commit 7728b94, src/web.js:109): no Bearer ->
+// 401; an expired/invalid-but-present Bearer proceeds to the tool layer, where the
+// needs_auth ask is the recovery path. The four tests below map to the review's
+// (a)-(d) and go RED on the un-reverted #288 gate, GREEN once it is removed.
 
 function assertChallenge(response) {
   assert.equal(response.status, 401, "expected a 401 auth challenge");
@@ -384,53 +391,56 @@ function assertNoChallenge(response) {
   );
 }
 
-test("[#286 crit 1] connected edge: initialize with an expired Bearer is challenged", async () => {
-  const response = await rawPost(connected.baseUrl, {
-    bearer: expiredTransportA,
-    body: INITIALIZE_BODY,
-  });
-
-  assertChallenge(response);
+test("[#288 revert / a+d] connected: a NEW session with an expired Bearer reaches the tool layer, and grid_login is reachable", async () => {
+  // (a) initialize with an expired Bearer must proceed (was a 401 under #288), and
+  // (d) the in-band recovery — grid_login — must be reachable from there.
+  await connectSession(expiredTransportA, connected.baseUrl);
+  const login = structured(await client.callTool({ name: "grid_login", arguments: {} }));
+  assert.ok(
+    login.login_url && /\/auth\/login/.test(login.login_url),
+    `grid_login must be reachable with an expired Bearer: ${JSON.stringify(login)}`,
+  );
 });
 
-test("[#286 crit 1] connected edge: a session whose Bearer expires mid-life is challenged", async () => {
-  // The incident itself: initialize with a valid Bearer, then the token expires
-  // and the client keeps sending it. With no explicit login, the next POST holds
-  // no usable credential and must be challenged.
+test("[#288 revert / b+d] connected: a session whose Bearer expires mid-life proceeds, and grid_login stays reachable", async () => {
+  // (b) initialize with a valid Bearer, the token then expires and the client keeps
+  // sending it — the incident itself. The next POST must NOT be challenged, and
+  // (d) grid_login must still be reachable so the user can re-auth in-band.
   await connectSession(freshTransportA, connected.baseUrl);
 
-  const response = await rawPost(connected.baseUrl, {
+  const raw = await rawPost(connected.baseUrl, {
     bearer: expiredTransportA,
     body: TOOLS_LIST_BODY,
     sessionId: transport.sessionId,
     protocolVersion: transport.protocolVersion,
   });
+  assertNoChallenge(raw);
 
-  assertChallenge(response);
+  requestHeaders.set("Authorization", `Bearer ${expiredTransportA}`);
+  const login = structured(await client.callTool({ name: "grid_login", arguments: {} }));
+  assert.ok(login.login_url, "grid_login must stay reachable after the Bearer expired");
 });
 
-test("[#286 crit 2] connected edge: a valid explicit login is NOT challenged when the Bearer expires", async () => {
-  // The #279 regression guard. A user who completed an in-session grid_login
-  // holds a valid explicit credential; the transport Bearer expiring must NOT
-  // 401 them. This FAILS if the guard is simplified to a raw expiry test on the
-  // Bearer (`!jwt || isTokenExpired(jwt)`), which ignores the explicit login.
+test("[#279] connected: a valid explicit login is authoritative when the Bearer expires", async () => {
+  // #279 must NOT regress: a completed in-session grid_login keeps the session
+  // signed in even as the transport Bearer expires. (With the #288 gate gone, an
+  // expired Bearer no longer 401s regardless — this now asserts the identity
+  // stays the explicit login, not merely that the request proceeds.)
   await connectSession(freshTransportA, connected.baseUrl);
 
   await client.callTool({ name: "grid_login", arguments: {} });
   const authenticated = structured(await client.callTool({ name: "grid_login_status", arguments: {} }));
   assert.deepEqual(authenticated, { status: "authenticated", email: "chosen@example.com" });
 
-  const response = await rawPost(connected.baseUrl, {
-    bearer: expiredTransportA,
-    body: TOOLS_LIST_BODY,
-    sessionId: transport.sessionId,
-    protocolVersion: transport.protocolVersion,
-  });
-
-  assertNoChallenge(response);
+  requestHeaders.set("Authorization", `Bearer ${expiredTransportA}`);
+  const start = structured(await client.callTool({ name: "grid_start", arguments: {} }));
+  assert.equal(start.context.signed_in, true, "explicit login keeps the session signed in");
+  assert.equal(start.context.email, "chosen@example.com", "identity stays the explicit login (#279)");
 });
 
-test("[#286 crit 3] connected edge: a missing Bearer is challenged", async () => {
+test("[#288 revert / c] connected: a MISSING Bearer is still challenged (deployed posture preserved)", async () => {
+  // (c) The half of the deployed guard that stays: no anonymous on the connected
+  // edge. A request with no Bearer at all still draws the 401 challenge.
   const response = await rawPost(connected.baseUrl, {
     bearer: null,
     body: INITIALIZE_BODY,
@@ -439,7 +449,7 @@ test("[#286 crit 3] connected edge: a missing Bearer is challenged", async () =>
   assertChallenge(response);
 });
 
-test("[#286 crit 4] connected edge: a valid Bearer proceeds without challenge", async () => {
+test("connected edge: a valid Bearer proceeds without challenge", async () => {
   await connectSession(freshTransportA, connected.baseUrl);
 
   const response = await rawPost(connected.baseUrl, {
@@ -452,7 +462,7 @@ test("[#286 crit 4] connected edge: a valid Bearer proceeds without challenge", 
   assertNoChallenge(response);
 });
 
-test("[#286 crit 5] anonymous edge: an absent Bearer still proceeds", async () => {
+test("anonymous edge: an absent Bearer still proceeds", async () => {
   const response = await rawPost(anon.baseUrl, {
     bearer: null,
     body: INITIALIZE_BODY,
@@ -461,7 +471,7 @@ test("[#286 crit 5] anonymous edge: an absent Bearer still proceeds", async () =
   assertNoChallenge(response);
 });
 
-test("[#286 crit 5] anonymous edge: an expired Bearer still proceeds", async () => {
+test("anonymous edge: an expired Bearer still proceeds", async () => {
   const response = await rawPost(anon.baseUrl, {
     bearer: expiredTransportA,
     body: INITIALIZE_BODY,
@@ -470,11 +480,14 @@ test("[#286 crit 5] anonymous edge: an expired Bearer still proceeds", async () 
   assertNoChallenge(response);
 });
 
-test("[#286 crit 6] connected edge: a malformed, undecodable Bearer is challenged, not crashed", async () => {
+test("[#288 revert] connected: a malformed, undecodable Bearer proceeds to the tool layer, not challenged", async () => {
+  // A present-but-undecodable Bearer is not "missing" — under the deployed !jwt
+  // guard it proceeds. The tool layer treats it as no usable credential (needs_auth
+  // in-band); the transport must not 401 or crash on it.
   const response = await rawPost(connected.baseUrl, {
     bearer: "not-a-real-jwt",
     body: INITIALIZE_BODY,
   });
 
-  assertChallenge(response);
+  assertNoChallenge(response);
 });
