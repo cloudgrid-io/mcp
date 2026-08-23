@@ -18,11 +18,16 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+      # OIDC trusted publishing requires npm >= 11.5.1; Node 22 ships 10.9.8.
+      # Pinned (not npm@latest) so the version is reproducible and a tag-triggered
+      # release can't be surprised by a new npm major on an immutable tag.
+      - run: npm install -g npm@11.19.0
       - run: npm ci
       - run: npm run smoke
+      # No stored token: publish authenticates via the workflow's OIDC identity
+      # (trusted publisher). --provenance is kept so the run fails rather than
+      # publishing without provenance if attestation can't be generated.
       - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Build .mcpb desktop extension
         run: npm run build:mcpb
       - name: Create GitHub release
