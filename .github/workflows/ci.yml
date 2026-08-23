@@ -141,6 +141,15 @@ jobs:
       # explicit login shadows an expired Bearer (the #279 regression guard), and
       # the anonymous edge is unaffected.
       - run: npm run test:web-auth-integration
+      # Restart-recovery (#292): a hosted session lives in process memory, so a
+      # pod restart evicts it and the client keeps presenting a stale
+      # mcp-session-id. This test does a REAL process restart — boots the web
+      # edition, opens a session, kills it, boots a fresh process on the same
+      # port with empty memory — then asserts the SAME stale session id completes
+      # a tool call instead of the bare 400. Also guards identity isolation
+      # across the rebuild (id ≠ identity; the credential on the request decides),
+      # the anonymous path recovering, and grid_login staying reachable.
+      - run: npm run test:web-restart-recovery
       # Offline app-with-data test (0.9.0): the first runtime (DB-backed) build
       # path. Asserts the app-with-data workflow/template/example + persistent-apps
       # troubleshooting resolve via fetchCorpus and the real grid_fetch handler,

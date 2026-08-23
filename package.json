@@ -65,7 +65,8 @@
     "test:pull-grid": "node test/pull-grid-param.test.mjs",
     "test:pull-output-schema": "node test/pull-output-schema.test.mjs",
     "test:web-identity": "node --test test/web-identity.test.mjs",
-    "test:web-auth-integration": "node --test test/web-auth-integration.test.mjs"
+    "test:web-auth-integration": "node --test test/web-auth-integration.test.mjs",
+    "test:web-restart-recovery": "node --test test/web-restart-recovery.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
