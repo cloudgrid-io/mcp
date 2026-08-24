@@ -848,10 +848,8 @@ export async function runPull(ctx, { claim_token, claim_url, entity_id, grid } =
     let msg = data?.error?.message || data?.message || raw || `HTTP ${res.status}`;
     // The API's "Set the X-CloudGrid-Grid header" error is unactionable for an
     // MCP client (no client can set HTTP headers on a tool call). Rewrite it to
-    // name the tool parameter the caller CAN set (#247).
-    if (res.status === 400 && /X-CloudGrid-Grid/i.test(msg)) {
-      msg = "You belong to more than one grid. Pass the `grid` parameter to specify which grid to use.";
-    }
+    // name the tool parameter the caller CAN set (#247; class-level since #296).
+    if (res.status === 400) msg = rewriteGridHeaderError(msg);
     throw new Error(`Pull failed (HTTP ${res.status}): ${msg}`);
   }
 
@@ -968,7 +966,10 @@ export async function runCollab(ctx, { entity_id, grid } = {}) {
     if (res.status === 400 && code === "NOT_A_RUNTIME") {
       throw new Error(data?.error?.message || `'${target}' is an Inspiration, not an app or agent — it has no collaborators. Fork it with grid_pickup instead.`);
     }
-    const msg = data?.error?.message || data?.message || raw || `HTTP ${res.status}`;
+    let msg = data?.error?.message || data?.message || raw || `HTTP ${res.status}`;
+    // Never surface the raw "Set the X-CloudGrid-Grid header" text — name the
+    // `grid` parameter instead (#296 class-level fix; see rewriteGridHeaderError).
+    if (res.status === 400) msg = rewriteGridHeaderError(msg);
     throw new Error(`Collab failed (HTTP ${res.status}): ${msg}`);
   }
 
@@ -1442,10 +1443,38 @@ export const REPORT_OFFER =
   "then call grid_report with the error + the failed request context. " +
   "Do NOT report without an explicit yes, and do NOT include the full conversation unless the user explicitly agrees.";
 
+// The API's "Set the X-CloudGrid-Grid header" 400 (code GRID_HEADER_REQUIRED) is
+// STRUCTURALLY unactionable for an MCP client: no client can set an HTTP header
+// on a tool call, so a model reading it starts guessing (observed live, #296).
+// Rewrite it to name the tool PARAMETER the caller CAN set. `param` is the grid-
+// carrying parameter on the calling tool (`grid` on plug/pull/collab/visibility;
+// `into_org_slug` on pickup). First added inline on the pull path for #247; this
+// is the class-level version applied at every authed write path.
+//
+// A message is a grid-header error when the code says so OR the text names the
+// header — matching both survives an API message reword. Anything else passes
+// through unchanged. The rewritten text never contains the words "header" or
+// "X-CloudGrid-Grid", nor the internal code.
+export function isGridHeaderError(code, msg) {
+  return code === "GRID_HEADER_REQUIRED" || /X-CloudGrid-Grid/i.test(msg || "");
+}
+export function rewriteGridHeaderError(msg, param = "grid") {
+  if (!isGridHeaderError(null, msg)) return msg;
+  return `You belong to more than one grid. Pass the \`${param}\` parameter to specify which grid to use.`;
+}
+
 // Map friendly plug error statuses to actionable messages (spec v2 §3.3).
 // Appends errorGuidance() for known codes; unknown codes pass through as the
 // bare `base` line, unchanged.
 function plugErrorMessage(status, code, msg, ctxFlags = {}) {
+  // A GRID_HEADER_REQUIRED (or any 400 naming the header) is unactionable —
+  // rewrite it to name the `grid` PARAMETER and DROP the internal code from the
+  // prefix (the code string itself contains "HEADER"). Class-level fix (#296);
+  // mirrors the pull-path rewrite (#247). Part A derives the grid on an edit so
+  // this normally never fires there; it still guards multi-grid CREATES.
+  if (status === 400 && isGridHeaderError(code, msg)) {
+    return `Plug failed (HTTP 400): ${rewriteGridHeaderError(msg)}`;
+  }
   const base = `Plug failed (HTTP ${status}${code ? ` ${code}` : ""}): ${msg}`;
   const guidance = errorGuidance({ status, code, ...ctxFlags });
   return guidance ? `${base} — ${guidance}` : base;
@@ -1743,6 +1772,17 @@ export async function runPlug(ctx, input, deps = {}) {
     // entity's grid, so pass `grid` here too when the target lives outside the
     // active grid.
     orgSlug = grid || (await ctx.getActiveGrid());
+    // #296: an EDIT's destination is NOT ambiguous — the entity already lives in
+    // exactly one grid. When neither an explicit `grid` nor active-grid session
+    // state resolves one (the common hosted case, where active-grid is often
+    // unset), derive the home grid from the target entity itself so the write
+    // never depends on session state the API would otherwise reject for
+    // (GRID_HEADER_REQUIRED). Best-effort metadata resolve via the pickup
+    // contract (no claim); a null result simply falls back to today's behaviour.
+    if (!orgSlug && isEdit && targetEntityId) {
+      const resolved = await resolveEntityViaPickup(ctx, { target: targetEntityId });
+      if (resolved?.grid) orgSlug = resolved.grid;
+    }
     // Grid-native header + X-CloudGrid-Org alias (same slug) during the soak.
     if (orgSlug) {
       headers["X-CloudGrid-Grid"] = orgSlug;
@@ -2134,7 +2174,7 @@ export async function runPlug(ctx, input, deps = {}) {
   return { text: lines.join("\n"), structured };
 }
 
-async function authedApiCall(ctx, { method, pathName, body, verb }) {
+async function authedApiCall(ctx, { method, pathName, body, verb, gridParam = "grid" }) {
   const token = await ctx.getToken();
   if (!token) {
     throw new Error(`${verb} requires sign-in. Run grid_login first.`);
@@ -2167,7 +2207,13 @@ async function authedApiCall(ctx, { method, pathName, body, verb }) {
   if (!res.ok) {
     const msg = data?.error?.message || data?.message || raw || `HTTP ${res.status}`;
     const codeStr = data?.error?.code || null;
-    const err = new Error(`${verb} failed (HTTP ${res.status}${codeStr ? ` ${codeStr}` : ""}): ${msg}`);
+    // A GRID_HEADER_REQUIRED is unactionable — name the grid-carrying parameter
+    // (into_org_slug for pickup) and drop the internal code from the prefix (it
+    // contains "HEADER"). #296 class-level fix; see rewriteGridHeaderError.
+    const errText = isGridHeaderError(codeStr, msg)
+      ? `${verb} failed (HTTP ${res.status}): ${rewriteGridHeaderError(msg, gridParam)}`
+      : `${verb} failed (HTTP ${res.status}${codeStr ? ` ${codeStr}` : ""}): ${msg}`;
+    const err = new Error(errText);
     // Expose the structured status/code so callers can branch (e.g. runPickup's
     // NOT_A_RUNTIME → inspiration-route fallback). Additive: existing callers
     // only read `.message`.
@@ -2194,6 +2240,9 @@ export async function runPickup(ctx, { id, into_org_slug, name, source_version_i
       ...(source_version_id ? { source_version_id } : {}),
     },
     verb: "Pickup",
+    // A fork's destination is chosen by the caller via into_org_slug, so a
+    // GRID_HEADER_REQUIRED must point there, not at a non-existent `grid` param.
+    gridParam: "into_org_slug",
   });
   const gridSlug = data?.grid_slug ?? data?.org?.slug ?? null;
   const lines = [
@@ -2430,8 +2479,11 @@ export async function runVisibility(ctx, { target, visibility, inside, outside, 
     if (!canFallback) break;
   }
 
-  const msg = last?.data?.error?.message || last?.raw || `HTTP ${last?.res?.status}`;
+  let msg = last?.data?.error?.message || last?.raw || `HTTP ${last?.res?.status}`;
   const hint = last?.data?.error?.details?.[0]?.hint;
+  // Never surface the raw header text — name the `grid` parameter (grid_visibility
+  // accepts one via `org`, exposed to callers as the grid). #296 class-level fix.
+  if (last?.res?.status === 400) msg = rewriteGridHeaderError(msg);
   throw new Error(`Visibility change failed (HTTP ${last?.res?.status}): ${msg}${hint ? ` ${hint}` : ""}`);
 }
 

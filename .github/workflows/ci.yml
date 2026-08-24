@@ -34,6 +34,12 @@ jobs:
       # Offline unified-plug wire-contract test (0.7.0): asserts target_entity_id /
       # owner_token / cloudgrid.yaml-part semantics against a mocked API.
       - run: npm run test:plug-wire
+      # Offline edit-path grid-derive test (#296): an edit with no `grid` and no
+      # active grid derives the entity's home grid (pickup contract) and sends
+      # X-CloudGrid-Grid on the /plug POST; a grid-header 400 that still reaches
+      # the client is rewritten to name the `grid` PARAMETER (no "header", no
+      # internal code) across every authed write path.
+      - run: npm run test:plug-grid-derive
       # Offline self-healing test (0.7.2): known-code error guidance is mapped
       # (unknown codes pass through unchanged), the local-edition CLI self-heal
       # rung fires only for a signed-in SCOPE_INVALID create (not web/anon/edit),

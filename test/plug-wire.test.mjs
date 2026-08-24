@@ -182,7 +182,11 @@ try {
   check("…and makes no network call", calls.length === callsBefore);
 
   // ── html authed create → authed re-plug ─────────────────────────────────────
+  // Local edition with a resolvable active grid (the normal case): the re-plug
+  // header comes straight from the active grid, so the #296 entity-derive never
+  // fires. The derive path (no active grid) is covered in plug-grid-derive.test.
   const authedCtx = makeCtx({ token: "jwt-1", edition: "local" });
+  authedCtx.getActiveGrid = async () => "atomic";
   replies = [
     { status: 202, body: { entity_id: "ent-3", slug: "s3", grid: "atomic", url: "https://atomic.cloudgrid.io/s3", status: "live" } },
   ];
@@ -299,6 +303,7 @@ try {
 
   // Authed re-plug via runPlug: yaml part required on the authed update wire.
   const plugAuthed = makeCtx({ token: "jwt-2", edition: "local" });
+  plugAuthed.getActiveGrid = async () => "atomic"; // resolvable grid → no #296 derive
   replies = [
     { status: 202, body: { entity_id: "ent-5", slug: "s5", grid: "atomic", url: "https://atomic.cloudgrid.io/s5", status: "live" } },
   ];
