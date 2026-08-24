@@ -60,6 +60,18 @@ export const LIVE_RESULT_URI = "ui://cloudgrid/live-result.html";
 export const GRID_PICKER_URI = "ui://cloudgrid/org-picker.html";
 export const LIVE_RESULT_HTML = readFileSync(new URL("../widgets/live-result.html", import.meta.url), "utf-8");
 export const GRID_PICKER_HTML = readFileSync(new URL("../widgets/org-picker.html", import.meta.url), "utf-8");
+
+// ── grid_login MCP App (SEP-1865, Claude web) ────────────────────────────────
+// A SECOND, independent UI mechanism from the ChatGPT Apps-SDK widgets above.
+// It is NOT gated behind MCP_APPS_WIDGETS: that flag controls only the
+// openai/outputTemplate key ChatGPT reads, and it must stay exactly as it is.
+// The login card binds via _meta.ui.resourceUri (the SEP-1865 key Claude reads),
+// which ChatGPT ignores — so shipping it does not touch the ChatGPT path. A
+// client without the UI extension ignores _meta.ui and still gets the text-first
+// sign-in URL. The HTML is the self-contained bundle from
+// scripts/build-login-widget.mjs (App class + card inlined; deny-by-default CSP).
+export const GRID_LOGIN_APP_URI = "ui://grid-login/mcp-app.html";
+export const GRID_LOGIN_APP_HTML = readFileSync(new URL("../widgets/grid-login.html", import.meta.url), "utf-8");
 export const WIDGET_CSP = {
   connectDomains: ["https://*.cloudgrid.io"],
   resourceDomains: ["https://*.cloudgrid.io"],
