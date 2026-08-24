@@ -29,7 +29,7 @@
 //
 // Run: node test/plug-grid-derive.test.mjs
 
-import { runPlug, runPull, runCollab, runVisibility, runPickup, rewriteGridHeaderError, isGridHeaderError } from "../src/tools/deploy.js";
+import { runPlug, runPull, runCollab, runVisibility, runPickup, rewriteGridHeaderError, isGridHeaderError, gridFromCloudgridUrl } from "../src/tools/deploy.js";
 
 let failures = 0;
 function check(label, cond) {
@@ -190,6 +190,136 @@ try {
   check("rewrite: default param is `grid`", /`grid`/.test(rewriteGridHeaderError("Set the X-CloudGrid-Grid header")));
   check("rewrite: honors a custom param name", /`into_org_slug`/.test(rewriteGridHeaderError("Set the X-CloudGrid-Grid header", "into_org_slug")));
   check("rewrite: passes non-header messages through unchanged", rewriteGridHeaderError("entity_id is not a valid UUID") === "entity_id is not a valid UUID");
+
+  // ── 6. Edit identified ONLY by a CloudGrid URL — the exact reported repro ────
+  // "change the default color to blue at https://shoobi.cloudgrid.io/color-…"
+  // No target_entity_id, no `grid` param, no active grid. The grid is NOT
+  // ambiguous — the host `shoobi.cloudgrid.io` names it. The URL resolves to a
+  // real entity_id (pickup), the write in-place re-plugs it, and the header is
+  // derived from the host — first try, no 400.
+  {
+    installFetch([
+      // url → entity_id + home grid via the pickup contract (resolve, no claim)
+      { status: 200, body: { entity_id: "ent-shoobi", slug: "color-background-changer-d895", grid: "shoobi", kind: "inspiration" } },
+      // the /plug re-plug itself
+      { status: 202, body: { entity_id: "ent-shoobi", slug: "color-background-changer-d895", grid: "shoobi", url: "https://shoobi.cloudgrid.io/color-background-changer-d895", status: "live" } },
+    ]);
+    const out = await runPlug(
+      makeCtx({ token: "jwt-u", edition: "web", activeGrid: null }),
+      { html: "<h1>blue</h1>", url: "https://shoobi.cloudgrid.io/color-background-changer-d895" },
+    );
+    restoreFetch();
+    const post = plugPost();
+    check("url-edit: /plug POST carries X-CloudGrid-Grid derived from the host", post?.headers?.["X-CloudGrid-Grid"] === "shoobi");
+    check("url-edit: X-CloudGrid-Org alias carried too", post?.headers?.["X-CloudGrid-Org"] === "shoobi");
+    check("url-edit: resolved to an in-place re-plug (target_entity_id sent)", post?.form?.get("target_entity_id") === "ent-shoobi");
+    check("url-edit: succeeds first try (one /plug POST, live URL)", out.structured?.url === "https://shoobi.cloudgrid.io/color-background-changer-d895" && calls.filter((c) => c.url.endsWith("/api/v2/plug") && c.method === "POST").length === 1);
+    check("url-edit: does not surface a GRID_HEADER_REQUIRED failure", !/GRID_HEADER_REQUIRED|header/i.test(out.text ?? ""));
+  }
+
+  // ── 7. Host derivation is FREE and beats the network round-trip ──────────────
+  // Edit by target_entity_id AND a url, no grid, no active grid. The host names
+  // the grid, so no pickup round-trip is needed to header the write — proving the
+  // deliberate order (URL host BEFORE entity lookup).
+  {
+    installFetch([
+      { status: 202, body: { entity_id: "ent-h", slug: "s", grid: "hostgrid", url: "https://hostgrid.cloudgrid.io/s", status: "live" } },
+    ]);
+    await runPlug(
+      makeCtx({ token: "jwt-h", edition: "web", activeGrid: null }),
+      { html: "<h1>x</h1>", target_entity_id: "ent-h", url: "https://hostgrid.cloudgrid.io/s" },
+    );
+    restoreFetch();
+    check("host-order: header derived from the host", plugPost()?.headers?.["X-CloudGrid-Grid"] === "hostgrid");
+    check("host-order: NO pickup round-trip (host answered it for free)", !calls.some((c) => isPickup(c.url)));
+  }
+
+  // ── 7b. Runtime flat host `<slug>--<grid>.cloudgrid.io` derives the grid ─────
+  {
+    installFetch([
+      { status: 202, body: { entity_id: "ent-f", slug: "s", grid: "flatgrid", url: "https://s--flatgrid.cloudgrid.io", status: "live" } },
+    ]);
+    await runPlug(
+      makeCtx({ token: "jwt-f", edition: "web", activeGrid: null }),
+      { html: "<h1>x</h1>", target_entity_id: "ent-f", url: "https://myapp--flatgrid.cloudgrid.io" },
+    );
+    restoreFetch();
+    check("flat-host: header derived from the grid after `--`", plugPost()?.headers?.["X-CloudGrid-Grid"] === "flatgrid");
+  }
+
+  // ── 8. Explicit grid / active grid still win over the URL host ───────────────
+  {
+    installFetch([
+      { status: 202, body: { entity_id: "ent-p", slug: "s", grid: "explicit", url: "https://explicit.cloudgrid.io/s", status: "live" } },
+    ]);
+    await runPlug(
+      makeCtx({ token: "jwt-p", edition: "web", activeGrid: null }),
+      { html: "<h1>x</h1>", target_entity_id: "ent-p", grid: "explicit", url: "https://otherhost.cloudgrid.io/s" },
+    );
+    restoreFetch();
+    check("precedence: explicit `grid` beats the URL host", plugPost()?.headers?.["X-CloudGrid-Grid"] === "explicit");
+  }
+  {
+    installFetch([
+      { status: 202, body: { entity_id: "ent-ag", slug: "s", grid: "activeg", url: "https://activeg.cloudgrid.io/s", status: "live" } },
+    ]);
+    await runPlug(
+      makeCtx({ token: "jwt-ag", edition: "web", activeGrid: "activeg" }),
+      { html: "<h1>x</h1>", target_entity_id: "ent-ag", url: "https://otherhost.cloudgrid.io/s" },
+    );
+    restoreFetch();
+    check("precedence: active grid beats the URL host", plugPost()?.headers?.["X-CloudGrid-Grid"] === "activeg");
+  }
+
+  // ── 9. NEGATIVE: a foreign or malformed host must NOT name a write grid ──────
+  // A non-CloudGrid host yields no grid (no header derived) and does NOT throw;
+  // the plug proceeds under today's behaviour (a create here — no in-place edit
+  // is invented for an untrusted host). This is the SSRF-shaped guard: a crafted
+  // host can never silently redirect a write.
+  {
+    installFetch([
+      { status: 202, body: { entity_id: "ent-n1", slug: "s", grid: null, url: "https://guest.cloudgrid.io/s", status: "live" } },
+    ]);
+    let threw = null;
+    try {
+      await runPlug(
+        makeCtx({ token: "jwt-n1", edition: "web", activeGrid: null }),
+        { html: "<h1>x</h1>", url: "https://evil.example.com/shoobi.cloudgrid.io/s" },
+      );
+    } catch (e) { threw = e; }
+    restoreFetch();
+    check("negative(foreign host): did not throw", threw === null);
+    check("negative(foreign host): NO grid derived onto the header", !plugPost()?.headers?.["X-CloudGrid-Grid"]);
+    check("negative(foreign host): NO entity-resolution pickup on an untrusted host", !calls.some((c) => isPickup(c.url)));
+  }
+  {
+    installFetch([
+      { status: 202, body: { entity_id: "ent-n2", slug: "s", grid: null, url: "https://guest.cloudgrid.io/s", status: "live" } },
+    ]);
+    let threw = null;
+    try {
+      await runPlug(
+        makeCtx({ token: "jwt-n2", edition: "web", activeGrid: null }),
+        { html: "<h1>x</h1>", url: "not a url ::: %%%" },
+      );
+    } catch (e) { threw = e; }
+    restoreFetch();
+    check("negative(malformed url): did not throw", threw === null);
+    check("negative(malformed url): NO grid derived onto the header", !plugPost()?.headers?.["X-CloudGrid-Grid"]);
+  }
+
+  // ── 10. gridFromCloudgridUrl unit table — the canonical host→grid derivation ─
+  check("helper: path host → subdomain grid", gridFromCloudgridUrl("https://shoobi.cloudgrid.io/color-x") === "shoobi");
+  check("helper: flat host → grid after `--`", gridFromCloudgridUrl("https://myapp--acme.cloudgrid.io") === "acme");
+  check("helper: bare host (no scheme) accepted", gridFromCloudgridUrl("shoobi.cloudgrid.io/x") === "shoobi");
+  check("helper: apex cloudgrid.io names NO grid", gridFromCloudgridUrl("https://cloudgrid.io/x") === null);
+  check("helper: guest apex is not a derivable write grid", gridFromCloudgridUrl("https://guest.cloudgrid.io/s") === null);
+  check("helper: foreign host → null", gridFromCloudgridUrl("https://evil.example.com/s") === null);
+  check("helper: lookalike suffix host → null", gridFromCloudgridUrl("https://cloudgrid.io.evil.com/s") === null);
+  check("helper: embedded-in-path lookalike → null", gridFromCloudgridUrl("https://evil.com/shoobi.cloudgrid.io") === null);
+  check("helper: malformed → null (no throw)", gridFromCloudgridUrl("::: not a url %%%") === null);
+  check("helper: empty/nullish → null", gridFromCloudgridUrl("") === null && gridFromCloudgridUrl(null) === null && gridFromCloudgridUrl(undefined) === null);
+  check("helper: deep host (extra label) → null", gridFromCloudgridUrl("https://a.b.cloudgrid.io/s") === null);
 } finally {
   restoreFetch();
 }

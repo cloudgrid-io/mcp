@@ -380,6 +380,13 @@ export function registerTools(server, ctx) {
       "raw entity_id. target_entity_id takes precedence. A grid+slug that does NOT resolve to an existing " +
       "entity is treated as a CREATE (never a false-positive re-plug).",
     ),
+    url: z.string().optional().describe(
+      "Alternative RE-PLUG handle: the entity's public CloudGrid URL (e.g. https://<grid>.cloudgrid.io/<slug>) " +
+      "— use it to edit in place when you have the URL but no target_entity_id (the common \"change the color of " +
+      "this page\" flow after grid_get_app_source). The grid is read from the host and the entity is resolved via " +
+      "the pickup contract, so no `grid` param is needed. target_entity_id and grid+slug take precedence. A " +
+      "non-CloudGrid host is ignored (never redirects the write); a URL that does not resolve is treated as a CREATE.",
+    ),
     hints: z.object({
       kind: z.enum(["inspiration", "app", "agent"]).optional().describe("Force the detected kind; omit to let the server auto-detect."),
       yaml: z.string().optional().describe("An inline cloudgrid.yaml override used as a detection hint."),
