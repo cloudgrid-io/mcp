@@ -1557,6 +1557,7 @@ export async function runPlug(ctx, input, deps = {}) {
     target_entity_id,
     grid,
     slug,
+    url: targetUrl,
     hints,
     anon,
     owner_token,
@@ -1676,16 +1677,30 @@ export async function runPlug(ctx, input, deps = {}) {
     );
   }
 
-  // grid+slug re-plug handle (the pickup contract's `replug_handle`): when no
-  // explicit target_entity_id was given but a grid+slug pair is, resolve it to
-  // an existing entity_id and re-plug that in place. A slug that does NOT resolve
-  // to an existing entity → targetEntityId stays empty → this is a CREATE (no
-  // false-positive re-plug). target_entity_id remains the primary/documented
-  // handle. Best-effort resolve (pickup contract); never fetches the public URL.
+  // Re-plug handle resolution (the pickup contract's `replug_handle`): when no
+  // explicit target_entity_id was given, resolve one from an alternative target
+  // the caller DID name — a grid+slug pair, or a CloudGrid `url` — so an edge
+  // identified only by its public URL re-plugs the SAME entity in place instead
+  // of minting a new one. A target that does NOT resolve to an existing entity →
+  // targetEntityId stays empty → this is a CREATE (no false-positive re-plug).
+  // target_entity_id remains the primary/documented handle. Best-effort resolve
+  // (pickup contract); never fetches the public URL.
+  //
+  // #296: a `url` is only trusted as a re-plug target when its host is a real
+  // CloudGrid grid apex (gridFromCloudgridUrl != null) — a foreign or malformed
+  // host is NOT sent to the resolver, so an untrusted URL can never redirect a
+  // write to another entity. `pickupData` is reused below to header the write
+  // without a second round-trip.
   let targetEntityId = target_entity_id;
-  if ((typeof targetEntityId !== "string" || targetEntityId.length === 0) && grid && slug) {
-    const resolved = await resolveEntityViaPickup(ctx, { target: slug, grid });
-    if (resolved?.entity_id) targetEntityId = resolved.entity_id;
+  const urlGrid = gridFromCloudgridUrl(targetUrl);
+  let pickupData = null;
+  if (typeof targetEntityId !== "string" || targetEntityId.length === 0) {
+    if (grid && slug) {
+      pickupData = await resolveEntityViaPickup(ctx, { target: slug, grid });
+    } else if (urlGrid) {
+      pickupData = await resolveEntityViaPickup(ctx, { url: targetUrl, grid: urlGrid });
+    }
+    if (pickupData?.entity_id) targetEntityId = pickupData.entity_id;
   }
 
   const isEdit = typeof targetEntityId === "string" && targetEntityId.length > 0;
@@ -1771,17 +1786,26 @@ export async function runPlug(ctx, input, deps = {}) {
     // the caller's membership from this header and requires it to MATCH the
     // entity's grid, so pass `grid` here too when the target lives outside the
     // active grid.
-    orgSlug = grid || (await ctx.getActiveGrid());
     // #296: an EDIT's destination is NOT ambiguous — the entity already lives in
-    // exactly one grid. When neither an explicit `grid` nor active-grid session
-    // state resolves one (the common hosted case, where active-grid is often
-    // unset), derive the home grid from the target entity itself so the write
-    // never depends on session state the API would otherwise reject for
-    // (GRID_HEADER_REQUIRED). Best-effort metadata resolve via the pickup
-    // contract (no claim); a null result simply falls back to today's behaviour.
-    if (!orgSlug && isEdit && targetEntityId) {
-      const resolved = await resolveEntityViaPickup(ctx, { target: targetEntityId });
-      if (resolved?.grid) orgSlug = resolved.grid;
+    // exactly one grid, and every way of naming that entity carries the grid.
+    // Resolve it in a deliberate order, cheapest reliable source first, so the
+    // write never depends on session state the API would otherwise reject for
+    // (GRID_HEADER_REQUIRED):
+    //   1. explicit `grid` param        — the caller said so.
+    //   2. active grid                   — session state, no network.
+    //   3. the URL host                  — FREE: the grid is the subdomain of a
+    //      CloudGrid `url` the user pasted; read it before any round-trip. A
+    //      foreign/malformed host yields null (gridFromCloudgridUrl) and we fall
+    //      through — never a silent redirect.
+    //   4. the target entity itself      — a pickup round-trip, only if 1–3 all
+    //      came up empty. Reuse a pickup already done above to resolve the id.
+    orgSlug = grid || (await ctx.getActiveGrid());
+    if (!orgSlug) orgSlug = gridFromCloudgridUrl(targetUrl);
+    if (!orgSlug && isEdit) {
+      if (!pickupData && targetEntityId) {
+        pickupData = await resolveEntityViaPickup(ctx, { target: targetEntityId });
+      }
+      if (pickupData?.grid) orgSlug = pickupData.grid;
     }
     // Grid-native header + X-CloudGrid-Org alias (same slug) during the soak.
     if (orgSlug) {
@@ -2688,6 +2712,42 @@ function isCloudgridHost(hostname) {
   return h === "cloudgrid.io" || h.endsWith(".cloudgrid.io");
 }
 
+// Derive the home grid slug from a CloudGrid URL (or a bare host). The grid is
+// the subdomain: `<grid>.cloudgrid.io/<slug>` (inspiration/path form) and
+// `<slug>--<grid>.cloudgrid.io` (runtime/flat form — grid is the label after
+// `--`), matching composePlugUrl's two serving shapes.
+//
+// SECURITY (#296): this derives a WRITE DESTINATION from user-supplied input, so
+// it is deliberately strict — it reuses `isCloudgridHost` (the single host check,
+// SSRF-shaped) rather than string-matching, and returns null for anything that is
+// not a trusted grid apex: a foreign or lookalike host, a malformed URL, the bare
+// apex `cloudgrid.io`, a deeper host (`a.b.cloudgrid.io`), or the anonymous
+// `guest` apex (never an authed write destination). A null result means "I could
+// not name the grid" → the caller falls through to today's behaviour and NEVER
+// silently redirects the write to a grid the user did not mean.
+export function gridFromCloudgridUrl(input) {
+  const raw = String(input ?? "").trim();
+  if (!raw) return null;
+  let parsed;
+  try {
+    // Accept a bare host (`shoobi.cloudgrid.io/x`) by supplying a scheme; a
+    // string that is already a URL keeps its own scheme.
+    parsed = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`);
+  } catch {
+    return null;
+  }
+  if (!isCloudgridHost(parsed.hostname)) return null;
+  const host = parsed.hostname.toLowerCase();
+  const labels = host.split(".");
+  // Exactly `<sub>.cloudgrid.io`. The apex (`cloudgrid.io`, 2 labels) and any
+  // deeper host (`a.b.cloudgrid.io`, 4+) name no single grid apex we trust.
+  if (labels.length !== 3) return null;
+  const sub = labels[0];
+  const grid = sub.includes("--") ? sub.split("--").pop() : sub;
+  if (!grid || grid === GUEST_ORG_SLUG) return null;
+  return grid;
+}
+
 // Shape an HTML string into the grid_get_app_source result (shared by the API-read
 // and the public-fetch paths). Caps the body at SOURCE_MAX_BYTES. `extra` carries
 // optional edition metadata resolved from the pickup contract (kind, single_html,
@@ -2837,10 +2897,10 @@ export async function runSource(ctx, { entity_id, url, grid, slug } = {}) {
   const resolvedUrl = parsed.toString();
   let eid = entity_id ?? (last && (!entity_id || last.entity_id === entity_id) ? last.entity_id : null);
 
-  // Derive the grid/slug hint from the inspiration path URL (`grid.cloudgrid.io/slug`).
-  const host = parsed.hostname;
-  const gridHint = grid ?? (host.endsWith(".cloudgrid.io") && !host.includes("--") && host.split(".").length === 3
-    ? host.split(".")[0] : null);
+  // Derive the grid/slug hint from the URL. gridFromCloudgridUrl is the single
+  // host→grid parser (it also handles the flat `<slug>--<grid>` form the old
+  // inline check missed); the slug is the first path segment.
+  const gridHint = grid ?? gridFromCloudgridUrl(resolvedUrl);
   const slugHint = slug ?? (parsed.pathname.replace(/^\/+/, "").split("/")[0] || null);
 
   // ── URL → entity_id (fresh chat, no session) via the pickup contract ──────
