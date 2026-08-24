@@ -47,6 +47,33 @@ export function buildCreateProjectArgs({ kind, name, type, needs, dir, grid, org
   return args;
 }
 
+// ── Sign-in ask (#298) ──────────────────────────────────────────────────────
+// Until a rendered login card is possible (blocked on #297's answer + the
+// directory submission), this text IS the whole login experience on every
+// client, so it is written to be RELAYED nearly verbatim. The user-facing part
+// comes first — a short question, then the two evenly-weighted options (guest is
+// a real choice, not a fallback). The model-directed steps (which tool to call,
+// do not choose, wait) are quarantined in a trailing (assistant: …) line so the
+// model does not read internal directions aloud. §23 voice: plain, no emoji, no
+// exclamation; say "plug" and "grid". The sign-in URL itself lands on its own
+// line later, from grid_login. No structural change — every caller still returns
+// { needs_auth: true }.
+const AUTH_ASK_SIGNED_OUT =
+  "How would you like to plug this?\n" +
+  "  - Sign in to your grid — it stays in your CloudGrid account.\n" +
+  "  - As a guest — live now at a link that expires in 7 days unless you claim it.\n\n" +
+  "(assistant: offer both options and let the user choose — do not choose for them. " +
+  "To sign in, call grid_login; as a guest, re-call grid_plug with anon: true. " +
+  "Stop and wait for their answer.)";
+const authAskSignedIn = (who) =>
+  `You are signed in${who}.\n\n` +
+  "How would you like to plug this?\n" +
+  "  - To your grid — it stays in your CloudGrid account.\n" +
+  "  - As a guest — live now at a link that expires in 7 days unless you claim it.\n\n" +
+  "(assistant: offer both options and let the user choose — do not choose for them. " +
+  "For their grid, re-call grid_plug; as a guest, re-call grid_plug with anon: true. " +
+  "Stop and wait for their answer.)";
+
 // ── Registration ───────────────────────────────────────────────────────────────
 // Registers the tools onto `server`. ctx.edition decides whether the CLI-wrapping
 // tools are included (they need a local machine).
@@ -515,31 +542,19 @@ export function registerTools(server, ctx) {
               const claims = decodeJwtAuth(token);
               const who = claims.email ? ` as ${claims.email}` : "";
               return okResult({
-                text:
-                  `You are signed in${who}. The user has not explicitly chosen anonymous publishing. Ask the user which they want — do not choose for them:\n` +
-                  `  1. Publish to your grid (re-call grid_plug without anon: true).\n` +
-                  `  2. Publish anonymously — a guest link that expires in 7 days unless claimed (re-call grid_plug with anon: true).\n` +
-                  `Relay this question to the user and STOP until they answer.`,
+                text: authAskSignedIn(who),
                 structured: { needs_auth: true },
               });
             }
             return okResult({
-              text:
-                "This is a new publish and the user is not signed in. Ask the user which they want — do not choose for them:\n" +
-                "  1. Sign in and plug it to their grid — run grid_login (opens the browser), then re-call grid_plug.\n" +
-                "  2. Plug it as a guest — live immediately at a guest link that expires in 7 days unless claimed (re-call grid_plug with anon: true).\n" +
-                "Relay this question to the user and STOP until they answer.",
+              text: AUTH_ASK_SIGNED_OUT,
               structured: { needs_auth: true },
             });
           }
           if (!token && input?.anon !== true) {
             if (ctx.state) ctx.state.authChoiceOffered = true;
             return okResult({
-              text:
-                "This is a new publish and the user is not signed in. Ask the user which they want — do not choose for them:\n" +
-                "  1. Sign in and plug it to their grid — run grid_login (opens the browser), then re-call grid_plug.\n" +
-                "  2. Plug it as a guest — live immediately at a guest link that expires in 7 days unless claimed (re-call grid_plug with anon: true).\n" +
-                "Relay this question to the user and STOP until they answer.",
+              text: AUTH_ASK_SIGNED_OUT,
               structured: { needs_auth: true },
             });
           }
@@ -660,8 +675,11 @@ export function registerTools(server, ctx) {
       if (ctx.canOpenBrowser) tryOpenBrowser(url);
       return {
         content: [{ type: "text", text:
-          `To sign in, open this URL in your browser and finish with Google:\n${url}\n\n` +
-          `After you complete it, run grid_login_status to finish signing in.`,
+          // #298: the sign-in link on its own line, unadorned, so every client
+          // linkifies it and the eye lands on it; the model-directed follow-up is
+          // quarantined in the trailing (assistant: …) line.
+          `Open this link to sign in, then finish in your browser:\n\n${url}\n\n` +
+          `(assistant: after they complete it, call grid_login_status to finish.)`,
         }],
         structuredContent: { login_url: url },
       };

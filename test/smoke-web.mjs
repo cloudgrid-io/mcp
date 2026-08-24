@@ -117,9 +117,15 @@ try {
     arguments: { html: "<h1>web edition smoke</h1>", anon: true },
   });
   const gatedText = gated.content?.[0]?.text ?? "";
+  const gatedStructured = gated.structuredContent ?? gated.structured ?? {};
   console.log("--- web anon plug, first call (expect needs_auth gate) ---\n" + gatedText);
+  // The gate is the structured needs_auth field (byte-identical across the #298
+  // wording change); the text must offer BOTH the sign-in and guest paths and
+  // must not already be a live drop.
   check("first unauthenticated create returns the sign-in-vs-guest ask (even with anon: true)",
-    /needs_auth|Ask the user which they want/i.test(gatedText) && !gatedText.includes("guest.cloudgrid.io"));
+    gatedStructured.needs_auth === true &&
+    /grid_login/.test(gatedText) && /guest/i.test(gatedText) &&
+    !gatedText.includes("guest.cloudgrid.io"));
 
   const drop = await client.callTool({
     name: "grid_plug",
