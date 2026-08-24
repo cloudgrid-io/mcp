@@ -44,7 +44,10 @@ const PATTERNS = [
   },
   {
     id: "decision-number",
-    regex: /decision \d{3}/gi,
+    // Bounded on the right with (?!\d) so a date like "decision 2026-08-23"
+    // (which the old /decision \d{3}/ matched as "decision 202") no longer
+    // fires, while a real three-digit reference ("Decision 062") still does.
+    regex: /decision \d{3}(?!\d)/gi,
     label: "internal decision reference (decision NNN)",
   },
 ];
@@ -57,11 +60,17 @@ const ALLOWED_HOST_PATTERNS = [
   /^127\.0\.0\.1$/,
 ];
 
-// Detects hostnames that look internal: subdomains of common internal TLDs,
-// or explicit internal/staging/dev subdomains. This is intentionally narrow
-// to avoid false positives on general URLs.
+// Detects hostnames that look internal: subdomains of common internal TLDs.
+// The leading lookbehind requires the hostname to be preceded by start-of-line,
+// whitespace, a quote, or a URL/expression separator — i.e. a position where a
+// real hostname actually occurs (a string literal, a URL, prose) — rather than
+// by an identifier character. That drops property accesses inlined by a
+// minifier, e.g. `;t.local&&…` (options.local), while still catching a genuine
+// hostname baked into the same built artifact as a string literal, URL, or bare
+// token (e.g. `"admin.corp"`, `https://secrets.internal`, `foo.lan`).
+// Intentionally narrow to avoid false positives on general URLs.
 const INTERNAL_HOSTNAME_RE =
-  /\b(?:[a-z0-9-]+\.(?:internal|corp|local|lan|intranet))\b/gi;
+  /(?<=^|[\s"'`/])([a-z0-9-]+\.(?:internal|corp|local|lan|intranet))\b/gi;
 
 // File extensions to scan. Binary files are excluded.
 const TEXT_EXTENSIONS = new Set([
@@ -97,6 +106,7 @@ const TEXT_EXTENSIONS = new Set([
 // Files to always skip (relative to repo root).
 const SKIP_FILES = new Set([
   ".github/scripts/no-internal-refs.mjs", // this file contains the patterns
+  "test/no-internal-refs.test.mjs", // fixtures deliberately contain sample refs
 ]);
 
 // ---------------------------------------------------------------------------
@@ -131,63 +141,85 @@ function getTrackedFiles() {
 }
 
 // ---------------------------------------------------------------------------
+// Scanning (pure — no I/O, exported for tests)
+// ---------------------------------------------------------------------------
+
+// Scan a single line and return an array of findings:
+//   { rule, label, match }
+// This is the single source of truth for what the guard flags; the file loop
+// and the test suite both drive it, so a test proving a case cannot drift from
+// what CI actually does.
+export function scanLine(line) {
+  const findings = [];
+
+  // Skip noqa-annotated lines (private repos only).
+  if (ALLOW_NOQA && /# noqa: internal-ref/.test(line)) return findings;
+
+  for (const pat of PATTERNS) {
+    pat.regex.lastIndex = 0;
+    let match;
+    while ((match = pat.regex.exec(line)) !== null) {
+      findings.push({ rule: pat.id, label: pat.label, match: match[0] });
+    }
+  }
+
+  INTERNAL_HOSTNAME_RE.lastIndex = 0;
+  let hostMatch;
+  while ((hostMatch = INTERNAL_HOSTNAME_RE.exec(line)) !== null) {
+    const hostname = hostMatch[1].toLowerCase();
+    const allowed = ALLOWED_HOST_PATTERNS.some((re) => re.test(hostname));
+    if (!allowed) {
+      findings.push({
+        rule: "internal-hostname",
+        label: "non-allowed internal hostname",
+        match: hostname,
+      });
+    }
+  }
+
+  return findings;
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
-const files = getTrackedFiles().filter(
-  (f) => isTextFile(f) && !SKIP_FILES.has(f),
-);
+function main() {
+  const files = getTrackedFiles().filter(
+    (f) => isTextFile(f) && !SKIP_FILES.has(f),
+  );
 
-let totalFindings = 0;
+  let totalFindings = 0;
 
-for (const file of files) {
-  let content;
-  try {
-    content = readFileSync(file, "utf8");
-  } catch {
-    continue; // deleted / unreadable
-  }
-
-  const lines = content.split(/\r?\n/);
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    // Skip noqa-annotated lines (private repos only).
-    if (ALLOW_NOQA && /# noqa: internal-ref/.test(line)) continue;
-
-    // Check each pattern.
-    for (const pat of PATTERNS) {
-      pat.regex.lastIndex = 0;
-      let match;
-      while ((match = pat.regex.exec(line)) !== null) {
-        console.log(`${file}:${i + 1}: ${pat.label} — "${match[0]}"`);
-        totalFindings++;
-      }
+  for (const file of files) {
+    let content;
+    try {
+      content = readFileSync(file, "utf8");
+    } catch {
+      continue; // deleted / unreadable
     }
 
-    // Check internal hostnames.
-    INTERNAL_HOSTNAME_RE.lastIndex = 0;
-    let hostMatch;
-    while ((hostMatch = INTERNAL_HOSTNAME_RE.exec(line)) !== null) {
-      const hostname = hostMatch[0].toLowerCase();
-      const allowed = ALLOWED_HOST_PATTERNS.some((re) => re.test(hostname));
-      if (!allowed) {
-        // Skip noqa-annotated lines (private repos only).
-        if (ALLOW_NOQA && /# noqa: internal-ref/.test(line)) continue;
-        console.log(
-          `${file}:${i + 1}: non-allowed internal hostname — "${hostname}"`,
-        );
+    const lines = content.split(/\r?\n/);
+
+    for (let i = 0; i < lines.length; i++) {
+      for (const f of scanLine(lines[i])) {
+        console.log(`${file}:${i + 1}: ${f.label} — "${f.match}"`);
         totalFindings++;
       }
     }
   }
+
+  if (totalFindings > 0) {
+    console.log(`\n${totalFindings} internal reference(s) found.`);
+    process.exit(1);
+  }
+
+  console.log("No internal references found.");
+  process.exit(0);
 }
 
-if (totalFindings > 0) {
-  console.log(`\n${totalFindings} internal reference(s) found.`);
-  process.exit(1);
+// Run only when invoked directly, so tests can import scanLine without the
+// process exiting.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main();
 }
-
-console.log("No internal references found.");
-process.exit(0);

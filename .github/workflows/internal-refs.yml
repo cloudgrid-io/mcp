@@ -13,5 +13,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
+      - name: Test the guard's rules (both directions per rule)
+        run: node --test test/no-internal-refs.test.mjs
       - name: Check for internal references
         run: node .github/scripts/no-internal-refs.mjs
