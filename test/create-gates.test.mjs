@@ -72,6 +72,15 @@ try {
     check("no-auth create did NOT deploy", globalThis.__PLUG_CALLS__ === 0);
     check("no-auth create returns needs_auth", parse(res).needs_auth === true);
     check("no-auth create offers sign-in AND anonymous", /grid_login/.test(res?.content?.[0]?.text ?? "") && /anon/i.test(res?.content?.[0]?.text ?? ""));
+
+    // #298: the ask reads as a designed thing, not a paragraph at the model.
+    const askText = res?.content?.[0]?.text ?? "";
+    check("#298: user-facing text is separated from the model-directed steps", /\(assistant:/.test(askText));
+    check("#298: both options present and evenly weighted (two `- ` bullets)", (askText.match(/^\s*- /gm) || []).length === 2);
+    check("#298: guest option is not framed as a lesser fallback", /guest/i.test(askText) && !/fallback/i.test(askText));
+    check("#298: §23 voice — no emoji, no exclamation marks", !/[!]/.test(askText) && !/\p{Extended_Pictographic}/u.test(askText));
+    check("#298: no retired vocabulary (no 'deploy'/'org')", !/\bdeploy\b/i.test(askText) && !/\borg\b/i.test(askText));
+    check("#298: model-directed 'stop and wait' lives in the assistant line, not the user text", /\(assistant:[^)]*[Ss]top/.test(askText));
   }
 
   // ── AUTH gate is NOT model-bypassable (field bug 2026-07-26, Claude web):

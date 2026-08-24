@@ -243,6 +243,10 @@ try {
     calls.length = 0;
     replies = [SCOPE_INVALID_400];
     const ctx = makeCtx({ token: "jwt", edition: "local" });
+    // A resolvable active grid → the #296 entity-derive does not fire, so the
+    // single queued reply is consumed by the /plug POST (the SCOPE_INVALID this
+    // case exercises), not by a grid-derive round-trip.
+    ctx.getActiveGrid = async () => "atomic";
     const run = makeCliRunner("should not run");
     let err = null;
     try {
