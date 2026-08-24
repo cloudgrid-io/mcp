@@ -57,6 +57,21 @@ function bearerOf(req) {
   return h && /^Bearer\s+\S+/i.test(h) ? h.replace(/^Bearer\s+/i, "") : null;
 }
 
+// Reduce an object to its KEY SHAPE — key names mapped to the TYPE of each value,
+// recursively — never the values themselves. Used to log the client's advertised
+// MCP capabilities at initialize (#297) while guaranteeing BY CONSTRUCTION that
+// no value ever leaves the process: only key names and JS type names are emitted,
+// so no token, header, tool argument, or user content can appear even if the
+// object carried one. Depth- and breadth-capped so a malformed or huge object
+// cannot blow the stack or flood the log.
+function keyShape(value, depth = 0) {
+  if (value === null || typeof value !== "object" || depth >= 6) return typeof value;
+  if (Array.isArray(value)) return `array[${value.length}]`;
+  const out = {};
+  for (const k of Object.keys(value).slice(0, 64)) out[k] = keyShape(value[k], depth + 1);
+  return out;
+}
+
 // A web session: identity lives in memory for the session's lifetime only. The
 // session id doubles as the stable, opaque end-user id for the trusted-server cap.
 // The identity carries the request's transport token; auth is enforced in-band by
@@ -165,6 +180,28 @@ async function buildSession(sessionId, jwt) {
       webCtx.state.client = server.server.getClientVersion() ?? null;
     } catch {
       webCtx.state.client = null;
+    }
+    // #297: record the client's advertised MCP capabilities once per session, so
+    // we can settle whether Claude web ever advertises a UI extension (e.g.
+    // io.modelcontextprotocol/ui) — the plumbing a rendered login card would
+    // need — instead of guessing while the directory submission sits unanswered.
+    // Observation-only: only the capability KEY SHAPE (names + value types, never
+    // values — see keyShape) is logged, so no credential or user content can
+    // appear. Skip the synthetic rehydrate initialize so the signal stays clean.
+    // Wrapped so a logging failure can never affect the session (zero behaviour
+    // change if capabilities is absent or malformed).
+    try {
+      const client = server.server.getClientVersion() ?? null;
+      if (client?.name !== "cloudgrid-mcp-rehydrate") {
+        const caps = server.server.getClientCapabilities();
+        const shape = caps && typeof caps === "object" ? keyShape(caps) : null;
+        // eslint-disable-next-line no-console
+        console.error(
+          `cloudgrid-mcp: client-capabilities client=${client?.name ?? "unknown"} capabilities=${JSON.stringify(shape)}`,
+        );
+      }
+    } catch {
+      /* observation-only — never affects the session */
     }
   };
   await server.connect(transport);

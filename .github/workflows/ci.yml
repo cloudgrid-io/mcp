@@ -156,6 +156,12 @@ jobs:
       # across the rebuild (id ≠ identity; the credential on the request decides),
       # the anonymous path recovering, and grid_login staying reachable.
       - run: npm run test:web-restart-recovery
+      # Capability logging at initialize (#297): the hosted edge records the
+      # client's advertised MCP capabilities once per session as a KEY SHAPE
+      # (names + value types, never values), so we can see whether Claude web
+      # advertises a UI extension. Drives a real initialize with a nested decoy
+      # secret and asserts the log names the UI-extension key and leaks no value.
+      - run: npm run test:web-capabilities-log
       # Offline app-with-data test (0.9.0): the first runtime (DB-backed) build
       # path. Asserts the app-with-data workflow/template/example + persistent-apps
       # troubleshooting resolve via fetchCorpus and the real grid_fetch handler,
