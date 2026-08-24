@@ -210,6 +210,18 @@ jobs:
       # Offline apps-widgets gate: grid_plug text-first default (no openai
       # outputTemplate), live-result widget resource, MCP_APPS_WIDGETS=1 restore.
       - run: npm run test:widgets
+      # grid_login MCP App (#302): the SEP-1865 sign-in card. Asserts the web
+      # edition binds _meta.ui.resourceUri + serves the self-contained card
+      # resource with RESOURCE_MIME_TYPE, the text-first sign-in URL is intact,
+      # the local edition stays text-only, the ChatGPT openai/outputTemplate path
+      # is untouched, and no token reaches the widget. (Render is proven
+      # separately against the ext-apps basic-host — a unit test cannot.)
+      - run: npm run test:login-app
+      # The served card (src/widgets/grid-login.html) is a built artifact: the
+      # ext-apps App class bundled inline by scripts/build-login-widget.mjs. Fail
+      # if it drifts from src/widgets/grid-login/ so the committed resource can
+      # never fall out of sync with its source.
+      - run: npm run build:login-widget -- --check
       # Tool titles (#201) + targeting-vocabulary convergence (#198): every tool
       # has a non-empty title, canonical entity_id/grid params work alongside
       # legacy aliases, org is absent from the published visibility enum.

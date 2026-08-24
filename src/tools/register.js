@@ -3,6 +3,7 @@
 // Extracted verbatim from src/tools.js (refactor: split tools.js into modules).
 
 import { z } from "zod";
+import { registerAppResource, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import { newLoginCode, buildLoginUrl, pollStatusOnce, checkApiConnectivity, decodeJwt as decodeJwtAuth } from "../auth.js";
 import { PLAYBOOK, fetchCorpus, listWorkflows } from "../playbook.js";
 import {
@@ -12,6 +13,8 @@ import {
   LIVE_RESULT_HTML,
   GRID_PICKER_HTML,
   WIDGET_CSP,
+  GRID_LOGIN_APP_URI,
+  GRID_LOGIN_APP_HTML,
 } from "./constants.js";
 import { fail, okResult } from "./util.js";
 import { cliTool, tryOpenBrowser } from "./cli.js";
@@ -142,6 +145,23 @@ export function registerTools(server, ctx) {
         mimeType: "text/html;profile=mcp-app",
         text: GRID_PICKER_HTML,
         _meta: { ui: { csp: WIDGET_CSP } },
+      }],
+    }));
+
+    // grid_login MCP App (SEP-1865). Registered via the official ext-apps
+    // helper, which defaults the MIME type to RESOURCE_MIME_TYPE
+    // (text/html;profile=mcp-app) — the type Claude web looks for. NO csp
+    // domains: the card makes no network requests of its own (it only asks the
+    // host to open the sign-in URL and calls grid_login_status back over the
+    // bridge), so deny-by-default is exactly right. Independent of
+    // APPS_WIDGETS_ENABLED by design (see constants.js).
+    registerAppResource(server, "cloudgrid-grid-login", GRID_LOGIN_APP_URI, {
+      description: "CloudGrid sign-in card — opens the sign-in URL and confirms when you return.",
+    }, async () => ({
+      contents: [{
+        uri: GRID_LOGIN_APP_URI,
+        mimeType: RESOURCE_MIME_TYPE,
+        text: GRID_LOGIN_APP_HTML,
       }],
     }));
   }
@@ -669,6 +689,14 @@ export function registerTools(server, ctx) {
         login_url: z.string().describe("URL to open in a browser to complete sign-in."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+      // Bind the SEP-1865 sign-in card on the web edition (Claude web). This is
+      // the SEP-1865 key (_meta.ui.resourceUri); ChatGPT reads openai/outputTemplate
+      // and ignores it, and a client without the UI extension ignores it too and
+      // gets the text-first result below. NOT gated behind MCP_APPS_WIDGETS — a
+      // second, independent mechanism (see constants.js). The result shape is
+      // unchanged: content[0] stays the sign-in URL text so the link is never
+      // unreachable if the card does not render.
+      ...(ctx.edition === "web" ? { _meta: { ui: { resourceUri: GRID_LOGIN_APP_URI } } } : {}),
     },
     async () => {
       try {
