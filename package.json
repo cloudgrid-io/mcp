@@ -68,7 +68,8 @@
     "test:web-identity": "node --test test/web-identity.test.mjs",
     "test:web-auth-integration": "node --test test/web-auth-integration.test.mjs",
     "test:web-restart-recovery": "node --test test/web-restart-recovery.test.mjs",
-    "test:web-capabilities-log": "node --test test/web-capabilities-log.test.mjs"
+    "test:web-capabilities-log": "node --test test/web-capabilities-log.test.mjs",
+    "test:internal-refs": "node --test test/no-internal-refs.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
