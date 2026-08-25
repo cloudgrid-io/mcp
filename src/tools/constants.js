@@ -53,7 +53,26 @@ export const VISIBILITY_LABELS = {
 // optional. Flip MCP_APPS_WIDGETS=1 in the platform manifest to re-enable once
 // the widget HTML is verified to render. The resources stay registered either
 // way (harmless when no tool references them via outputTemplate).
+//
+// 2026-08-25 (#308): the black frame was diagnosed as a MIME mismatch. ChatGPT
+// discovers an Apps-SDK widget by a tool carrying openai/outputTemplate PLUS a
+// ui:// resource whose mimeType is `text/html+skybridge` (verified against
+// OpenAI's shipped example servers — openai/openai-apps-sdk-examples
+// solar-system/shopping_cart/kitchen_sink main.py). Our two ChatGPT widgets
+// declared `text/html;profile=mcp-app` — the SEP-1865/MCP-Apps MIME that CLAUDE
+// reads (RESOURCE_MIME_TYPE in @modelcontextprotocol/ext-apps). ChatGPT saw the
+// outputTemplate pointer, opened the skybridge iframe (dark chrome), but the
+// resource was not a skybridge document, so the HTML/bridge never populated —
+// the empty dark frame covering the text. CHATGPT_WIDGET_MIME below is the
+// correct type. The flag STAYS OFF until a card is seen rendering in real
+// ChatGPT (Developer Mode custom connector against staging); this only makes the
+// machinery correct for that verification.
 export const APPS_WIDGETS_ENABLED = process.env.MCP_APPS_WIDGETS === "1";
+// The mimeType ChatGPT's Apps-SDK renderer requires for a ui:// widget resource.
+// Distinct from RESOURCE_MIME_TYPE (`text/html;profile=mcp-app`, the SEP-1865
+// key Claude reads) — the two hosts key off different MIME types, so the ChatGPT
+// widgets and the Claude sign-in card must NOT share one.
+export const CHATGPT_WIDGET_MIME = "text/html+skybridge";
 export const LIVE_RESULT_URI = "ui://cloudgrid/live-result.html";
 // URI/resource-name/filename stay `org-picker` — that's the stable contract the
 // web card is registered under; only the JS identifier moves toward grid.
@@ -72,10 +91,6 @@ export const GRID_PICKER_HTML = readFileSync(new URL("../widgets/org-picker.html
 // scripts/build-login-widget.mjs (App class + card inlined; deny-by-default CSP).
 export const GRID_LOGIN_APP_URI = "ui://grid-login/mcp-app.html";
 export const GRID_LOGIN_APP_HTML = readFileSync(new URL("../widgets/grid-login.html", import.meta.url), "utf-8");
-export const WIDGET_CSP = {
-  connectDomains: ["https://*.cloudgrid.io"],
-  resourceDomains: ["https://*.cloudgrid.io"],
-};
 
 // The lazy npx fallback always fetches the LATEST published CLI, so the MCP is
 // never left behind the platform's required CLI version (a pinned range went
