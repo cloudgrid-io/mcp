@@ -8,11 +8,11 @@ import { newLoginCode, buildLoginUrl, pollStatusOnce, checkApiConnectivity, deco
 import { PLAYBOOK, fetchCorpus, listWorkflows } from "../playbook.js";
 import {
   APPS_WIDGETS_ENABLED,
+  CHATGPT_WIDGET_MIME,
   LIVE_RESULT_URI,
   GRID_PICKER_URI,
   LIVE_RESULT_HTML,
   GRID_PICKER_HTML,
-  WIDGET_CSP,
   GRID_LOGIN_APP_URI,
   GRID_LOGIN_APP_HTML,
 } from "./constants.js";
@@ -124,27 +124,33 @@ export function registerTools(server, ctx) {
 
   // ── Widget resources (web edition, ChatGPT Apps SDK) ──────────────────────
   if (ctx.edition === "web") {
+    // ChatGPT Apps-SDK widgets. mimeType MUST be text/html+skybridge
+    // (CHATGPT_WIDGET_MIME) — NOT the MCP-Apps `text/html;profile=mcp-app` the
+    // Claude card uses; that mismatch was the black frame (#308). widgetAccessible
+    // lets the widget call tools back over window.openai.callTool (the visibility
+    // pills call grid_visibility). These make no direct network requests, so no
+    // openai/widgetCSP is declared — the default deny is correct.
     server.registerResource("cloudgrid-live-result", LIVE_RESULT_URI, {
       description: "Live result card after a CloudGrid drop — shows URL, grid link, and visibility controls.",
-      mimeType: "text/html;profile=mcp-app",
+      mimeType: CHATGPT_WIDGET_MIME,
     }, async () => ({
       contents: [{
         uri: LIVE_RESULT_URI,
-        mimeType: "text/html;profile=mcp-app",
+        mimeType: CHATGPT_WIDGET_MIME,
         text: LIVE_RESULT_HTML,
-        _meta: { ui: { csp: WIDGET_CSP } },
+        _meta: { "openai/widgetAccessible": true },
       }],
     }));
 
     server.registerResource("cloudgrid-org-picker", GRID_PICKER_URI, {
       description: "Grid picker card — lets the user choose which grid to plug into.",
-      mimeType: "text/html;profile=mcp-app",
+      mimeType: CHATGPT_WIDGET_MIME,
     }, async () => ({
       contents: [{
         uri: GRID_PICKER_URI,
-        mimeType: "text/html;profile=mcp-app",
+        mimeType: CHATGPT_WIDGET_MIME,
         text: GRID_PICKER_HTML,
-        _meta: { ui: { csp: WIDGET_CSP } },
+        _meta: { "openai/widgetAccessible": true },
       }],
     }));
 
@@ -512,11 +518,13 @@ export function registerTools(server, ctx) {
       // live at a public URL in place. Versions + grid rollback exist, but the
       // honest MCP annotation for overwrite-live-state is destructive.
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+      // ChatGPT-only binding: openai/outputTemplate points at the skybridge
+      // widget. Deliberately NOT the MCP-Apps `ui.resourceUri` key — that is
+      // Claude's, and the live-result resource is now text/html+skybridge, which
+      // Claude cannot render; carrying it here would regress the Claude path when
+      // this flag is flipped. The two mechanisms stay independent (#308/#303).
       ...(ctx.edition === "web" && APPS_WIDGETS_ENABLED ? {
-        _meta: {
-          ui: { resourceUri: LIVE_RESULT_URI, csp: WIDGET_CSP },
-          "openai/outputTemplate": LIVE_RESULT_URI,
-        },
+        _meta: { "openai/outputTemplate": LIVE_RESULT_URI },
       } : {}),
   };
   const plugHandler = async (input) => {
@@ -799,6 +807,11 @@ export function registerTools(server, ctx) {
         url: z.string().optional().describe("URL of the entity, if returned."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+      // The live-result widget's visibility pills call this back over
+      // window.openai.callTool; ChatGPT only permits that when the target tool
+      // is marked openai/widgetAccessible. ChatGPT-only key, inert on Claude and
+      // when the widget is disabled. (#308)
+      ...(ctx.edition === "web" ? { _meta: { "openai/widgetAccessible": true } } : {}),
     },
     async (input) => {
       try {
