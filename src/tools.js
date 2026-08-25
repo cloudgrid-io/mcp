@@ -31,6 +31,8 @@ export {
   errorGuidance,
   REPORT_OFFER,
   parseCliPlugUrl,
+  cliContinueHandoff,
+  archiveCorruptionSignature,
   plugViaCliFallback,
   runPlug,
   runPickup,
