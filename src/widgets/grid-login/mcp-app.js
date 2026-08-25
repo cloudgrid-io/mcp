@@ -122,6 +122,9 @@ async function onSignedIn(email) {
   els.status.textContent = email ? `Signed in as ${email}.` : "Signed in.";
   els.signin.hidden = true;
   els.check.hidden = true;
+  // Once signed in there is nothing left to open — drop the manual sign-in link
+  // so the card reads as a clean terminal state, not a still-actionable prompt.
+  els.fallback.hidden = true;
   await tellModel(email);
 }
 
