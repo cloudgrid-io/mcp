@@ -184,6 +184,13 @@ function structured(result) {
   return result?.structuredContent ?? result?.structured ?? {};
 }
 
+function textContent(result) {
+  return (result?.content ?? [])
+    .filter((c) => c?.type === "text")
+    .map((c) => c.text)
+    .join("");
+}
+
 const INITIALIZE_BODY = {
   jsonrpc: "2.0",
   id: 1,
@@ -356,6 +363,26 @@ test("a different transport subject clears an explicit login", async () => {
   assert.equal(start.context.signed_in, true);
   assert.equal(start.context.email, "rotated-c@example.com");
   assert.equal(start.context.identity_changed, true);
+});
+
+// #317: identity must appear in the TEXT content, not only structuredContent.
+// The reported hosted session read the text channel, never saw the email (which
+// lived only in structuredContent.context), and told the user no tool exposes
+// their account. The signed-in email now leads grid_start's text so "which
+// account am I?" is answerable from the channel the model actually reads.
+test("grid_start states the signed-in account in its text content (#317)", async () => {
+  await connectSession(freshTransportA);
+
+  const result = await client.callTool({ name: "grid_start", arguments: {} });
+  const text = textContent(result);
+
+  assert.match(
+    text,
+    /signed in to CloudGrid as first@example\.com/,
+    "the signed-in email must be in the text content, not only structuredContent",
+  );
+  // And still in structured output, unchanged.
+  assert.equal(structured(result).context.email, "first@example.com");
 });
 
 // --- Connected edge (MCP_REQUIRE_AUTH=1) — #288 transport gate reverted -------

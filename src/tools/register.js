@@ -943,7 +943,7 @@ export function registerTools(server, ctx) {
           .object({
             active_grid: z.string().nullable().describe("The user's active grid/org slug, or null."),
             signed_in: z.boolean().describe("Whether the current session is signed in."),
-            email: z.string().optional().describe("The signed-in user's email, when available."),
+            email: z.string().optional().describe("The signed-in user's email — the CloudGrid account this session is authenticated as. Present whenever signed_in is true and the session token carries an email claim (the normal case). Absent only if signed_in is false, or on the rare token that lacks the claim; the identity line in this tool's text content states which case applies. Use this to answer 'which account/user am I?'."),
             session_expired: z.boolean().optional().describe("True when credentials exist but the JWT has expired. Run grid_login to sign in again."),
             identity_changed: z.boolean().optional().describe("True when the session's identity changed via a different transport Bearer. Session state was reset."),
             update_available: z
@@ -1007,8 +1007,22 @@ export function registerTools(server, ctx) {
       const wfLines = workflows.length
         ? workflows.map((w) => `  - ${w.name}: ${w.when || w.summary}`).join("\n")
         : "  (none available)";
+      // Identity banner — first line of the text channel, because the account
+      // this session is signed in as is only otherwise carried in
+      // structuredContent.context, which many clients/models never surface. A
+      // hosted assistant asked "which account am I?" was concluding no tool
+      // exposes it while the answer sat in structured output it had already
+      // received (#317). Stating it in the text the model actually reads makes
+      // "who am I" answerable without the CLI (whose separate session can point
+      // at a different account entirely).
+      const gridSuffix = activeGrid ? ` (active grid: ${activeGrid})` : "";
+      const identityLine = signedIn
+        ? signedInEmail
+          ? `You are signed in to CloudGrid as ${signedInEmail}${gridSuffix}. If the user asks which CloudGrid account, user, or email they are connected to, that is the answer.`
+          : `You are signed in to CloudGrid${gridSuffix}, but this session's token carries no email claim, so the account address is not available here. Do not guess it from grid memberships or the CLI (its session may be a different account).`
+        : `You are not signed in to CloudGrid. Run grid_login to sign in.`;
       let text =
-        `${PLAYBOOK}\n\nAvailable workflows:\n${wfLines}\n\n` +
+        `${identityLine}\n\n${PLAYBOOK}\n\nAvailable workflows:\n${wfLines}\n\n` +
         `Next: match the intent to a workflow and call grid_get_template({kind:"workflow", name}).` +
         (stale ? `\n\n${stale}` : "");
       if (sessionExpired) {
