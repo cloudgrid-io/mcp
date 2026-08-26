@@ -226,6 +226,11 @@ jobs:
       # is untouched, and no token reaches the widget. (Render is proven
       # separately against the ext-apps basic-host — a unit test cannot.)
       - run: npm run test:login-app
+      # grid_login sign-in poller (#306): after "Open sign-in" the card polls
+      # grid_login_status on a bounded loop. Proves the loop ALWAYS terminates —
+      # stops on success, at the wall-clock ceiling, and after a run of errors —
+      # never polls before start, and skips round-trips while the tab is hidden.
+      - run: npm run test:login-poller
       # The served card (src/widgets/grid-login.html) is a built artifact: the
       # ext-apps App class bundled inline by scripts/build-login-widget.mjs. Fail
       # if it drifts from src/widgets/grid-login/ so the committed resource can
