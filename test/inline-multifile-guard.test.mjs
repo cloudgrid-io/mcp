@@ -1,4 +1,4 @@
-// Offline test for #311 — inline multi-file re-plug corrupts the archive.
+// Offline test for the inline multi-file re-plug path (#311 / #315).
 //
 // A real user (natalys-grid) re-plugged a live app from Claude web with 5 text
 // files + a cloudgrid.yaml declaring two services. The upload succeeded; the
@@ -7,22 +7,23 @@
 //     gzip: stdin: not in gzip format
 //     tar: Child returned status 1
 //
-// The identical source plugged fine from the CLI. This test:
+// The corruption lived in the hosted server's source-tarball materialization
+// (cloudgrid#2977), NOT in this client — the identical source plugged fine from
+// the CLI. #312 gated that shape before upload while the server was broken.
+// cloudgrid#2978 fixed the server-side defect and it was verified live, so #315
+// LIFTED the gate: the inline re-plug now uploads like any other shape. This test:
 //
 //   1. RULES OUT client-side corruption — drives runPlug with her exact 5-file
-//      shape (incl. UTF-8 multibyte + base64 binary) on the CREATE path and
-//      proves every file's bytes reach the wire byte-for-byte (no re-encode,
-//      lossless base64 round-trip). The corruption is created downstream of this
-//      process; the client upload is byte-exact.
-//   2. Proves the PRE-UPLOAD GATE fires on her re-plug shape (hosted, multi-file,
-//      services manifest) BEFORE any network call, with an actionable CLI handoff
-//      naming the real entity handle — and NO raw tar text.
-//   3. Proves the gate does NOT touch the cases that work today: a single HTML
-//      re-plug, a few small text files with no service manifest, a create, and
-//      the local edition.
-//   4. Proves a corrupt-archive BUILD failure that slips past the gate is
-//      rewritten to the same actionable handoff (never raw tar), while a genuine
-//      app build error keeps its real log tail.
+//      shape (incl. UTF-8 multibyte + base64 binary) and proves every file's bytes
+//      reach the wire byte-for-byte (no re-encode, lossless base64 round-trip).
+//   2. Proves the LIFTED gate: her exact re-plug shape (hosted, multi-file,
+//      services manifest, onto an existing entity) is NO LONGER refused — it
+//      uploads, byte-exact, with the files on the wire.
+//   3. Proves the previously-unaffected cases still work (single HTML re-plug, a
+//      few text files with no service manifest, a static bundle, the local edition).
+//   4. Proves the DEFENSE-IN-DEPTH rewrite still fires: a corrupt-archive build
+//      failure is rewritten to an actionable CLI handoff (never raw tar), while a
+//      genuine app build error keeps its real log tail.
 //
 // Run: node test/inline-multifile-guard.test.mjs
 
@@ -98,10 +99,10 @@ const HER_FILES = [
 
 try {
   // ── 1. RULE OUT client-side corruption: byte-exact upload on the wire ───────
-  // Create path (NOT gated) with her 5-file shape. Every part's bytes must equal
-  // the caller's input bytes — proving the encode/decode round-trip is lossless
-  // and nothing re-encodes text as UTF-8 lossily. If the client mangled bytes,
-  // it would show here; it does not.
+  // Create path with her 5-file shape. Every part's bytes must equal the caller's
+  // input bytes — proving the encode/decode round-trip is lossless and nothing
+  // re-encodes text as UTF-8 lossily. If the client mangled bytes, it would show
+  // here; it does not.
   {
     const ctx = makeCtx({ token: "jwt-rt", edition: "web", grid: "natalys-grid" });
     replies = [
@@ -132,55 +133,51 @@ try {
       Buffer.from(await uni.arrayBuffer()).equals(Buffer.from(UNICODE_TXT, "utf8")));
     check("base64 'binary' file round-trips byte-exact (lossless decode)",
       Buffer.from(await bin.arrayBuffer()).equals(BINARY_BYTES));
-    check("multi-file runtime CREATE is NOT gated (issue #48 path still works)",
+    check("multi-file runtime CREATE uploads (issue #48 path works)",
       calls.some((c) => c.url.endsWith("/api/v2/plug") && c.method === "POST"));
   }
 
-  // ── 2. GATE fires on her RE-PLUG shape, before any network call ─────────────
+  // ── 2. LIFTED GATE: her RE-PLUG shape is no longer refused — it uploads ──────
+  // #312 refused this exact shape (hosted, multi-file, services manifest, onto an
+  // existing entity) BEFORE any network call. cloudgrid#2978 fixed the server and
+  // #315 lifted the gate: the same call must now proceed to upload, byte-exact,
+  // with the files on the wire — and NOT throw.
   {
     const ctx = makeCtx({ token: "jwt-rt", edition: "web", grid: "natalys-grid" });
     const before = calls.length;
+    replies = [
+      { status: 202, body: { entity_id: "4af8ca18-0ade-4e02-9a10-df667424d4c7", slug: "natalys-grid", grid: "natalys-grid", url: "https://natalys-grid--natalys-grid.cloudgrid.io", status: "live", detection: { kind: "app" } } },
+    ];
     let err = null;
+    let r = null;
     try {
-      await runPlug(ctx, {
+      r = await runPlug(ctx, {
         artifact_files: HER_FILES,
         target_entity_id: "4af8ca18-0ade-4e02-9a10-df667424d4c7",
       });
     } catch (e) {
       err = e;
     }
-    const m = err?.message ?? "";
-    check("re-plug of her shape is REFUSED (throws)", err !== null);
-    check("…BEFORE any network call (nothing uploaded)", calls.length === before);
-    check("…names the two services it detected", /services: web, reminder/.test(m));
-    check("…substitutes the real entity id into the CLI handoff",
-      m.includes("4af8ca18-0ade-4e02-9a10-df667424d4c7"));
-    check("…hands over the CLI pull + plug commands", /cli@latest pull/.test(m) && /cli@latest plug/.test(m));
-    check("…contains NO raw tar/gzip build output", !archiveCorruptionSignature(m));
-  }
-
-  // Grid+slug handle → the handoff prefers the human-readable grid/slug target.
-  {
-    const ctx = makeCtx({ token: "jwt-rt", edition: "local", grid: "natalys-grid" });
-    // local? no — the gate is web-only. Use web + a grid/slug re-plug handle.
-    const web = makeCtx({ token: "jwt-rt", edition: "web", grid: "natalys-grid" });
-    replies = [
-      // pickup resolve: grid+slug → an existing multi-file entity
-      { status: 200, body: { entity_id: "ent-gs", slug: "reminders", grid: "natalys-grid", kind: "app", capabilities: { replug: true }, replug_handle: { target_entity_id: "ent-gs", grid: "natalys-grid", slug: "reminders" } } },
-    ];
-    let err = null;
-    try {
-      await runPlug(web, { artifact_files: HER_FILES, grid: "natalys-grid", slug: "reminders" });
-    } catch (e) {
-      err = e;
+    check("re-plug of her shape is NO LONGER refused (does not throw)", err === null);
+    check("…it actually uploaded (a network call was made)", calls.length > before);
+    const upload = lastFormCall();
+    check("…the upload is a POST to the plug endpoint", !!upload && upload.method === "POST");
+    // Every one of her 5 files reaches the wire byte-for-byte on the re-plug too.
+    const parts = upload ? upload.form.getAll("artifact") : [];
+    const expected = new Map(
+      HER_FILES.map((f) => [f.path, Buffer.from(f.content, f.encoding === "base64" ? "base64" : "utf8")]),
+    );
+    let allExact = parts.length === HER_FILES.length;
+    for (const p of parts) {
+      const got = Buffer.from(await p.arrayBuffer());
+      const want = expected.get(p.name);
+      if (!want || !got.equals(want)) allExact = false;
     }
-    check("grid+slug re-plug handle is gated too", err !== null);
-    check("…handoff uses the human-readable grid/slug pull target",
-      (err?.message ?? "").includes("pull natalys-grid/reminders"));
-    void ctx;
+    check("…all 5 files reach the wire byte-exact on the re-plug", allExact);
+    void r;
   }
 
-  // ── 3. GATE does NOT touch the working cases ────────────────────────────────
+  // ── 3. The previously-unaffected cases still work ───────────────────────────
   // (a) single HTML re-plug on hosted → passes straight through.
   {
     const ctx = makeCtx({ token: "jwt-h", edition: "web", grid: "acme" });
@@ -188,9 +185,9 @@ try {
       { status: 202, body: { entity_id: "ent-h", slug: "page", grid: "acme", url: "https://acme.cloudgrid.io/page", status: "live" } },
     ];
     const r = await runPlug(ctx, { html: "<h1>v2</h1>", target_entity_id: "ent-h" });
-    check("single HTML re-plug on hosted is NOT gated", r?.structured?.url === "https://acme.cloudgrid.io/page");
+    check("single HTML re-plug on hosted still works", r?.structured?.url === "https://acme.cloudgrid.io/page");
   }
-  // (b) a few small TEXT files with NO service manifest → not gated.
+  // (b) a few small TEXT files with NO service manifest.
   {
     const ctx = makeCtx({ token: "jwt-t", edition: "web", grid: "acme" });
     replies = [
@@ -204,9 +201,9 @@ try {
       ],
       target_entity_id: "ent-t",
     });
-    check("multi-file re-plug with NO services manifest is NOT gated", r?.structured?.entity_id === "ent-t");
+    check("multi-file re-plug with NO services manifest still works", r?.structured?.entity_id === "ent-t");
   }
-  // (c) a cloudgrid.yaml with NO services block → not gated (static bundle).
+  // (c) a cloudgrid.yaml with NO services block → static bundle.
   {
     const ctx = makeCtx({ token: "jwt-s", edition: "web", grid: "acme" });
     replies = [
@@ -219,22 +216,22 @@ try {
       ],
       target_entity_id: "ent-s",
     });
-    check("multi-file re-plug whose manifest declares NO services is NOT gated", r?.structured?.entity_id === "ent-s");
+    check("multi-file re-plug whose manifest declares NO services still works", r?.structured?.entity_id === "ent-s");
   }
-  // (d) the SAME multi-file runtime re-plug on the LOCAL edition → not gated
-  //     (the CLI/disk path there is reliable; the gate is hosted-only).
+  // (d) the SAME multi-file runtime re-plug on the LOCAL edition.
   {
     const ctx = makeCtx({ token: "jwt-l", edition: "local", grid: "natalys-grid" });
     replies = [
       { status: 202, body: { entity_id: "ent-l", slug: "natalys-grid", grid: "natalys-grid", url: "https://x", status: "live" } },
     ];
     const r = await runPlug(ctx, { artifact_files: HER_FILES, target_entity_id: "ent-l" });
-    check("multi-file runtime re-plug on the LOCAL edition is NOT gated", r?.structured?.entity_id === "ent-l");
+    check("multi-file runtime re-plug on the LOCAL edition still works", r?.structured?.entity_id === "ent-l");
   }
 
-  // ── 4. Corrupt-archive BUILD failure (slips past the gate) → actionable ─────
+  // ── 4. Defense in depth: corrupt-archive BUILD failure → actionable ─────────
+  // The server-side defect is fixed, but the rewrite stays as defense in depth:
   // runPlug polls the deploy trace; a failed verdict carrying the exact tar/gzip
-  // log must be rewritten to the CLI handoff, never surfaced raw.
+  // log must still be rewritten to the CLI handoff, never surfaced raw.
   {
     const ctx = makeCtx({ token: "jwt-b", edition: "web", grid: "acme" });
     ctx.getActiveGrid = async () => "acme";
@@ -313,4 +310,4 @@ if (failures > 0) {
   console.log(`\n${failures} check(s) failed.`);
   process.exit(1);
 }
-console.log("\nAll inline multi-file guard checks passed (offline).");
+console.log("\nAll inline multi-file re-plug checks passed (offline).");
