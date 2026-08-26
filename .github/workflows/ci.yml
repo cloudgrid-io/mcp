@@ -80,6 +80,15 @@ jobs:
       # carries a cloudgrid.yaml returns needs_confirmation (does not
       # auto-create) until grid_plug is re-called with confirm_new_app:true.
       - run: npm run test:manifest-confirm
+      # Offline #311 guard: an inline MULTI-FILE runtime RE-PLUG on hosted (5+
+      # files + a cloudgrid.yaml declaring services) is refused BEFORE upload with
+      # an actionable CLI handoff (real entity handle substituted), never failing
+      # after upload with raw tar/gzip build output. Proves the client upload is
+      # byte-exact (rules out client-side corruption), the working cases (single
+      # HTML, few text files, no-services manifest, local edition, create) are NOT
+      # gated, and a corrupt-archive BUILD failure that slips past is rewritten to
+      # the same handoff. Drives the real runPlug/runCheckDeploy against a mock API.
+      - run: npm run test:inline-multifile-guard
       # Offline QA courier test (0.20.5): grid_plug's user_request + session_note
       # args reach the flushed QA session log, stay [omitted] in the per-call trail
       # (default-deny allowlist), respect stdio env precedence, and a successful
