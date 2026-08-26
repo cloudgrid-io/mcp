@@ -1480,22 +1480,16 @@ function plugErrorMessage(status, code, msg, ctxFlags = {}) {
   return guidance ? `${base} — ${guidance}` : base;
 }
 
-// ── WORKAROUND(#311): inline multi-file re-plug guard + FETCHSOURCE handoff ───
-// WHAT IS BROKEN: the hosted (web) server materializes the uploaded multipart
-// parts into a source tarball SERVER-SIDE; for a MULTI-FILE runtime app
-// re-plugged INLINE it emits a non-gzip stream that dies at the build container's
+// ── Corrupt-archive FETCHSOURCE handoff (defense in depth) ───────────────────
+// Historically the hosted (web) server materialized uploaded multipart parts
+// into a source tarball SERVER-SIDE and, for a multi-file runtime app re-plugged
+// inline, could emit a non-gzip stream that died at the build container's
 // FETCHSOURCE with "gzip: stdin: not in gzip format / tar: Child returned status
-// 1" — raw, unactionable output that stranded a real user (natalys-grid). This
-// client never gzips/tars anything (it uploads each file as an octet-stream part
-// — see buildForm; byte-exactness proven in test), so the corruption is a
-// SERVER-SIDE defect downstream of this process; the disk-based CLI uploads the
-// same files and works.
-// WHAT WOULD LET THIS BE REMOVED: the API-side fix to tarball materialization for
-// this shape (tracked on #311). Until then, two defenses live here:
-//   1. detect the shape BEFORE upload (the gate in runPlug) and hand over the
-//      CLI commands with the real entity handle — never fail at the build.
-//   2. if a corrupt-archive build failure still slips through, rewrite the raw
-//      tar/gzip log to the same actionable handoff (archiveCorruptionSignature).
+// 1" — raw, unactionable output. The server-side defect (cloudgrid#2977) is now
+// fixed and verified live, and the pre-upload gate that refused that shape has
+// been lifted (#315). This handoff stays as defense in depth: if a corrupt-archive
+// build failure ever recurs, rewrite the raw tar/gzip log to an actionable CLI
+// handoff (via archiveCorruptionSignature) instead of surfacing it verbatim.
 
 // The "continue this exact entity from a terminal" CLI commands, with the real
 // handle substituted. Prefers grid/slug (what `pull` takes, human-readable);
@@ -1512,7 +1506,7 @@ export function cliContinueHandoff({ entityId, grid, slug } = {}) {
   );
 }
 
-// True when a build failure is the #311 corrupt-archive signature (a FETCHSOURCE
+// True when a build failure is the corrupt-archive signature (a FETCHSOURCE
 // gunzip/tar failure), as opposed to a genuine app build error the developer can
 // act on (a missing dependency, a syntax error) — those keep their real log tail.
 export function archiveCorruptionSignature(text) {
@@ -1749,40 +1743,6 @@ export async function runPlug(ctx, input, deps = {}) {
   }
 
   const isEdit = typeof targetEntityId === "string" && targetEntityId.length > 0;
-
-  // ── WORKAROUND(#311): pre-upload gate for inline multi-file runtime RE-PLUG ──
-  // WHAT IS BROKEN: the hosted server's tarball materialization corrupts the
-  // source archive for a multi-file runtime app re-plugged INLINE — it emits a
-  // non-gzip stream that dies at the build container's FETCHSOURCE with
-  // "gzip: stdin: not in gzip format / tar: Child returned status 1". This client
-  // uploads byte-exact octet-stream parts (proven in test), so the defect is
-  // SERVER-SIDE, not here. It stranded a real user (natalys-grid) twice.
-  // WHAT WOULD LET THIS BE REMOVED: the API-side fix to tarball materialization
-  // for this shape (tracked on #311). Once hosted rebuilds a multi-file inline
-  // re-plug reliably, delete this gate — the inline path would just work.
-  // Until then, detect the shape BEFORE uploading and hand over the CLI, which
-  // uploads from disk and updates the SAME entity. NARROW by design so it never
-  // touches the cases that work today: hosted (web) only, RE-PLUG only (a real
-  // entity id in hand to substitute), MULTIPLE files, and a ROOT cloudgrid.yaml
-  // that DECLARES services (i.e. a runtime app, not a static bundle). A single
-  // HTML page, or a few small text files with no service manifest, are untouched
-  // and still plug inline. Multi-file runtime CREATES are also untouched (issue
-  // #48 aligned that bundle) — only the re-plug shape that failed twice is gated.
-  if (ctx.edition === "web" && isEdit && hasArtifacts && artifacts.length > 1) {
-    const manifest = detectSourceManifest(input);
-    if (manifest && manifest.services.length > 0) {
-      const slugForMsg = pickupData?.slug || (typeof slug === "string" && slug ? slug : null);
-      const gridForMsg = pickupData?.grid || (typeof grid === "string" && grid ? grid : null);
-      throw new Error(
-        `This is a multi-file runtime app (${artifacts.length} files + a cloudgrid.yaml declaring ` +
-          `services: ${manifest.services.join(", ")}) being re-plugged inline on the hosted server. ` +
-          "The hosted server can't reliably rebuild a multi-file app from an inline upload — the source " +
-          "archive arrives corrupt at build (#311), which is why the identical source plugs fine from the " +
-          "CLI. " +
-          cliContinueHandoff({ entityId: targetEntityId, grid: gridForMsg, slug: slugForMsg }),
-      );
-    }
-  }
 
   // An inspiration edit content-versions the FIRST uploaded artifact — when a
   // multi-file folder rides a re-plug, put the primary entry first so the edit
@@ -2127,18 +2087,17 @@ export async function runPlug(ctx, input, deps = {}) {
       data.status = "live";
       data.poll_url = undefined;
     } else if (verdict.status === "failed") {
-      // WORKAROUND(#311): a corrupt-archive FETCHSOURCE failure is unactionable
-      // as raw tar output — never surface it verbatim. WHAT IS BROKEN: the
-      // server-side tarball materialization corrupts the archive for a multi-file
-      // runtime re-plug; WHAT WOULD LET THIS BE REMOVED: the API-side fix (#311),
-      // after which no corrupt-archive verdict reaches here. Name the CLI path
-      // with the real handle instead (defense-in-depth behind the pre-upload gate
-      // above; this catches any shape the gate didn't). Genuine app build errors
-      // keep their real log tail — those the developer CAN act on.
+      // Defense in depth: a corrupt-archive FETCHSOURCE failure is unactionable
+      // as raw tar output — never surface it verbatim. The server-side defect
+      // that produced it (cloudgrid#2977) is fixed and the pre-upload gate has
+      // been lifted (#315), so no corrupt-archive verdict is expected here; if the
+      // class ever recurs, name the CLI path with the real handle instead of the
+      // raw log. Genuine app build errors keep their real log tail — those the
+      // developer CAN act on.
       if (archiveCorruptionSignature(`${verdict.error || ""}\n${verdict.logTail || ""}`)) {
         throw new Error(
           "The uploaded source could not be read by the build (its archive was corrupt) — the URL is NOT " +
-            "live. This is a known limitation of inline multi-file uploads on the hosted server (#311). " +
+            "live. " +
             cliContinueHandoff({ entityId: data.entity_id, grid: data.grid, slug: data.slug }),
         );
       }
@@ -2769,16 +2728,15 @@ export async function runCheckDeploy(ctx, { poll_url, grid } = {}) {
     // the source zip (grid_get_app_source → source_download_url) or the
     // pull command that downloads + links the folder so the SAME entity
     // continues locally.
-    // WORKAROUND(#311): a corrupt-archive FETCHSOURCE failure is unactionable raw
-    // tar output — do NOT echo it. WHAT IS BROKEN: server-side tarball
-    // materialization corrupts the archive for a multi-file runtime re-plug;
-    // WHAT WOULD LET THIS BE REMOVED: the API-side fix (#311). Name the CLI
-    // continue-path with the real handle instead.
+    // Defense in depth: a corrupt-archive FETCHSOURCE failure is unactionable raw
+    // tar output — do NOT echo it. The server-side defect that produced it
+    // (cloudgrid#2977) is fixed and the pre-upload gate has been lifted (#315);
+    // if the class ever recurs, name the CLI continue-path with the real handle
+    // instead of the raw log.
     if (archiveCorruptionSignature(`${verdict.error || ""}\n${verdict.logTail || ""}`)) {
       return {
         text: "The uploaded source could not be read by the build (its archive was corrupt) — the URL is " +
-          "not live. This is a known limitation of inline multi-file uploads on the hosted server (#311); the " +
-          "project files are NOT lost — they are saved on the entity. " +
+          "not live. The project files are NOT lost — they are saved on the entity. " +
           cliContinueHandoff({ entityId, grid: gridSlug, slug: ctx.state.lastDrop?.slug }),
         structured: {
           status: "failed",
