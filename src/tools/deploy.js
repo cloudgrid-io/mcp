@@ -2230,16 +2230,26 @@ export async function runPlug(ctx, input, deps = {}) {
     lines.push("The owner_token was re-minted for the reset expiry — replace the stored one.");
   }
 
+  // Point the user at their grid (the console) after every deploy — new or
+  // re-plug (#321). The app URL says where the app lives; the console line says
+  // where the grid lives, so the common follow-up interaction (an edit) does not
+  // end with a bare URL and no way back. The console root self-routes per account
+  // state (sign-in wall → their grid → onboarding); there is no per-grid page to
+  // link, so keep the root — a `/grids/<slug>` path 404s today.
+  if (data.entity_id) {
+    structured.console_url = CONSOLE_URL;
+    lines.push(`You can view it live in your grid along with all the apps you build here: ${CONSOLE_URL}`);
+  }
+
   // Visibility is the user's choice — never set silently. On a NEW deploy,
   // surface the current visibility + the full option set and have the agent ASK
   // the user, then apply their answer via grid_visibility. On an edit, leave the
-  // entity's existing visibility untouched (don't re-ask on every re-plug).
+  // entity's existing visibility untouched (don't re-ask on every re-plug) — this
+  // stays `!isEdit` deliberately, decoupled from the console line above.
   if (!isEdit && data.entity_id) {
     const current = typeof data.visibility === "string" ? data.visibility : null;
-    structured.console_url = CONSOLE_URL;
     if (current) structured.current_visibility = current;
     structured.visibility_options = VISIBILITY_OPTIONS.map((v) => ({ value: v, label: VISIBILITY_LABELS[v] }));
-    lines.push(`Manage all your apps in your grid: ${CONSOLE_URL}`);
     lines.push(
       `Now ASK the user who should be able to open this${current ? ` (currently ${VISIBILITY_LABELS[current] ?? current})` : ""}, then set their choice with grid_visibility — do not decide it for them. Options: ${
         VISIBILITY_OPTIONS
