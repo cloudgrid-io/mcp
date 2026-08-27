@@ -8,7 +8,9 @@
 // then redirect back to the client with an authorization code. /oauth/token
 // exchanges it (PKCE-verified) for the CloudGrid JWT as the access token.
 //
-// No new identity provider. State is in-memory (single replica, like sessions).
+// No new identity provider. Client REGISTRATIONS are stateless (a signed,
+// self-describing client_id — durable across restarts and replicas, see #3060);
+// only the short-lived authorize sessions and auth codes are in-memory.
 
 import { randomUUID, createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { newLoginCode, buildLoginUrl, pollStatusOnce, decodeJwt } from "./auth.js";
@@ -45,15 +47,33 @@ function b64url(buf) {
 //
 // SECRET: MCP_OAUTH_HMAC_SECRET, read from env, sourced from a Kubernetes Secret
 // (NEVER a ConfigMap), never logged. It is a whitespace/comma-separated list:
-// the FIRST entry signs, ALL entries verify. Rotate by prepending the new secret
-// and deploying; drop the old one once you accept that client_ids minted under
-// it stop verifying (those users re-add the connector ONCE — the deliberate-
-// rotation cost, versus today's every-deploy breakage). An attacker who obtains
-// the secret can forge a client_id for an arbitrary redirect set — but
-// /oauth/register already mints one for any redirect set unauthenticated, so the
-// secret gates INTEGRITY, not registration; PKCE + CloudGrid sign-in still gate
-// getting a token.
+// the FIRST entry signs, ALL entries verify.
+//
+// ROTATION (rolling-update safe — order matters). Do NOT simply prepend the new
+// secret: during a rollout, new pods would sign under a key the not-yet-updated
+// old pods cannot verify, so authorize returns transient 400s. Instead:
+//   1. APPEND the new secret (last position = verify-only) and deploy. Every pod
+//      now VERIFIES both keys; all pods still SIGN under the old first entry.
+//   2. Once the rollout is complete, PROMOTE the new secret to first position
+//      (the signing slot) and deploy. New client_ids are signed under it; the
+//      old key still verifies outstanding ones.
+//   3. Later, DROP the old key. client_ids minted under it stop verifying and
+//      those users re-add the connector ONCE — the deliberate-rotation cost,
+//      versus today's every-deploy breakage.
+// An attacker who obtains the secret can forge a client_id for an arbitrary
+// redirect set — but /oauth/register already mints one for any redirect set
+// unauthenticated, so the secret gates INTEGRITY, not registration; PKCE +
+// CloudGrid sign-in still gate getting a token.
 const CLIENT_ID_PREFIX = "cg1"; // versioned so the scheme can evolve
+
+// A client_id CARRIES its redirect set and travels in a query string, so the set
+// must stay bounded or the token grows without limit. Caps chosen well above any
+// real client (ChatGPT/Claude register one or two URIs).
+const MAX_REDIRECT_URIS = 10;
+const MAX_REDIRECT_URIS_BYTES = 4096;
+// A configured signing key shorter than this is weak for an HMAC secret; we warn
+// but still accept it — any configured key beats the ephemeral fallback (#3060).
+const MIN_SECRET_LENGTH = 32;
 
 function resolveClientSecrets(env = process.env) {
   const configured = (env.MCP_OAUTH_HMAC_SECRET || "").split(/[\s,]+/).filter(Boolean);
@@ -161,9 +181,20 @@ export function mountOAuth(app, publicBase, opts = {}) {
   if (clientSecrets.ephemeral) {
     console.warn(
       "[oauth] MCP_OAUTH_HMAC_SECRET is NOT set — OAuth client registrations use a per-process " +
-        "ephemeral secret and will NOT survive a restart (see #3060). Set the secret in production.",
+        "ephemeral secret (see #3060). This is NOT just a survives-restart issue: with more than " +
+        "one replica, each process mints under its own key, so a client_id registered on one " +
+        "replica fails on another — authorize breaks intermittently, per request, with no restart " +
+        "involved, which diagnoses as an unrelated bug. Set the secret in production.",
     );
   } else {
+    const weak = clientSecrets.secrets.filter((s) => s.length < MIN_SECRET_LENGTH).length;
+    if (weak > 0) {
+      console.warn(
+        `[oauth] MCP_OAUTH_HMAC_SECRET has ${weak} key(s) shorter than ${MIN_SECRET_LENGTH} chars — ` +
+          "weak for an HMAC signing key; use a long random value (e.g. `openssl rand -hex 32`). " +
+          "Accepted anyway (still better than the ephemeral fallback).",
+      );
+    }
     console.log(
       `[oauth] client-registration secret configured (${clientSecrets.secrets.length} key(s)); ` +
         "registrations are durable across restarts and replicas.",
@@ -211,7 +242,21 @@ export function mountOAuth(app, publicBase, opts = {}) {
       res.status(400).json({ error: "invalid_client_metadata", error_description: "redirect_uris is required." });
       return;
     }
+    if (redirectUris.length > MAX_REDIRECT_URIS) {
+      res.status(400).json({
+        error: "invalid_client_metadata",
+        error_description: `At most ${MAX_REDIRECT_URIS} redirect_uris are allowed.`,
+      });
+      return;
+    }
     const canonical = canonicalRedirectUris(redirectUris);
+    if (Buffer.byteLength(canonical, "utf8") > MAX_REDIRECT_URIS_BYTES) {
+      res.status(400).json({
+        error: "invalid_client_metadata",
+        error_description: `redirect_uris exceed the ${MAX_REDIRECT_URIS_BYTES}-byte limit.`,
+      });
+      return;
+    }
     const clientId = signClientId(canonical, clientSecrets.secrets[0]);
     res.status(201).json({
       client_id: clientId,
