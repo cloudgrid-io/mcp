@@ -11,6 +11,7 @@
 //
 // Run: node test/check-deploy.test.mjs
 import { runPlug, runCheckDeploy, pollDeployTrace, API_BASE } from "../src/tools.js";
+import { CONSOLE_URL } from "../src/tools/constants.js";
 
 let failures = 0;
 const check = (label, cond) => { console.log(`${cond ? "ok  " : "FAIL"} ${label}`); if (!cond) failures++; };
@@ -96,6 +97,11 @@ try {
   check("slow build (web): points at grid_check_deploy", /grid_check_deploy/.test(slow.text));
   check("slow build (web): does NOT point at local-only grid_status", !/grid_status/.test(slow.text));
   check("slow build: structured keeps poll_url", slow.structured.poll_url === "/deploys/d_app_abc123");
+  // #321 finding 1: the console line says "view it live" — it must NOT appear on
+  // the pending/building branch, two lines under "Do NOT tell the user it is live".
+  // Liveness is confirmed by grid_check_deploy, so the console line belongs there.
+  check("slow build: no console line while pending", !/view it live in your grid/.test(slow.text));
+  check("slow build: no console_url while pending", slow.structured.console_url === undefined);
   check("slow build: lastDrop carries poll_url for the no-args check", true);
 
   // local edition wording keeps grid_status as a secondary
@@ -126,6 +132,11 @@ try {
   traceReplies = [{ body: { status: "success" } }];
   const okr = await runCheckDeploy(makeCtx({ lastDrop: { poll_url: "/deploys/d_app_abc123", url: "https://app-1--acme.cloudgrid.io", grid: "acme" } }), {});
   check("check success: live true + URL", okr.structured.live === true && /app-1--acme/.test(okr.structured.url ?? ""));
+  // #321 finding 2: the "now live" moment for a runtime app arrives HERE, not from
+  // runPlug. This is the case in the founder's report, so the console line +
+  // console_url must land on this branch too.
+  check("check success: console line points at the grid", /view it live in your grid/.test(okr.text) && okr.text.includes(CONSOLE_URL));
+  check("check success: structured.console_url is set", okr.structured.console_url === CONSOLE_URL);
 
   reset();
   traceReplies = [{ body: { status: "building" } }];

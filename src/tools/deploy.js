@@ -2230,13 +2230,19 @@ export async function runPlug(ctx, input, deps = {}) {
     lines.push("The owner_token was re-minted for the reset expiry — replace the stored one.");
   }
 
-  // Point the user at their grid (the console) after every deploy — new or
-  // re-plug (#321). The app URL says where the app lives; the console line says
+  // Point the user at their grid (the console) after a deploy that is LIVE — new
+  // or re-plug (#321). The app URL says where the app lives; the console line says
   // where the grid lives, so the common follow-up interaction (an edit) does not
   // end with a bare URL and no way back. The console root self-routes per account
   // state (sign-in wall → their grid → onboarding); there is no per-grid page to
   // link, so keep the root — a `/grids/<slug>` path 404s today.
-  if (data.entity_id) {
+  //
+  // NOT on the building branch: the line says "view it live", and a still-building
+  // app is not live — emitting it two lines under "Do NOT tell the user it is live"
+  // would hand a model the word "live" next to a pending app. For an async runtime
+  // build the console line arrives when liveness is confirmed, in runCheckDeploy's
+  // success branch.
+  if (data.entity_id && !isBuilding) {
     structured.console_url = CONSOLE_URL;
     lines.push(`You can view it live in your grid along with all the apps you build here: ${CONSOLE_URL}`);
   }
@@ -2727,8 +2733,12 @@ export async function runCheckDeploy(ctx, { poll_url, grid } = {}) {
   const url = ctx.state.lastDrop?.url;
   if (verdict.status === "success") {
     return {
-      text: `Live${url ? `: ${url}` : ""} — the build finished. Give the user the URL.`,
-      structured: { status: "success", live: true, ...(url ? { url } : {}) },
+      // The "now live" moment for an async runtime build lands here, not in
+      // runPlug (which returned "building"). Point the user at their grid too
+      // (#321) — this is where liveness is confirmed, so "view it live" is true.
+      text: `Live${url ? `: ${url}` : ""} — the build finished. Give the user the URL.\n` +
+        `You can view it live in your grid along with all the apps you build here: ${CONSOLE_URL}`,
+      structured: { status: "success", live: true, ...(url ? { url } : {}), console_url: CONSOLE_URL },
     };
   }
   if (verdict.status === "failed") {

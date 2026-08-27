@@ -252,6 +252,10 @@ try {
       !w.structured.visibility_options.some((o) => ["org", "authenticated", "space"].includes(o.value)));
     check("new deploy → instructs the agent to ASK then grid_visibility", /ASK the user who should be able to open this/.test(w.text) && /grid_visibility/.test(w.text));
     check("web authed html create → says Your app is live", /Your app is live/.test(w.text));
+    // #321 finding 3: guard the create path too. Inverting the gate to
+    // `isEdit && data.entity_id` would keep the edit assertions green while
+    // silently dropping the console line from NEW deploys — this catches that.
+    check("new deploy → prints the console line + console_url", /view it live in your grid/.test(w.text) && w.structured.console_url === CONSOLE_URL);
   }
 
   // A runtime app create ALSO gets the visibility ask (universal, not auto-set).
