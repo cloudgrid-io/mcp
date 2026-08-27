@@ -91,7 +91,36 @@ as the fallback.
 
 Endpoints: `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`,
 `/oauth/register`, `/oauth/authorize` (the sign-in interstitial), `/oauth/token`.
-State is in-memory, single replica — same posture as MCP sessions.
+
+Dynamic client **registrations are stateless and durable**: a `client_id` is an
+HMAC-signed token that carries its own redirect-URI set, so it survives restarts,
+deploys, and any replica count with no datastore. Only the short-lived authorize
+sessions and auth codes (5-minute, retry-on-failure) remain in-memory — losing
+them to a restart just re-prompts sign-in, it never drops a registered connector.
+
+### Client-registration signing key (durable registration)
+
+Signing that `client_id` needs a stable server key. Set it or the fix for durable
+registration is not actually in effect.
+
+- Set `MCP_OAUTH_HMAC_SECRET` in the deployment env, sourced from a Kubernetes
+  **Secret** (NEVER a ConfigMap; the key must not be logged). It is a
+  whitespace/comma-separated list: the first entry signs, all entries verify.
+  Mount it on the connected and staging deployments; the anonymous edge does not
+  mount OAuth and does not need it.
+- **Unlike `MCP_TRUSTED_SERVER_SECRET`, this is NOT safe to omit.** With no secret
+  set, each process falls back to its own per-process ephemeral key: within one
+  process the flow works, but across a restart or multiple replicas a `client_id`
+  minted by one process fails on another — authorize breaks intermittently, per
+  request, and every functional probe still passes. Missing the secret silently
+  leaves the registration-durability defect live while looking fixed.
+- Verify from the boot log: `[oauth] client-registration secret configured (N key(s))`
+  confirms durable mode; the `MCP_OAUTH_HMAC_SECRET is NOT set` warning means the
+  ephemeral fallback is active.
+- Rotate rolling-update-safe: append the new key (verify-only) and deploy first,
+  then promote it to the first (signing) position and deploy, then drop the old
+  key later. Prepending straight away makes new pods sign under a key the
+  not-yet-updated pods cannot verify, causing transient 400s.
 
 ## Launch follow-ups
 - **CORS / DNS-rebinding / allowed hosts.** Configure at deploy time for the public

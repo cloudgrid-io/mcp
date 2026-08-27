@@ -227,6 +227,30 @@ test("[#3060] redirect_uri is still validated strictly against the signed set", 
   assert.match(res.body, /Unknown client/);
 });
 
+test("[#3060] too many redirect_uris are rejected (client_id stays self-limiting)", async () => {
+  // client_id now CARRIES the redirect set and travels in a query string, so an
+  // unbounded set must not be signable. Cap is ~10 URIs.
+  const many = Array.from({ length: 11 }, (_, i) => `https://app.example.com/cb/${i}`);
+  const res = await fetch(`${instanceA.baseUrl}/oauth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ redirect_uris: many }),
+  });
+  assert.equal(res.status, 400, "more than 10 redirect_uris must be rejected");
+  assert.match(await res.text(), /invalid_client_metadata/);
+});
+
+test("[#3060] oversized redirect_uris are rejected (~4KB cap)", async () => {
+  const huge = ["https://app.example.com/cb?x=" + "a".repeat(5000)];
+  const res = await fetch(`${instanceA.baseUrl}/oauth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ redirect_uris: huge }),
+  });
+  assert.equal(res.status, 400, "a redirect set over ~4KB must be rejected");
+  assert.match(await res.text(), /invalid_client_metadata/);
+});
+
 test("[#3060] PKCE is still mandatory (S256) for a valid client", async () => {
   const reg = await register(instanceA, [REDIRECT]);
   // Valid client + valid redirect, but NO code_challenge → must still 400.
