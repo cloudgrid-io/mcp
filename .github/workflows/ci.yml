@@ -165,6 +165,15 @@ jobs:
       # across the rebuild (id ≠ identity; the credential on the request decides),
       # the anonymous path recovering, and grid_login staying reachable.
       - run: npm run test:web-restart-recovery
+      # OAuth client-registration persistence (#3060): dynamic registrations were
+      # process-local, so every deploy/pod restart wiped them and users hit
+      # "Unknown client" at /oauth/authorize. The fix makes client_id a signed,
+      # self-describing token (HMAC over the redirect set). This does REAL process
+      # death: registers a client, kills the process, reboots empty, and asserts
+      # /oauth/authorize still accepts it; also proves cross-replica acceptance,
+      # that the secret actually binds (wrong secret / tampered id → 400), and
+      # that PKCE + strict redirect validation are unchanged.
+      - run: npm run test:oauth-client-persistence
       # Capability logging at initialize (#297): the hosted edge records the
       # client's advertised MCP capabilities once per session as a KEY SHAPE
       # (names + value types, never values), so we can see whether Claude web

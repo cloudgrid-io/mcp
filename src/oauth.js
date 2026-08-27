@@ -10,13 +10,15 @@
 //
 // No new identity provider. State is in-memory (single replica, like sessions).
 
-import { randomUUID, createHash } from "node:crypto";
+import { randomUUID, createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { newLoginCode, buildLoginUrl, pollStatusOnce, decodeJwt } from "./auth.js";
 
 const CODE_TTL_MS = 5 * 60 * 1000; // authorize sessions + auth codes live 5 minutes
 
-// In-memory stores. { [id]: record } with created timestamps for TTL sweeps.
-const clients = new Map(); // client_id -> { redirect_uris }
+// In-memory stores for the SHORT-LIVED, single-flight halves of the flow. These
+// are 5-minute, retry-on-failure sessions: losing them to a restart just means
+// the user clicks "sign in" again, never that they must re-add the connector.
+// Client REGISTRATIONS are NOT here — they are stateless (see below, #3060).
 const authSessions = new Map(); // sid -> { cgCode, client_id, redirect_uri, state, code_challenge, created }
 const authCodes = new Map(); // code -> { jwt, client_id, redirect_uri, code_challenge, created }
 
@@ -27,6 +29,77 @@ function sweep(map) {
 
 function b64url(buf) {
   return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+// --- Stateless client registration (#3060) -----------------------------------
+// A `client_id` is a signed token that CARRIES its own redirect-URI set, not a
+// random handle into a process-local Map. Registration signs the (sorted,
+// deduped) set under a server secret; /oauth/authorize verifies by recomputing
+// the HMAC and checking `redirect_uri` against the signed set. This makes
+// registration durable across restarts, deploys, and ANY replica count with no
+// datastore, and removes the old unbounded-growth `clients` Map entirely.
+//
+// PKCE and redirect validation are untouched — if anything stricter: the
+// redirect set is now cryptographically bound into the client_id, so a tampered
+// client_id fails the HMAC and is rejected.
+//
+// SECRET: MCP_OAUTH_HMAC_SECRET, read from env, sourced from a Kubernetes Secret
+// (NEVER a ConfigMap), never logged. It is a whitespace/comma-separated list:
+// the FIRST entry signs, ALL entries verify. Rotate by prepending the new secret
+// and deploying; drop the old one once you accept that client_ids minted under
+// it stop verifying (those users re-add the connector ONCE — the deliberate-
+// rotation cost, versus today's every-deploy breakage). An attacker who obtains
+// the secret can forge a client_id for an arbitrary redirect set — but
+// /oauth/register already mints one for any redirect set unauthenticated, so the
+// secret gates INTEGRITY, not registration; PKCE + CloudGrid sign-in still gate
+// getting a token.
+const CLIENT_ID_PREFIX = "cg1"; // versioned so the scheme can evolve
+
+function resolveClientSecrets(env = process.env) {
+  const configured = (env.MCP_OAUTH_HMAC_SECRET || "").split(/[\s,]+/).filter(Boolean);
+  if (configured.length > 0) return { secrets: configured, ephemeral: false };
+  // No configured secret: a per-process ephemeral one. The flow works within a
+  // single process, but registrations do NOT survive a restart — i.e. #3060 is
+  // unfixed. Production MUST set the secret; the boot log states which mode is
+  // active so a deploy can be verified.
+  return { secrets: [randomBytes(32).toString("hex")], ephemeral: true };
+}
+
+// Canonical form the signature covers: sorted + deduped, as JSON.
+function canonicalRedirectUris(uris) {
+  return JSON.stringify([...new Set(uris.map((u) => String(u)))].sort());
+}
+
+function signClientId(canonical, secret) {
+  const payload = b64url(Buffer.from(canonical, "utf8"));
+  const signingInput = `${CLIENT_ID_PREFIX}.${payload}`;
+  const sig = b64url(createHmac("sha256", secret).update(signingInput).digest());
+  return `${signingInput}.${sig}`;
+}
+
+// Verify a client_id against any accepted secret; returns { redirect_uris } or null.
+function verifyClientId(clientId, secrets) {
+  const parts = String(clientId).split(".");
+  if (parts.length !== 3 || parts[0] !== CLIENT_ID_PREFIX) return null;
+  const [, payload, sig] = parts;
+  const signingInput = `${CLIENT_ID_PREFIX}.${payload}`;
+  const given = Buffer.from(sig);
+  let ok = false;
+  for (const secret of secrets) {
+    const expected = Buffer.from(b64url(createHmac("sha256", secret).update(signingInput).digest()));
+    if (expected.length === given.length && timingSafeEqual(expected, given)) {
+      ok = true;
+      break;
+    }
+  }
+  if (!ok) return null;
+  try {
+    const json = Buffer.from(payload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+    const uris = JSON.parse(json);
+    return Array.isArray(uris) ? { redirect_uris: uris } : null;
+  } catch {
+    return null;
+  }
 }
 
 function corsOk(res) {
@@ -81,6 +154,22 @@ export function mountOAuth(app, publicBase, opts = {}) {
   if (!opts.requireAuth) return;
   const base = publicBase.replace(/\/+$/, "");
 
+  // Resolve the client-registration signing secret(s) once at mount. Log which
+  // mode is active — durable vs. ephemeral — so a production deploy can be
+  // verified from the boot log without ever printing the secret itself.
+  const clientSecrets = resolveClientSecrets();
+  if (clientSecrets.ephemeral) {
+    console.warn(
+      "[oauth] MCP_OAUTH_HMAC_SECRET is NOT set — OAuth client registrations use a per-process " +
+        "ephemeral secret and will NOT survive a restart (see #3060). Set the secret in production.",
+    );
+  } else {
+    console.log(
+      `[oauth] client-registration secret configured (${clientSecrets.secrets.length} key(s)); ` +
+        "registrations are durable across restarts and replicas.",
+    );
+  }
+
   const asMetadata = {
     issuer: base,
     authorization_endpoint: `${base}/oauth/authorize`,
@@ -122,14 +211,14 @@ export function mountOAuth(app, publicBase, opts = {}) {
       res.status(400).json({ error: "invalid_client_metadata", error_description: "redirect_uris is required." });
       return;
     }
-    const clientId = randomUUID();
-    clients.set(clientId, { redirect_uris: redirectUris, created: Date.now() });
+    const canonical = canonicalRedirectUris(redirectUris);
+    const clientId = signClientId(canonical, clientSecrets.secrets[0]);
     res.status(201).json({
       client_id: clientId,
       token_endpoint_auth_method: "none",
       grant_types: ["authorization_code"],
       response_types: ["code"],
-      redirect_uris: redirectUris,
+      redirect_uris: JSON.parse(canonical),
     });
   });
 
@@ -137,7 +226,7 @@ export function mountOAuth(app, publicBase, opts = {}) {
   app.get("/oauth/authorize", (req, res) => {
     sweep(authSessions);
     const { client_id, redirect_uri, state, code_challenge, code_challenge_method, response_type } = req.query;
-    const client = clients.get(String(client_id));
+    const client = verifyClientId(client_id, clientSecrets.secrets);
     if (!client || !client.redirect_uris.includes(String(redirect_uri))) {
       res.status(400).send("Unknown client or redirect_uri. Re-add the connector and try again.");
       return;
