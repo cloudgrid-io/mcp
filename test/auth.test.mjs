@@ -32,8 +32,16 @@ check("decodeJwt is safe on garbage", Object.keys(decodeJwt("not-a-jwt")).length
 check(
   "buildLoginUrl attributes MCP-origin signups",
   buildLoginUrl("code with spaces") ===
-    "https://api.cloudgrid.io/auth/login?code=code%20with%20spaces&source=mcp",
+    "https://api.cloudgrid.io/auth/login?code=code%20with%20spaces&source=mcp&arrival=ai_tool",
 );
+// Two independent params. `source` is attribution; `arrival` selects the
+// onboarding path, and a missing one defaults to `website` — the seven-screen
+// browser flow. Asserted separately so a regression names which one was lost.
+{
+  const u = new URL(buildLoginUrl("abc"));
+  check("buildLoginUrl sends source=mcp", u.searchParams.get("source") === "mcp");
+  check("buildLoginUrl sends arrival=ai_tool", u.searchParams.get("arrival") === "ai_tool");
+}
 
 const creds = await writeCredentials(jwt);
 check("writeCredentials returns jwt", creds.jwt === jwt);

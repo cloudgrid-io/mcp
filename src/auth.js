@@ -45,8 +45,23 @@ export function newLoginCode() {
 }
 
 // The sign-in URL the user opens in a browser — always the public host.
+//
+// Two independent params, matching what the CLI sends (cloudgrid packages/cli
+// commands/login.ts, #2979):
+//
+//   source=mcp        signup ATTRIBUTION. Stamped as `signup_source` on the
+//                     user row, and only when this login CREATES the user.
+//   arrival=ai_tool   the onboarding PATH selector. Nothing to do with source.
+//
+// `arrival` is sent explicitly rather than left to the server. The API defaults
+// a missing arrival to `website`, which is the seven-screen browser onboarding
+// instead of the two-screen path that ends back in the tool — that default is
+// exactly what bit the CLI before #2979 added it there. The API does currently
+// infer `ai_tool` for source=mcp, so this changes nothing observable today; it
+// stops the flow depending on an inference we do not own and would not notice
+// losing.
 export function buildLoginUrl(code) {
-  return `${PUBLIC_API_BASE}/auth/login?code=${encodeURIComponent(code)}&source=mcp`;
+  return `${PUBLIC_API_BASE}/auth/login?code=${encodeURIComponent(code)}&source=mcp&arrival=ai_tool`;
 }
 
 const CERT_ERROR_GUIDANCE =
