@@ -1155,6 +1155,74 @@ export function registerTools(server, ctx) {
       }
     },
   );
+  const escapeHtml = (s) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+   .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    // ── grid_hello — creates a hello page and plugs it (both editions) ────────
+  reg(
+    "grid_hello",
+    {
+      title: "Plug a hello page",
+      description:
+        "Create a minimal hello page and plug it into the user's grid, returning the live URL. " +
+        "If the user has more than one grid and `grid` is not given, this returns needs_grid with " +
+        "the list — ASK the user which grid, then call again with `grid` set. Never guess the grid. " +
+        "Requires sign-in.",
+      inputSchema: {
+        grid: z.string().optional()
+          .describe("Grid slug to plug into. Omit on the first call to be asked."),
+        name: z.string().optional()
+          .describe("Who to greet. Defaults to 'world'."),
+      },
+      outputSchema: {
+        url: z.string().optional().describe("The live URL, once plugged."),
+        entity_id: z.string().optional().describe("Re-plug handle."),
+        needs_auth: z.boolean().optional().describe("True when the user must sign in first."),
+        needs_grid: z.boolean().optional().describe("True when the user must choose a grid."),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+    },
+    async (input) => {
+      try {
+        // 1. AUTH — same shape as grid_plug (register.js:585). Not an error:
+        //    a result the model acts on by running grid_login.
+        const token = await ctx.getToken();
+        if (!token) {
+          return okResult({ text: AUTH_ASK_SIGNED_OUT, structured: { needs_auth: true } });
+        }
+
+        // 2. GRID — never fall back to the active grid on a create (#327).
+        //    Four outcomes; three of them are handled right here.
+        const decision = await resolveGridOrAsk(ctx, {
+          token,
+          suppliedGrid: input?.grid,
+          edition: ctx.edition,
+        });
+        if (decision.picker) return okResult(decision.picker);   // >1 grid, or 0 grids → ASK
+        const grid = decision.grid || decision.single?.slug;     // matched, or exactly one
+        if (!grid) return fail("Could not resolve a grid. Pass `grid` explicitly.");
+
+        // 3. BUILD — escape user input. This page is published to a public URL.
+        const who = escapeHtml(String(input?.name ?? "world").slice(0, 60));
+        const html = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hello, ${who}</title>
+<style>
+  body{margin:0;height:100vh;display:grid;place-items:center;
+       font:600 clamp(2rem,10vw,6rem)/1.1 ui-sans-serif,system-ui,sans-serif;
+       background:#0b0b0f;color:#f4f4f5}
+</style></head>
+<body>Hello, ${who}</body></html>`;
+
+        // 4. PLUG — one inline HTML document is an inspiration. runPlug does the rest.
+        const res = await runPlug(ctx, { html, grid });
+        return okResult(res);
+      } catch (err) {
+        return fail(err.message);
+      }
+    },
+  );
 
   if (ctx.edition !== "local") return; // web edition stops here — no CLI tools
 

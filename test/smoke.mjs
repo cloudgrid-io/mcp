@@ -13,6 +13,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 const GRIDCTL = [
   "grid_start",
   "grid_get_template",
+  "grid_hello",
   "grid_report",
   "grid_pickup",
   "grid_pull",

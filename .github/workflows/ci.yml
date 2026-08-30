@@ -65,6 +65,11 @@ jobs:
       # and the picker gate asks on multi-grid; the edit path's #296/#301/#316
       # derivation chain stays intact. Both editions (local persists, hosted null).
       - run: npm run test:plug-create-grid-choice
+      # grid_hello: the ask-then-plug contract. A create with no `grid` returns
+      # needs_grid and deploys NOTHING; an explicit grid wins over the active
+      # grid; a single-grid user is not asked; the greeted name is escaped before
+      # it reaches a page served at a public URL. Both editions.
+      - run: npm run test:hello
       # Zero-grid golden path (#235): create on a provisioning grid returns an
       # honest wait message (not an immediate re-call that fails); grid_plug
       # retries 409 ORG_PROVISIONING to a bounded budget then succeeds; budget
