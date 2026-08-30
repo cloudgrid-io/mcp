@@ -100,7 +100,8 @@ export async function fetchUserOrgs(token) {
 //   - >1 grid and none supplied           → { picker } (a ready-to-return result)
 //   - exactly one grid                    → { single: annotatedOrg } — the caller
 //         decides how to treat a not-ready single grid (drop blocks; plug warns)
-//   - no orgs / listing failed            → { picker } needs_grid_create (asks)
+//   - no orgs                              → { picker } needs_grid_create (asks)
+//   - listing failed                      → { picker } { error: true } (asks; NOT needs_grid_create)
 // Every return shape either ASKS (a picker) or names an explicit grid — none is a
 // silent proceed. That is load-bearing: register.js returns the picker or sets
 // input.grid from `grid`/`single` before runPlug, so the create path never

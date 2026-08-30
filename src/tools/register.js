@@ -531,6 +531,7 @@ export function registerTools(server, ctx) {
         })).optional().describe("Alias of grids (legacy picker alias)."),
         via: z.string().optional().describe("Recovery marker: 'cli-fallback' when a signed-in create was published through the bundled CloudGrid CLI."),
         needs_grid_create: z.boolean().optional().describe("Zero-grid ask: the account has no grid yet — suggest a slug, confirm with the user, call grid_create_grid, then re-call grid_plug with grid: <slug>."),
+        error: z.boolean().optional().describe("True when the grid listing failed (network/auth error). The text carries a human-readable message. Do NOT treat this as needs_grid_create."),
       },
       // destructiveHint (M3): a re-plug with target_entity_id REPLACES what is
       // live at a public URL in place. Versions + grid rollback exist, but the
@@ -1189,6 +1190,7 @@ export function registerTools(server, ctx) {
         entity_id: z.string().optional().describe("Re-plug handle."),
         needs_auth: z.boolean().optional().describe("True when the user must sign in first."),
         needs_grid: z.boolean().optional().describe("True when the user must choose a grid."),
+        error: z.boolean().optional().describe("True when the grid listing failed (network/auth error). The text carries a human-readable message. Do NOT treat this as needs_grid_create."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
