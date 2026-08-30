@@ -1483,6 +1483,9 @@ function plugErrorMessage(status, code, msg, ctxFlags = {}) {
   if (status === 400 && isGridHeaderError(code, msg)) {
     return `Plug failed (HTTP 400): ${rewriteGridHeaderError(msg)}`;
   }
+  if (status === 400 && /cloudgrid\.yaml.*required/i.test(msg)) {
+    return "Plug failed (HTTP 400): no cloudgrid.yaml found — provide it via the `cloudgrid_yaml` parameter or include a `cloudgrid.yaml` entry in `artifact_files`.";
+  }
   const base = `Plug failed (HTTP ${status}${code ? ` ${code}` : ""}): ${msg}`;
   const guidance = errorGuidance({ status, code, ...ctxFlags });
   return guidance ? `${base} — ${guidance}` : base;
@@ -1895,20 +1898,20 @@ export async function runPlug(ctx, input, deps = {}) {
   }
   if (useAnonWire && ctx.state.anonCookie) headers["Cookie"] = ctx.state.anonCookie;
 
+  // ── Resolve manifest from all sources ────────────────────────────────────────
+  // The explicit `cloudgrid_yaml` param takes precedence; fall back to a
+  // `cloudgrid.yaml` entry in `artifact_files`. This resolves the asymmetry
+  // where create honoured artifact_files but re-plug ignored it (#314).
+  const resolvedManifestYaml = cloudgrid_yaml
+    || (hasArtifacts && artifact_files.find((f) => f?.path === "cloudgrid.yaml")?.content)
+    || null;
+
   // ── CREATE manifest injection (issue #48) ───────────────────────────────────
-  // On a folder-walk create, a `cloudgrid.yaml` on disk is walked into the tree
-  // and — because directory reads surface it before the nested `services/…`
-  // files — rides the multipart body as the FIRST `artifact` part, with the
-  // walk's uniform `application/octet-stream` content-type. The runtime build
-  // orchestrator relies on the manifest leading the bundle (it drives the
-  // service graph + the entity name). The inline `artifact_files` create used to
-  // APPEND the `cloudgrid_yaml` manifest LAST and as `text/plain`, so a
-  // multi-service runtime rolled out with no service graph (0 replicas /
-  // rollout_failed) and an auto `drop-XXXX` name. Fold the manifest into the
-  // artifact list as the first entry (deduping any `cloudgrid.yaml` the caller
-  // already inlined) so both create paths emit a byte-equivalent bundle.
-  if (!isEdit && cloudgrid_yaml) {
-    const manifest = { path: "cloudgrid.yaml", buffer: Buffer.from(cloudgrid_yaml, "utf8") };
+  // Fold the manifest into the artifact list as the first entry (deduping any
+  // `cloudgrid.yaml` the caller already inlined) so both create paths emit a
+  // byte-equivalent bundle.
+  if (!isEdit && resolvedManifestYaml) {
+    const manifest = { path: "cloudgrid.yaml", buffer: Buffer.from(resolvedManifestYaml, "utf8") };
     const rest = artifacts.filter((a) => a.path !== "cloudgrid.yaml");
     artifacts = [manifest, ...rest];
   }
@@ -1933,7 +1936,7 @@ export async function runPlug(ctx, input, deps = {}) {
       // (materializePlugTarball); an inspiration edit ignores its content.
       form.append(
         "cloudgrid.yaml",
-        new Blob([cloudgrid_yaml || ""], { type: "text/plain" }),
+        new Blob([resolvedManifestYaml || ""], { type: "text/plain" }),
         "cloudgrid.yaml",
       );
     }
@@ -1943,7 +1946,7 @@ export async function runPlug(ctx, input, deps = {}) {
   // auto `drop-XXXX` slug. Harmless if the server owns slug generation; on a
   // re-plug the entity's name is authoritative, so only send on create.
   if (!isEdit) {
-    const manifestName = parseManifestName(cloudgrid_yaml);
+    const manifestName = parseManifestName(resolvedManifestYaml);
     if (manifestName) {
       form.append("name", manifestName);
       form.append("slug", manifestName);
