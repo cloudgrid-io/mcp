@@ -228,11 +228,18 @@ export function mountOAuth(app, publicBase, opts = {}) {
     res.json({ resource: `${base}/mcp`, authorization_servers: [base], scopes_supported: ["cloudgrid"] });
   });
 
-  // RFC 8414.
-  app.get("/.well-known/oauth-authorization-server", (_req, res) => {
+  // RFC 8414. Both the root form and the path-inserted form: the MCP
+  // authorization spec has clients derive the metadata URL from the RESOURCE
+  // url (…/mcp), so a client that tries `/.well-known/oauth-authorization-server/mcp`
+  // first must not get a 404 HTML page. The protected-resource document above
+  // already served both forms; this one served only the root, and the asymmetry
+  // was an oversight rather than a decision.
+  const serveAsMetadata = (_req, res) => {
     corsOk(res);
     res.json(asMetadata);
-  });
+  };
+  app.get("/.well-known/oauth-authorization-server", serveAsMetadata);
+  app.get("/.well-known/oauth-authorization-server/mcp", serveAsMetadata);
 
   // RFC 7591 — dynamic client registration. Public clients, PKCE-only.
   app.post("/oauth/register", (req, res) => {
@@ -319,6 +326,9 @@ export function mountOAuth(app, publicBase, opts = {}) {
         created: Date.now(),
       });
       authSessions.delete(String(req.query.sid));
+      // The sign-in half succeeded. Without this line a connector failure gives
+      // no way to tell whether the user ever got through sign-in at all.
+      console.error("[oauth] authorization code issued after sign-in; awaiting token exchange");
       const sep = sess.redirect_uri.includes("?") ? "&" : "?";
       const redirect = `${sess.redirect_uri}${sep}code=${encodeURIComponent(code)}${sess.state ? `&state=${encodeURIComponent(sess.state)}` : ""}`;
       res.json({ status: "ready", redirect });
@@ -332,22 +342,64 @@ export function mountOAuth(app, publicBase, opts = {}) {
   });
 
   // Token endpoint — PKCE-verified exchange; the CloudGrid JWT is the access token.
+  //
+  // WHY THIS BRANCHES INSTEAD OF ONE COMBINED `if`
+  //
+  // Reported 2026-08-30: ChatGPT web fails with "Something went wrong with
+  // setting up the connection" AFTER the user signs in, which puts the failure
+  // in this handler. It could not be diagnosed from either side, because five
+  // unrelated causes all produced a byte-identical `{"error":"invalid_grant"}`:
+  //
+  //   unknown/expired code · code already exchanged · client_id absent
+  //   · client_id mismatched · redirect_uri mismatched (a trailing slash does it)
+  //
+  // All five were reproduced against this handler (test/oauth-token-exchange).
+  // Nothing was logged, so the server could not say which happened either — the
+  // failure was invisible from both ends at once. That is the actual defect
+  // being fixed here: not the rejection, which is correct in every one of those
+  // cases, but that a rejection carried no information.
+  //
+  // The reason is logged server-side and returned as `error_description`. The
+  // caller already holds the code, the client_id and the redirect_uri it sent,
+  // so naming which of ITS OWN values did not match tells it nothing it did not
+  // already know. The token, the verifier and the code are never logged.
+  const denyToken = (res, error, reason, detail = "") => {
+    console.error(`[oauth] token exchange refused: ${reason}${detail ? ` ${detail}` : ""}`);
+    res.status(400).json({ error, error_description: reason });
+  };
+
   app.post("/oauth/token", (req, res) => {
     corsOk(res);
     sweep(authCodes);
     const { grant_type, code, code_verifier, redirect_uri, client_id } = req.body ?? {};
     if (grant_type !== "authorization_code") {
-      res.status(400).json({ error: "unsupported_grant_type" });
+      denyToken(res, "unsupported_grant_type", "grant_type must be authorization_code", `(got ${JSON.stringify(grant_type ?? null)})`);
       return;
     }
     const rec = authCodes.get(String(code));
-    if (!rec || rec.client_id !== String(client_id) || rec.redirect_uri !== String(redirect_uri)) {
-      res.status(400).json({ error: "invalid_grant" });
+    if (!rec) {
+      // Also the retry case: codes are single-use, so a second exchange of a
+      // code that already succeeded lands here.
+      denyToken(res, "invalid_grant", "authorization code is unknown, expired or already exchanged");
+      return;
+    }
+    if (rec.client_id !== String(client_id)) {
+      denyToken(
+        res,
+        "invalid_grant",
+        client_id === undefined ? "client_id is required at the token endpoint" : "client_id does not match the one the code was issued to",
+      );
+      return;
+    }
+    if (rec.redirect_uri !== String(redirect_uri)) {
+      // The exact strings, because the difference is usually invisible —
+      // a trailing slash, a case change, an added query parameter.
+      denyToken(res, "invalid_grant", "redirect_uri does not match the authorize request", `(sent ${JSON.stringify(redirect_uri ?? null)}, expected ${JSON.stringify(rec.redirect_uri)})`);
       return;
     }
     const challenge = b64url(createHash("sha256").update(String(code_verifier ?? "")).digest());
     if (challenge !== rec.code_challenge) {
-      res.status(400).json({ error: "invalid_grant", error_description: "PKCE verification failed." });
+      denyToken(res, "invalid_grant", code_verifier === undefined ? "code_verifier is required (PKCE)" : "PKCE verification failed");
       return;
     }
     authCodes.delete(String(code)); // single use
