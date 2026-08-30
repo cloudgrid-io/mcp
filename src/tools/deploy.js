@@ -1051,7 +1051,7 @@ async function requestCollabAccess(ctx, target, headers) {
   if (res.status === 409 && code === "COLLAB_ALREADY_ALLOWED") {
     // Race: the owner opened access between the join 403 and this request.
     return {
-      text: `You already have access to '${target}'. Run grid_pull to get the code.`,
+      text: `You already have access to '${target}'. Run grid_collab again to join, then grid_pull to get the code.`,
       structured: { access_requested: false, request_pending: false, owner_is_you: false, can_edit: false },
     };
   }
