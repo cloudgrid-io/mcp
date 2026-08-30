@@ -1838,13 +1838,32 @@ export async function runPlug(ctx, input, deps = {}) {
     //      through — never a silent redirect.
     //   4. the target entity itself      — a pickup round-trip, only if 1–3 all
     //      came up empty. Reuse a pickup already done above to resolve the id.
-    orgSlug = grid || (await ctx.getActiveGrid());
-    if (!orgSlug) orgSlug = gridFromCloudgridUrl(targetUrl);
-    if (!orgSlug && isEdit) {
-      if (!pickupData && targetEntityId) {
-        pickupData = await resolveEntityViaPickup(ctx, { target: targetEntityId });
+    if (isEdit) {
+      // EDIT: the destination is NOT ambiguous — the entity already lives in
+      // exactly one grid, so derive it (never ask). explicit `grid` → active
+      // grid → URL host → entity lookup (#296/#301/#316). This chain must stay
+      // intact: re-asking on every re-plug is noise and would undo those fixes.
+      orgSlug = grid || (await ctx.getActiveGrid());
+      if (!orgSlug) orgSlug = gridFromCloudgridUrl(targetUrl);
+      if (!orgSlug) {
+        if (!pickupData && targetEntityId) {
+          pickupData = await resolveEntityViaPickup(ctx, { target: targetEntityId });
+        }
+        if (pickupData?.grid) orgSlug = pickupData.grid;
       }
-      if (pickupData?.grid) orgSlug = pickupData.grid;
+    } else {
+      // CREATE (#327): the destination grid is the USER'S CHOICE and must be
+      // EXPLICIT — never silently reuse the persisted active grid. A stale
+      // active grid (weeks old, not surfaced to the user) silently lands a NEW
+      // entity in the wrong grid, and the grid decides the URL, who can open it
+      // (grid-scoped visibility), the datastore tier it inherits, and the
+      // namespace it runs in. The grid-picker gate (register.js
+      // resolveGridOrAsk) sets an explicit `grid` on every authed create — a
+      // single-grid user's only grid, or the user's chosen one — so `grid` is
+      // populated on the real path. A null here means the gate was bypassed
+      // (a direct runPlug call): send NO grid rather than guessing, so the
+      // create never lands in a silently-picked grid.
+      orgSlug = grid || null;
     }
     // Grid-native header + X-CloudGrid-Org alias (same slug) during the soak.
     if (orgSlug) {
