@@ -903,7 +903,12 @@ export function registerTools(server, ctx) {
       if (!token) {
         return fail("You are not signed in. Run grid_login first.");
       }
-      const grids = await fetchUserOrgs(token);
+      let grids;
+      try {
+        grids = await fetchUserOrgs(token);
+      } catch {
+        return fail("Could not list your grids — please check your connection and try again.");
+      }
       if (grids.length === 0) {
         // Structured output stays `orgs` (its declared schema); user text says grid.
         return okResult({ text: "No grids found.", structured: { orgs: [] } });

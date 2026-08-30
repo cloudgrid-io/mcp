@@ -71,30 +71,26 @@ function isGridNotAccessibleCode(code) {
 // answer identically today, so moving now is a no-op that stops this tool
 // breaking when `/orgs` goes.
 export async function fetchUserOrgs(token) {
-  try {
-    const res = await fetch(`${API_BASE}/api/v2/grids`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    // 0.8.0: read the grid-native `data.grids` (dual-emitted alongside the legacy
-    // `data.orgs`, same array/order). Fall back to `data.orgs`/bare-array during soak.
-    const grids = Array.isArray(data?.grids)
-      ? data.grids
-      : Array.isArray(data?.orgs)
-        ? data.orgs
-        : Array.isArray(data)
-          ? data
-          : [];
-    return grids.map((o) => ({
-      slug: o.slug ?? "",
-      name: o.name ?? o.slug ?? "",
-      role: o.role ?? "member",
-      render_ready: o.render_ready ?? true, // default true for older APIs
-    }));
-  } catch {
-    return [];
-  }
+  const res = await fetch(`${API_BASE}/api/v2/grids`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Grid listing failed (HTTP ${res.status})`);
+  const data = await res.json();
+  // 0.8.0: read the grid-native `data.grids` (dual-emitted alongside the legacy
+  // `data.orgs`, same array/order). Fall back to `data.orgs`/bare-array during soak.
+  const grids = Array.isArray(data?.grids)
+    ? data.grids
+    : Array.isArray(data?.orgs)
+      ? data.orgs
+      : Array.isArray(data)
+        ? data
+        : [];
+  return grids.map((o) => ({
+    slug: o.slug ?? "",
+    name: o.name ?? o.slug ?? "",
+    role: o.role ?? "member",
+    render_ready: o.render_ready ?? true, // default true for older APIs
+  }));
 }
 
 // ── Shared grid disambiguation (grid_plug) ──────────────────
@@ -119,7 +115,17 @@ export async function fetchUserOrgs(token) {
 // dependence on prior-call state (ChatGPT Apps SDK reconnects every call).
 export async function resolveGridOrAsk(ctx, { token, suppliedGrid, edition }, deps = {}) {
   const listGrids = deps.fetchUserOrgs || fetchUserOrgs;
-  const grids = await listGrids(token);
+  let grids;
+  try {
+    grids = await listGrids(token);
+  } catch {
+    return {
+      picker: {
+        text: "Could not fetch your grids — please check your connection and try again.",
+        structured: { error: true },
+      },
+    };
+  }
   const activeGrid = await ctx.getActiveGrid();
   const matched = suppliedGrid && grids.find((o) => o.slug === suppliedGrid);
   if (matched) {
