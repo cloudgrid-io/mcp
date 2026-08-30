@@ -318,14 +318,23 @@ export function mountOAuth(app, publicBase, opts = {}) {
       // outrun it. See cloudgrid-io/cloudgrid#3098.
       console.error("[oauth] sign-in returned for an unknown or expired authorize session");
       res.status(400).setHeader("Content-Type", "text/html; charset=utf-8");
+      // The session code is in this URL; keep the page out of shared caches.
+      res.setHeader("Cache-Control", "no-store");
       res.send(problemHtml("This sign-in took too long, or was already completed. Close this page and connect again."));
       return;
     }
 
-    // CloudGrid redirects here only after a successful sign-in, so the session
-    // is authenticated by the time we look. The bounded retry is for the gap
-    // between the callback writing the JWT and this read seeing it — a stranded
-    // user is an expensive way to save two seconds.
+    // CloudGrid redirects here only after a successful sign-in, and the JWT is
+    // already durable when it does: packages/api/src/routes/auth.ts:190 AWAITS
+    // authenticateSession() before the redirect at :248, and a resolved
+    // Firestore document write is visible to the next read. So there is no
+    // write-visibility race — an earlier version of this comment asserted one
+    // without checking, and it was wrong.
+    //
+    // The retry is for the other failure: pollStatusOnce THROWS when the API
+    // cannot be reached (src/auth.js), and one blip on that single call would
+    // strand a user who has ALREADY signed in — the expensive half of the flow,
+    // already paid for. Five attempts over two seconds, then fail honestly.
     let upstream = null;
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
@@ -341,6 +350,8 @@ export function mountOAuth(app, publicBase, opts = {}) {
     if (upstream?.status !== "authenticated" || !upstream.jwt) {
       console.error(`[oauth] sign-in returned but CloudGrid reports status=${upstream?.status ?? "unreachable"}`);
       res.status(400).setHeader("Content-Type", "text/html; charset=utf-8");
+      // The session code is in this URL; keep the page out of shared caches.
+      res.setHeader("Cache-Control", "no-store");
       res.send(problemHtml("Sign-in did not complete. Close this page and connect again."));
       return;
     }
