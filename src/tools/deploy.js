@@ -1484,7 +1484,7 @@ function plugErrorMessage(status, code, msg, ctxFlags = {}) {
     return `Plug failed (HTTP 400): ${rewriteGridHeaderError(msg)}`;
   }
   if (status === 400 && /cloudgrid\.yaml.*required/i.test(msg)) {
-    return "Plug failed (HTTP 400): no cloudgrid.yaml found — provide it via the `cloudgrid_yaml` parameter or include a `cloudgrid.yaml` entry in `artifact_files`.";
+    return `Plug failed (HTTP 400): no cloudgrid.yaml found — provide it via the \`cloudgrid_yaml\` parameter or include a \`cloudgrid.yaml\` entry in \`artifact_files\`. Server: ${msg}`;
   }
   const base = `Plug failed (HTTP ${status}${code ? ` ${code}` : ""}): ${msg}`;
   const guidance = errorGuidance({ status, code, ...ctxFlags });
@@ -1907,9 +1907,13 @@ export async function runPlug(ctx, input, deps = {}) {
     || null;
 
   // ── CREATE manifest injection (issue #48) ───────────────────────────────────
-  // Fold the manifest into the artifact list as the first entry (deduping any
-  // `cloudgrid.yaml` the caller already inlined) so both create paths emit a
-  // byte-equivalent bundle.
+  // The runtime build orchestrator relies on the manifest leading the bundle
+  // (it drives the service graph + the entity name). The inline `artifact_files`
+  // create used to APPEND the manifest LAST and as `text/plain`, so a
+  // multi-service runtime rolled out with no service graph (0 replicas /
+  // rollout_failed) and an auto `drop-XXXX` name. Fold the manifest into the
+  // artifact list as the first entry (deduping any `cloudgrid.yaml` the caller
+  // already inlined) so both create paths emit a byte-equivalent bundle.
   if (!isEdit && resolvedManifestYaml) {
     const manifest = { path: "cloudgrid.yaml", buffer: Buffer.from(resolvedManifestYaml, "utf8") };
     const rest = artifacts.filter((a) => a.path !== "cloudgrid.yaml");
