@@ -25,6 +25,7 @@ import {
   runReport,
   runPull,
   runCollab,
+  runDelete,
   runPlug,
   runPickup,
   runCreateGrid,
@@ -1237,6 +1238,41 @@ export function registerTools(server, ctx) {
       }
     },
   );
+
+  // grid_delete (hosted edition) — archive an inspiration via the API (#343).
+  // Registered ABOVE the edition gate so it ships on both editions. The local
+  // edition also has a CLI-wrapping version below the gate; this direct-API
+  // version runs on web (hosted) where the CLI is unavailable.
+  if (ctx.edition !== "local") {
+    reg(
+      "grid_delete",
+      {
+        title: "Delete an inspiration",
+        description:
+          "Archive a CloudGrid inspiration by slug. Destructive — requires `confirm: true`. " +
+          "Only works for inspirations (static pages); runtime apps and agents must be removed " +
+          "with `grid unplug --hard` from the CLI. Requires sign-in. Calls the API directly.",
+        inputSchema: {
+          name: z.string().describe("Entity slug to delete (required)."),
+          grid: z.string().optional().describe("Grid slug. Defaults to the active grid."),
+          confirm: z.literal(true).describe("Must be true to proceed."),
+        },
+        outputSchema: {
+          deleted: z.boolean().describe("True when the entity was archived."),
+          entity_id: z.string().optional().describe("The archived entity's id."),
+          slug: z.string().optional().describe("The archived entity's slug."),
+        },
+        annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+      },
+      async (input) => {
+        try {
+          return okResult(await runDelete(ctx, input || {}));
+        } catch (err) {
+          return fail(err.message);
+        }
+      },
+    );
+  }
 
   if (ctx.edition !== "local") return; // web edition stops here — no CLI tools
 

@@ -1017,6 +1017,77 @@ export async function runCollab(ctx, { entity_id, grid } = {}) {
   };
 }
 
+// ── grid_delete (hosted edition) — archive an inspiration via the API (#343) ──
+export async function runDelete(ctx, { name, grid, confirm } = {}) {
+  if (confirm !== true) {
+    throw new Error("`confirm` must be true to proceed with deletion.");
+  }
+  const token = await ctx.getToken();
+  if (!token) {
+    throw new Error("You are not signed in. Run grid_login first.");
+  }
+  if (!name) {
+    throw new Error("`name` (entity slug) is required.");
+  }
+
+  const orgSlug = grid || (await ctx.getActiveGrid());
+  const headers = {
+    Authorization: `Bearer ${token}`,
+  };
+  if (orgSlug) {
+    headers["X-CloudGrid-Grid"] = orgSlug;
+    headers["X-CloudGrid-Org"] = orgSlug;
+  }
+
+  // Resolve the entity to get its id and kind.
+  const lookupUrl = `${API_BASE}/api/v2/inspirations/${encodeURIComponent(name)}`;
+  let lookupRes;
+  try {
+    lookupRes = await fetch(lookupUrl, { headers });
+  } catch (err) {
+    throw new Error(`Could not reach CloudGrid at ${API_BASE}: ${err.message}`);
+  }
+
+  if (!lookupRes.ok) {
+    const raw = await lookupRes.text();
+    let data = null;
+    try { data = JSON.parse(raw); } catch { /* */ }
+    const msg = data?.error?.message || data?.message || raw || `HTTP ${lookupRes.status}`;
+    if (lookupRes.status === 404) {
+      throw new Error(`No inspiration found for '${name}'. Check the slug and grid.`);
+    }
+    throw new Error(`Lookup failed (HTTP ${lookupRes.status}): ${msg}`);
+  }
+
+  const entity = await lookupRes.json();
+  const entityId = entity?.id || entity?.entity_id;
+  if (!entityId) {
+    throw new Error(`Could not resolve entity id for '${name}'.`);
+  }
+
+  // Archive the inspiration.
+  const deleteUrl = `${API_BASE}/api/v2/inspirations/${encodeURIComponent(entityId)}`;
+  let delRes;
+  try {
+    delRes = await fetch(deleteUrl, { method: "DELETE", headers });
+  } catch (err) {
+    throw new Error(`Could not reach CloudGrid at ${API_BASE}: ${err.message}`);
+  }
+
+  if (!delRes.ok) {
+    const raw = await delRes.text();
+    let data = null;
+    try { data = JSON.parse(raw); } catch { /* */ }
+    const msg = data?.error?.message || data?.message || raw || `HTTP ${delRes.status}`;
+    throw new Error(`Delete failed (HTTP ${delRes.status}): ${msg}`);
+  }
+
+  return {
+    text: `Deleted '${name}' (${entityId}).`,
+    structured: { deleted: true, entity_id: entityId, slug: name },
+  };
+}
+
 // Turn a policy 403 into a request: POST /:id/collab-requests and tell the user
 // what happens next (mirrors CLI collab-requests.ts requestCollabAccess). A
 // request IS a success outcome, so this returns a normal result, never throws for
