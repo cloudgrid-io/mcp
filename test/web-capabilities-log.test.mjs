@@ -140,7 +140,10 @@ test("#297: capabilities are logged once at initialize as a key shape with no va
   assert.ok(!line.includes(DECOY), "the decoy credential value must not appear in the log line");
   assert.ok(!stderr.includes(DECOY), "the decoy credential must not appear anywhere on stderr");
 
-  // Logged once per session, not per request.
-  const count = stderr.split("\n").filter((l) => l.includes("client=capabilities-probe")).length;
+  // Logged once per session, not per request. Match the capability line
+  // specifically — the #353 session-established line also carries client=<name>.
+  const count = stderr
+    .split("\n")
+    .filter((l) => l.includes("client-capabilities") && l.includes("client=capabilities-probe")).length;
   assert.equal(count, 1, "capabilities logged exactly once at initialize");
 });

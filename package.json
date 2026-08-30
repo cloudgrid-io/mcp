@@ -75,6 +75,7 @@
     "test:oauth-token-exchange": "node --test test/oauth-token-exchange.test.mjs",
     "test:oauth-observability": "node --test test/oauth-flow-observability.test.mjs",
     "test:web-capabilities-log": "node --test test/web-capabilities-log.test.mjs",
+    "test:mcp-transport-observability": "node --test test/mcp-transport-observability.test.mjs",
     "test:internal-refs": "node --test test/no-internal-refs.test.mjs",
     "test:login-app": "node test/login-app.test.mjs",
     "test:login-poller": "node test/login-poller.test.mjs",

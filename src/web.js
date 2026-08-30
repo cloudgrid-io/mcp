@@ -34,6 +34,12 @@ import { createSessionLogger } from "./session-logger.js";
 import { createSink } from "./log-sink.js";
 import { INSTRUCTIONS_WEB } from "./playbook.js";
 import { createWebIdentity } from "./web-identity.js";
+import {
+  logAuthChallenge,
+  logNoSession,
+  logRehydrateFailed,
+  logInitialize,
+} from "./web-observability.js";
 
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url)));
 
@@ -57,19 +63,14 @@ function bearerOf(req) {
   return h && /^Bearer\s+\S+/i.test(h) ? h.replace(/^Bearer\s+/i, "") : null;
 }
 
-// Reduce an object to its KEY SHAPE — key names mapped to the TYPE of each value,
-// recursively — never the values themselves. Used to log the client's advertised
-// MCP capabilities at initialize (#297) while guaranteeing BY CONSTRUCTION that
-// no value ever leaves the process: only key names and JS type names are emitted,
-// so no token, header, tool argument, or user content can appear even if the
-// object carried one. Depth- and breadth-capped so a malformed or huge object
-// cannot blow the stack or flood the log.
-function keyShape(value, depth = 0) {
-  if (value === null || typeof value !== "object" || depth >= 6) return typeof value;
-  if (Array.isArray(value)) return `array[${value.length}]`;
-  const out = {};
-  for (const k of Object.keys(value).slice(0, 64)) out[k] = keyShape(value[k], depth + 1);
-  return out;
+// Negotiate the MCP protocol version with the same rule the SDK's _oninitialize
+// uses (a supported requested version wins, else LATEST). Used only to report the
+// negotiated version on the session-established log line (#353) — the SDK exposes
+// no getter for it post-init — and to build the synthetic rehydrate initialize.
+function negotiateProtocol(requested) {
+  return typeof requested === "string" && SUPPORTED_PROTOCOL_VERSIONS.includes(requested)
+    ? requested
+    : LATEST_PROTOCOL_VERSION;
 }
 
 // A web session: identity lives in memory for the session's lifetime only. The
@@ -139,7 +140,7 @@ function captureRequestIdentity(sessionId, jwt) {
 // for a rehydrated (restart-evicted) session, the id the client keeps presenting.
 // Identity derives ONLY from the credential passed here (`jwt`), never from
 // anything remembered about the id: a session id is not proof of identity.
-async function buildSession(sessionId, jwt) {
+async function buildSession(sessionId, jwt, protocolVersion) {
   const identity = createWebIdentity({ initialTransportToken: jwt });
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: () => sessionId,
@@ -181,28 +182,12 @@ async function buildSession(sessionId, jwt) {
     } catch {
       webCtx.state.client = null;
     }
-    // #297: record the client's advertised MCP capabilities once per session, so
-    // we can settle whether Claude web ever advertises a UI extension (e.g.
-    // io.modelcontextprotocol/ui) — the plumbing a rendered login card would
-    // need — instead of guessing while the directory submission sits unanswered.
-    // Observation-only: only the capability KEY SHAPE (names + value types, never
-    // values — see keyShape) is logged, so no credential or user content can
-    // appear. Skip the synthetic rehydrate initialize so the signal stays clean.
-    // Wrapped so a logging failure can never affect the session (zero behaviour
-    // change if capabilities is absent or malformed).
-    try {
-      const client = server.server.getClientVersion() ?? null;
-      if (client?.name !== "cloudgrid-mcp-rehydrate") {
-        const caps = server.server.getClientCapabilities();
-        const shape = caps && typeof caps === "object" ? keyShape(caps) : null;
-        // eslint-disable-next-line no-console
-        console.error(
-          `cloudgrid-mcp: client-capabilities client=${client?.name ?? "unknown"} capabilities=${JSON.stringify(shape)}`,
-        );
-      }
-    } catch {
-      /* observation-only — never affects the session */
-    }
+    // #353/#297: emit the session-established line UNCONDITIONALLY (id, protocol,
+    // client) and then the best-effort #297 capability key-shape line. The two
+    // are deliberately separate — see logInitialize: the fact that a session was
+    // created must not depend on the swallow-everything capability probe, whose
+    // silent non-firing on a good session sent the #329 diagnosis sideways.
+    logInitialize(server.server, sessionId, protocolVersion);
   };
   await server.connect(transport);
   return { transport, identity };
@@ -224,11 +209,7 @@ async function primeSession(transport, req) {
   if (!wst || typeof wst.handleRequest !== "function") {
     throw new Error("cannot rehydrate session: transport internals unavailable");
   }
-  const proposed = req.headers["mcp-protocol-version"];
-  const protocolVersion =
-    typeof proposed === "string" && SUPPORTED_PROTOCOL_VERSIONS.includes(proposed)
-      ? proposed
-      : LATEST_PROTOCOL_VERSION;
+  const protocolVersion = negotiateProtocol(req.headers["mcp-protocol-version"]);
   const initBody = {
     jsonrpc: "2.0",
     id: "cg-rehydrate-init",
@@ -256,6 +237,9 @@ app.post("/mcp", async (req, res) => {
   const jwt = bearerOf(req);
 
   if (REQUIRE_AUTH && !jwt) {
+    // #353: name WHY no usable Bearer was found — absent / not-bearer / empty-token
+    // — without revealing the token. This is the whole diagnostic value of the 401.
+    logAuthChallenge(req);
     sendAuthChallenge(res);
     return;
   }
@@ -282,6 +266,8 @@ app.post("/mcp", async (req, res) => {
   // A brand-new connection with no session id that is NOT an initialize is a real
   // protocol error — there is nothing to recover.
   if (!sessionId && !isInit) {
+    // #353: 400 branch 1 — a brand-new connection that is not an initialize.
+    logNoSession();
     res.status(400).json({
       jsonrpc: "2.0",
       error: { code: -32000, message: "No valid session. Send an initialize request first." },
@@ -297,7 +283,7 @@ app.post("/mcp", async (req, res) => {
     // above), so an expired-but-present Bearer proceeds to the tool layer where
     // the in-band needs_auth ask lives, rather than being challenged.
     const newSessionId = randomUUID();
-    ({ transport } = await buildSession(newSessionId, jwt));
+    ({ transport } = await buildSession(newSessionId, jwt, negotiateProtocol(req.body?.params?.protocolVersion)));
     await transport.handleRequest(req, res, req.body);
     return;
   }
@@ -317,7 +303,7 @@ app.post("/mcp", async (req, res) => {
   // stuck behind the same 401 (the #286 brick, on the rebuild path). Gating on
   // expiry (hasUsableCredential) here is exactly what #288 got wrong and was pulled
   // from production for.
-  ({ transport } = await buildSession(sessionId, jwt));
+  ({ transport } = await buildSession(sessionId, jwt, negotiateProtocol(req.headers["mcp-protocol-version"])));
   // Rehydrate the evicted session. If priming fails (e.g. an SDK internal moved
   // out from under us), tear the half-built session down and fall back to the
   // original 400 rather than leaking a broken session or hanging the request —
@@ -325,6 +311,8 @@ app.post("/mcp", async (req, res) => {
   try {
     await primeSession(transport, req);
   } catch {
+    // #353: 400 branch 2 — a stale-id rehydrate that could not be primed.
+    logRehydrateFailed(sessionId);
     try { await transport.close(); } catch { /* best effort */ }
     delete transports[sessionId];
     delete sessionContexts[sessionId];
