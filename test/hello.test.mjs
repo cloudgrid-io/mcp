@@ -71,6 +71,13 @@ try {
     restoreFetch();
     check("signed out: returns needs_auth", parse(res).needs_auth === true);
     check("signed out: did NOT deploy", !plugPost());
+    // The reply must offer only what grid_hello can do. The shared
+    // AUTH_ASK_SIGNED_OUT promises a guest path via grid_plug + anon:true —
+    // this tool has no `anon` param, so offering it strands the model.
+    check("signed out: does NOT promise a guest/anon path", !/anon|guest/i.test(textOf(res)));
+    check("signed out: does NOT redirect to grid_plug", !/grid_plug/.test(textOf(res)));
+    check("signed out: names grid_login and re-calling grid_hello",
+      /grid_login/.test(textOf(res)) && /grid_hello/.test(textOf(res)));
   }
 
   // ── 2. multi-grid, no grid → ASK, and NOTHING deployed ───────────────────

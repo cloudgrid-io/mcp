@@ -61,6 +61,14 @@ export function buildCreateProjectArgs({ kind, name, type, needs, dir, grid, org
 // exclamation; say "plug" and "grid". The sign-in URL itself lands on its own
 // line later, from grid_login. No structural change — every caller still returns
 // { needs_auth: true }.
+// Escape untrusted text before it is interpolated into a page we publish at a
+// public URL. `&` MUST be replaced first, or the later replacements' own
+// ampersands get double-escaped. Both grid_hello sinks are element text
+// (<title> RCDATA and <body>), which this covers.
+const escapeHtml = (s) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+   .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
 const AUTH_ASK_SIGNED_OUT =
   "How would you like to plug this?\n" +
   "  - Sign in to your grid — it stays in your CloudGrid account.\n" +
@@ -1155,9 +1163,6 @@ export function registerTools(server, ctx) {
       }
     },
   );
-  const escapeHtml = (s) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-   .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     // ── grid_hello — creates a hello page and plugs it (both editions) ────────
   reg(
     "grid_hello",
@@ -1188,7 +1193,16 @@ export function registerTools(server, ctx) {
         //    a result the model acts on by running grid_login.
         const token = await ctx.getToken();
         if (!token) {
-          return okResult({ text: AUTH_ASK_SIGNED_OUT, structured: { needs_auth: true } });
+          // NOT the shared AUTH_ASK_SIGNED_OUT: that offers a guest path via
+          // `grid_plug` with anon:true, which this tool has no parameter for and
+          // which would send the model to a different tool with no source. Say
+          // only what grid_hello can actually do.
+          return okResult({
+            text:
+              "Plugging a hello page needs an account. Call grid_login to sign in, "
+              + "then re-call grid_hello.",
+            structured: { needs_auth: true },
+          });
         }
 
         // 2. GRID — never fall back to the active grid on a create (#327).
