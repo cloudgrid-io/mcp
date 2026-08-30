@@ -16,7 +16,6 @@ function makeCtx({ token = "jwt-1" } = {}) {
     edition: "web",
     state: {},
     getToken: async () => token,
-    getActiveGrid: async () => "acme",
   };
 }
 
@@ -36,15 +35,22 @@ try {
   // ── confirm guard ──────────────────────────────────────────────────────────
   {
     let err = null;
-    try { await runDelete(makeCtx(), { name: "my-page" }); } catch (e) { err = e; }
+    try { await runDelete(makeCtx(), { name: "my-page", grid: "acme" }); } catch (e) { err = e; }
     check("rejects without confirm: true", err !== null && /confirm/i.test(err.message));
   }
 
   // ── auth guard ─────────────────────────────────────────────────────────────
   {
     let err = null;
-    try { await runDelete(makeCtx({ token: null }), { name: "my-page", confirm: true }); } catch (e) { err = e; }
+    try { await runDelete(makeCtx({ token: null }), { name: "my-page", grid: "acme", confirm: true }); } catch (e) { err = e; }
     check("rejects without sign-in", err !== null && /not signed in/i.test(err.message));
+  }
+
+  // ── grid required ──────────────────────────────────────────────────────────
+  {
+    let err = null;
+    try { await runDelete(makeCtx(), { name: "my-page", confirm: true }); } catch (e) { err = e; }
+    check("rejects without grid", err !== null && /grid.*required/i.test(err.message));
   }
 
   // ── successful deletion ────────────────────────────────────────────────────
@@ -54,7 +60,7 @@ try {
       { status: 200, body: { id: "ent-42", slug: "my-page", kind: "inspiration" } },
       { status: 200, body: { ok: true } },
     ];
-    const result = await runDelete(makeCtx(), { name: "my-page", confirm: true });
+    const result = await runDelete(makeCtx(), { name: "my-page", grid: "acme", confirm: true });
     check("lookup call hits /api/v2/inspirations/my-page", fetchCalls[0]?.url.includes("/api/v2/inspirations/my-page"));
     check("lookup carries Authorization header", fetchCalls[0]?.headers?.Authorization === "Bearer jwt-1");
     check("lookup carries grid header", fetchCalls[0]?.headers?.["X-CloudGrid-Grid"] === "acme");
@@ -63,6 +69,7 @@ try {
     check("result reports deleted", result.structured.deleted === true);
     check("result includes entity_id", result.structured.entity_id === "ent-42");
     check("result text mentions the slug", result.text.includes("my-page"));
+    check("result text names the grid", result.text.includes("acme"));
   }
 
   // ── 404 on lookup ──────────────────────────────────────────────────────────
@@ -72,7 +79,7 @@ try {
       { status: 404, body: { error: { code: "NOT_FOUND", message: "not found" } } },
     ];
     let err = null;
-    try { await runDelete(makeCtx(), { name: "nope", confirm: true }); } catch (e) { err = e; }
+    try { await runDelete(makeCtx(), { name: "nope", grid: "acme", confirm: true }); } catch (e) { err = e; }
     check("404 lookup throws descriptive error", err !== null && /no inspiration found/i.test(err.message));
   }
 
@@ -84,7 +91,7 @@ try {
       { status: 403, body: { error: { message: "forbidden" } } },
     ];
     let err = null;
-    try { await runDelete(makeCtx(), { name: "fail-me", confirm: true }); } catch (e) { err = e; }
+    try { await runDelete(makeCtx(), { name: "fail-me", grid: "acme", confirm: true }); } catch (e) { err = e; }
     check("delete failure throws with HTTP status", err !== null && /403/.test(err.message));
   }
 

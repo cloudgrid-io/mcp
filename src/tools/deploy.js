@@ -1018,6 +1018,8 @@ export async function runCollab(ctx, { entity_id, grid } = {}) {
 }
 
 // ── grid_delete (hosted edition) — archive an inspiration via the API (#343) ──
+// The handler in register.js resolves auth + grid (via resolveGridOrAsk) before
+// calling this function, so token and grid are always present.
 export async function runDelete(ctx, { name, grid, confirm } = {}) {
   if (confirm !== true) {
     throw new Error("`confirm` must be true to proceed with deletion.");
@@ -1029,15 +1031,15 @@ export async function runDelete(ctx, { name, grid, confirm } = {}) {
   if (!name) {
     throw new Error("`name` (entity slug) is required.");
   }
+  if (!grid) {
+    throw new Error("`grid` is required — the handler must resolve it before calling runDelete.");
+  }
 
-  const orgSlug = grid || (await ctx.getActiveGrid());
   const headers = {
     Authorization: `Bearer ${token}`,
+    "X-CloudGrid-Grid": grid,
+    "X-CloudGrid-Org": grid,
   };
-  if (orgSlug) {
-    headers["X-CloudGrid-Grid"] = orgSlug;
-    headers["X-CloudGrid-Org"] = orgSlug;
-  }
 
   // Resolve the entity to get its id and kind.
   const lookupUrl = `${API_BASE}/api/v2/inspirations/${encodeURIComponent(name)}`;
@@ -1060,6 +1062,7 @@ export async function runDelete(ctx, { name, grid, confirm } = {}) {
   }
 
   const entity = await lookupRes.json();
+  // GET /api/v2/inspirations/:slug returns `id`; defensive fallback for `entity_id`.
   const entityId = entity?.id || entity?.entity_id;
   if (!entityId) {
     throw new Error(`Could not resolve entity id for '${name}'.`);
@@ -1083,8 +1086,8 @@ export async function runDelete(ctx, { name, grid, confirm } = {}) {
   }
 
   return {
-    text: `Deleted '${name}' (${entityId}).`,
-    structured: { deleted: true, entity_id: entityId, slug: name },
+    text: `Deleted '${name}' (${entityId}) from ${grid}.`,
+    structured: { deleted: true, entity_id: entityId, slug: name, grid },
   };
 }
 
