@@ -164,6 +164,28 @@ test("a missing client_id says so instead of a bare invalid_grant", async () => 
   assert.match(body.error_description, /client_id is required/);
 });
 
+// Present but WRONG is a different branch from absent, and it carries a
+// different message. Reviewer caught that the body claimed all five causes were
+// covered while these two had no test.
+test("a client_id that is present but wrong is distinguished from a missing one", async () => {
+  const other = await fetch(`${web.baseUrl}/oauth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ redirect_uris: [REDIRECT], token_endpoint_auth_method: "none" }),
+  });
+  const { client_id: otherId } = await other.json();
+  const { status, body } = await exchange((b) => b.set("client_id", `${otherId}-not-the-one`));
+  assert.equal(status, 400);
+  assert.match(body.error_description, /client_id does not match/);
+  assert.doesNotMatch(body.error_description, /required/, "a wrong client_id is not a missing one");
+});
+
+test("a code_verifier that is present but wrong fails PKCE, not the required check", async () => {
+  const { status, body } = await exchange((b) => b.set("code_verifier", "a-verifier-that-is-not-the-one"));
+  assert.equal(status, 400);
+  assert.match(body.error_description, /PKCE verification failed/);
+});
+
 test("a mismatched redirect_uri names both values", async () => {
   const { status, body } = await exchange((b) => b.set("redirect_uri", `${REDIRECT}/`));
   assert.equal(status, 400);

@@ -363,6 +363,16 @@ export function mountOAuth(app, publicBase, opts = {}) {
   // caller already holds the code, the client_id and the redirect_uri it sent,
   // so naming which of ITS OWN values did not match tells it nothing it did not
   // already know. The token, the verifier and the code are never logged.
+  //
+  // THE TRADE, NAMED (so nobody extends this pattern by accident): branching
+  // these messages does hand a holder of an EXFILTRATED code a small oracle —
+  // they can confirm the code is live and probe client_id / redirect_uri
+  // without spending a PKCE guess. Accepted here because the code is
+  // single-use, dies in 5 minutes, and PKCE still gates the token, so the
+  // oracle reveals only values the attacker would have to have already; and
+  // RFC 6749 §5.2 explicitly provides error_description for this purpose. That
+  // reasoning is specific to this endpoint. Do NOT copy the pattern somewhere
+  // a failed attempt is cheap to repeat or the compared value is a secret.
   const denyToken = (res, error, reason, detail = "") => {
     console.error(`[oauth] token exchange refused: ${reason}${detail ? ` ${detail}` : ""}`);
     res.status(400).json({ error, error_description: reason });
