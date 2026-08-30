@@ -92,6 +92,14 @@ as the fallback.
 Endpoints: `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`,
 `/oauth/register`, `/oauth/authorize` (redirects to the CloudGrid sign-in), `/oauth/authorize/complete` (where the sign-in returns), `/oauth/token`.
 
+**Operational dependency — do not remove without reading this.** `/oauth/authorize`
+redirects to the CloudGrid sign-in with a `return_url` of
+`<this host>/oauth/authorize/complete`, and the API accepts it only if that exact string
+is in its `CONSOLE_AUTH_RETURN_URLS` allowlist. Take the entry away and hosted sign-in
+fails with a console-owned `400 Invalid return_url` — a failure with no breadcrumb back to
+this repo. Added in cloudgrid-io/cloudgrid#3098; it has to stay for every host running with
+`MCP_REQUIRE_AUTH=1`.
+
 Dynamic client **registrations are stateless and durable**: a `client_id` is an
 HMAC-signed token that carries its own redirect-URI set, so it survives restarts,
 deploys, and any replica count with no datastore. Only the short-lived authorize
