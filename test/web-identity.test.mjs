@@ -208,7 +208,13 @@ test("revoking the transport token does not affect a valid explicit login", asyn
   assert.equal(identity.hasUsableCredential(), true);
 });
 
-test("revoking the explicit token falls through to transport", async () => {
+test("anonymous session (no token ever set) reports expired false", async () => {
+  const identity = createWebIdentity({ now: () => NOW });
+
+  assert.deepEqual(await identity.getCredentialsStatus(), { creds: null, expired: false });
+});
+
+test("revoking the explicit token does not fall back to transport", async () => {
   const identity = createWebIdentity({
     initialTransportToken: refreshedTransport,
     now: () => NOW,

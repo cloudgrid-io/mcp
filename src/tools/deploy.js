@@ -130,7 +130,7 @@ export async function resolveGridOrAsk(ctx, { token, suppliedGrid, edition }, de
     }
     return {
       picker: {
-        text: "Could not fetch your grids — please check your connection and try again.",
+        text: "Session expired — please log in again.",
         structured: { error: true },
       },
     };
@@ -2072,7 +2072,7 @@ export async function runPlug(ctx, input, deps = {}) {
     ) {
       return plugViaCliFallback(ctx, artifacts, deps);
     }
-    if (res.status === 401 && authToken) {
+    if (res.status === 401 && authToken && !useAnonWire) {
       ctx.markTokenRevoked?.(authToken);
     }
     throw new Error(plugErrorMessage(res.status, code, msg, flags));
