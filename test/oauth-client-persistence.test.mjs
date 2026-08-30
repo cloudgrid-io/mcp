@@ -18,9 +18,10 @@
 // rejects it; a tampered client_id is rejected) and that PKCE / redirect
 // validation are NOT loosened.
 //
-// Observable: a VALID client at /oauth/authorize renders the sign-in
-// interstitial (200 HTML, no upstream CloudGrid needed); an UNKNOWN/forged one
-// gets the 400 "Unknown client" the bug produced. 200-vs-400 is the whole test.
+// Observable: a VALID client at /oauth/authorize is redirected to the CloudGrid
+// sign-in (302, no upstream needed — the redirect is never followed); an
+// UNKNOWN/forged one gets the 400 "Unknown client" the bug produced.
+// 302-vs-400 is the whole test.
 
 import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
@@ -142,7 +143,9 @@ async function register(h, redirectUris) {
 }
 
 // GET /oauth/authorize with a valid PKCE challenge. Returns { status, body }.
-// 200 + interstitial marker = client accepted; 400 = rejected.
+// 302 to the CloudGrid sign-in = client accepted; 400 = rejected. Never follows
+// the redirect: the target is a closed loopback port on purpose (childEnv), and
+// following it would put a request on the network.
 async function authorize(h, clientId, redirectUri = REDIRECT) {
   const verifier = b64url(randomBytes(32));
   const challenge = b64url(createHash("sha256").update(verifier).digest());
@@ -151,11 +154,14 @@ async function authorize(h, clientId, redirectUri = REDIRECT) {
     `&client_id=${encodeURIComponent(clientId)}` +
     `&redirect_uri=${encodeURIComponent(redirectUri)}` +
     `&state=st1&code_challenge=${challenge}&code_challenge_method=S256`;
-  const res = await fetch(url);
-  return { status: res.status, body: await res.text() };
+  const res = await fetch(url, { redirect: "manual" });
+  return { status: res.status, body: res.headers.get("location") ?? (await res.text()) };
 }
 
-const ACCEPTED = (r) => r.status === 200 && /Connect CloudGrid/.test(r.body) && /authorize\/poll\?sid=/.test(r.body);
+// #333: authorize redirects straight to the sign-in instead of rendering an
+// interstitial, so "accepted" is a 302 at the CloudGrid sign-in carrying a
+// return_url. The 302-vs-400 distinction this test rests on is unchanged.
+const ACCEPTED = (r) => r.status === 302 && /\/auth\/login\?/.test(r.body) && /return_url=/.test(r.body);
 
 const instanceA = makeHandle(SECRET_A);
 const instanceB = makeHandle(SECRET_A); // same secret as A — the "second replica"

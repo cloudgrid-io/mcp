@@ -90,7 +90,7 @@ as the fallback.
   Default off: anonymous-first, auth honored when presented.
 
 Endpoints: `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`,
-`/oauth/register`, `/oauth/authorize` (the sign-in interstitial), `/oauth/token`.
+`/oauth/register`, `/oauth/authorize` (redirects to the CloudGrid sign-in), `/oauth/authorize/complete` (where the sign-in returns), `/oauth/token`.
 
 Dynamic client **registrations are stateless and durable**: a `client_id` is an
 HMAC-signed token that carries its own redirect-URI set, so it survives restarts,

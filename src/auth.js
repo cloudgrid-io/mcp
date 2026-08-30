@@ -45,8 +45,18 @@ export function newLoginCode() {
 }
 
 // The sign-in URL the user opens in a browser — always the public host.
-export function buildLoginUrl(code) {
-  return `${PUBLIC_API_BASE}/auth/login?code=${encodeURIComponent(code)}&source=mcp`;
+// `returnUrl`, when given, is where CloudGrid sends the browser after sign-in —
+// it redirects to `<returnUrl>?code=<the same session code>`. Passing it is what
+// lets the web OAuth bridge show ONE page (the console sign-in) instead of an
+// interstitial whose only job was to host a poller; see #333.
+//
+// The URL must be on the API's CONSOLE_AUTH_RETURN_URLS allowlist, which is an
+// EXACT-STRING match, so it can carry no query of its own — CloudGrid appends
+// `?code=`. The CLI passes no returnUrl: its poller is the terminal, so it has
+// nowhere to be sent back to.
+export function buildLoginUrl(code, returnUrl = null) {
+  const ret = returnUrl ? `&return_url=${encodeURIComponent(returnUrl)}` : "";
+  return `${PUBLIC_API_BASE}/auth/login?code=${encodeURIComponent(code)}&source=mcp${ret}`;
 }
 
 const CERT_ERROR_GUIDANCE =

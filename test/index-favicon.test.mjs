@@ -94,8 +94,13 @@ try {
     check(`${name} /favicon.ico serves the same bytes`, icoBuf.equals(pngBuf));
   }
 
-  // ── The OAuth interstitial declares the icon (auth host only) ────────────────
-  // Register a client, then drive /oauth/authorize the way a real client does.
+  // ── The OAuth problem page declares the icon (auth host only) ───────────────
+  // #333 removed the sign-in interstitial: /oauth/authorize now redirects
+  // straight to the CloudGrid sign-in and renders nothing. The only page this
+  // bridge still renders is the one shown when a sign-in cannot be completed,
+  // so that is where the icon declaration is checked now. Register a client and
+  // drive the flow the way a real client does, then return from sign-in with a
+  // session that does not exist.
   const reg = await fetch(`${AUTH_BASE}/oauth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -110,12 +115,17 @@ try {
     code_challenge_method: "S256",
     state: "xyz",
   });
-  const inter = await fetch(`${AUTH_BASE}/oauth/authorize?${q}`);
-  const interHtml = await inter.text();
-  check("interstitial renders", inter.status === 200 && interHtml.includes("Connect CloudGrid"));
+  const authz = await fetch(`${AUTH_BASE}/oauth/authorize?${q}`, { redirect: "manual" });
+  check("authorize redirects to the sign-in and renders nothing", authz.status === 302);
+  const problem = await fetch(
+    `${AUTH_BASE}/oauth/authorize/complete?code=00000000-0000-4000-8000-000000000000`,
+    { redirect: "manual" },
+  );
+  const problemHtml = await problem.text();
+  check("the problem page renders", problem.status === 400 && problemHtml.includes("Connect CloudGrid"));
   check(
-    "interstitial declares the PNG icon",
-    /<link rel="icon" type="image\/png" href="\/favicon\.png">/.test(interHtml),
+    "the problem page declares the PNG icon",
+    /<link rel="icon" type="image\/png" href="\/favicon\.png">/.test(problemHtml),
   );
 
   // ── Regression: the new routes changed nothing else ──────────────────────────
