@@ -74,6 +74,11 @@ export async function fetchUserOrgs(token) {
   const res = await fetch(`${API_BASE}/api/v2/grids`, {
     headers: { Authorization: `Bearer ${token}` },
   });
+  if (res.status === 401) {
+    const err = new Error(`Grid listing failed (HTTP 401)`);
+    err.status = 401;
+    throw err;
+  }
   if (!res.ok) throw new Error(`Grid listing failed (HTTP ${res.status})`);
   const data = await res.json();
   // 0.8.0: read the grid-native `data.grids` (dual-emitted alongside the legacy
@@ -119,7 +124,10 @@ export async function resolveGridOrAsk(ctx, { token, suppliedGrid, edition }, de
   let grids;
   try {
     grids = await listGrids(token);
-  } catch {
+  } catch (err) {
+    if (err.status === 401) {
+      ctx.markTokenRevoked?.(token);
+    }
     return {
       picker: {
         text: "Could not fetch your grids — please check your connection and try again.",
@@ -2063,6 +2071,9 @@ export async function runPlug(ctx, input, deps = {}) {
       authToken
     ) {
       return plugViaCliFallback(ctx, artifacts, deps);
+    }
+    if (res.status === 401 && authToken) {
+      ctx.markTokenRevoked?.(authToken);
     }
     throw new Error(plugErrorMessage(res.status, code, msg, flags));
   }

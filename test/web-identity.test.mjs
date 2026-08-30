@@ -163,3 +163,59 @@ test("hasUsableCredential is true for a valid transport token", () => {
 
   assert.equal(identity.hasUsableCredential(), true);
 });
+
+test("a revoked token is treated as unusable by getToken", async () => {
+  const identity = createWebIdentity({
+    initialTransportToken: refreshedTransport,
+    now: () => NOW,
+  });
+  assert.equal(await identity.getToken(), refreshedTransport);
+
+  identity.markRevoked(refreshedTransport);
+
+  assert.equal(await identity.getToken(), null);
+});
+
+test("a revoked token is treated as expired by getCredentialsStatus", async () => {
+  const identity = createWebIdentity({
+    initialTransportToken: refreshedTransport,
+    now: () => NOW,
+  });
+  identity.markRevoked(refreshedTransport);
+
+  assert.deepEqual(await identity.getCredentialsStatus(), { creds: null, expired: true });
+});
+
+test("hasUsableCredential is false for a revoked token", () => {
+  const identity = createWebIdentity({
+    initialTransportToken: refreshedTransport,
+    now: () => NOW,
+  });
+  identity.markRevoked(refreshedTransport);
+
+  assert.equal(identity.hasUsableCredential(), false);
+});
+
+test("revoking the transport token does not affect a valid explicit login", async () => {
+  const identity = createWebIdentity({
+    initialTransportToken: refreshedTransport,
+    now: () => NOW,
+  });
+  await identity.saveToken(freshExplicit);
+  identity.markRevoked(refreshedTransport);
+
+  assert.equal(await identity.getToken(), freshExplicit);
+  assert.equal(identity.hasUsableCredential(), true);
+});
+
+test("revoking the explicit token falls through to transport", async () => {
+  const identity = createWebIdentity({
+    initialTransportToken: refreshedTransport,
+    now: () => NOW,
+  });
+  await identity.saveToken(freshExplicit);
+  identity.markRevoked(freshExplicit);
+
+  assert.equal(await identity.getToken(), null);
+  assert.equal(identity.hasUsableCredential(), false);
+});
