@@ -84,7 +84,7 @@ posted). `CLOUDGRID_QA_IDLE_MS` overrides the abandoned-idle window (default
 <!-- gen:tools -->
 ## Tools
 
-37 tools registered (15 shared across both editions, 22 local-only). No deprecated aliases. MIN_CLI_VERSION: 0.15.26.
+38 tools registered (16 shared across both editions, 22 local-only). No deprecated aliases. MIN_CLI_VERSION: 0.15.26.
 
 ### Direct-API tools (both editions)
 
@@ -105,6 +105,7 @@ posted). `CLOUDGRID_QA_IDLE_MS` overrides the abandoned-idle window (default
 | `grid_start` | API | Orient before building with CloudGrid — the live runtime environment where the user's apps run WITH the infrastructur... |
 | `grid_get_template` | corpus | Load a specific CloudGrid workflow, template, example, rule, or doc by name — deterministic retrieval from the bundle... |
 | `grid_report` | API | Report a genuine CloudGrid failure to the CloudGrid team — ONLY with the user's explicit consent. |
+| `grid_hello` | API | Create a minimal hello page and plug it into the user's grid, returning the live URL. |
 
 The direct-API tools call the platform without the CLI, so they also work in
 the web edition. `grid_login` writes the same `~/.cloudgrid/credentials` the
