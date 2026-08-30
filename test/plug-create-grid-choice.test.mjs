@@ -11,14 +11,16 @@
 //   - LOCAL:  ctx.getActiveGrid() → a persisted slug. The create must NOT send
 //             it as the X-CloudGrid-Grid header (that is the silent reuse).
 //   - HOSTED: ctx.getActiveGrid() → null. The create sends nothing, so the API
-//             picks a default silently — the grid-picker GATE (register.js
-//             resolveGridOrAsk) must ask BEFORE runPlug is ever reached.
+//             picks a default silently — the grid-picker GATE (resolveGridOrAsk,
+//             defined in deploy.js, called from register.js) must ask BEFORE
+//             runPlug is ever reached.
 //
 // The fix has two layers, both tested here:
 //   1. runPlug (deploy.js): a CREATE resolves its grid from the explicit `grid`
 //      param ONLY — never from getActiveGrid. An EDIT keeps the full #296/#301/
 //      #316 derivation chain (explicit → active → URL host → entity lookup).
-//   2. the gate (register.js): an authed multi-grid create with no grid returns
+//   2. the gate (resolveGridOrAsk, defined in deploy.js, called from
+//      register.js): an authed multi-grid create with no grid returns
 //      needs_grid on BOTH editions; a single-grid create proceeds (no pointless
 //      question); an edit never asks.
 //
@@ -174,7 +176,7 @@ try {
     check("edit guard: the entity-lookup round-trip happened (chain intact)", calls.some((c) => isPickup(c.url)));
   }
 
-  // ══ GATE — register.js resolveGridOrAsk, driven through the real handler,
+  // ══ GATE — resolveGridOrAsk (deploy.js), driven through the real handler,
   //    proving the ASK fires on BOTH editions and single-grid is not asked. ═══
   function captureHandler(ctx) {
     let handler = null;
