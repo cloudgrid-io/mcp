@@ -78,6 +78,7 @@
     "test:internal-refs": "node --test test/no-internal-refs.test.mjs",
     "test:login-app": "node test/login-app.test.mjs",
     "test:login-poller": "node test/login-poller.test.mjs",
+    "test:delete-hosted": "node test/delete-hosted.test.mjs",
     "build:login-widget": "node scripts/build-login-widget.mjs"
   },
   "dependencies": {
