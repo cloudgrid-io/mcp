@@ -127,10 +127,16 @@ export async function resolveGridOrAsk(ctx, { token, suppliedGrid, edition }, de
   } catch (err) {
     if (err.status === 401) {
       ctx.markTokenRevoked?.(token);
+      return {
+        picker: {
+          text: "Session expired — please log in again.",
+          structured: { error: true },
+        },
+      };
     }
     return {
       picker: {
-        text: "Session expired — please log in again.",
+        text: "Could not fetch your grids — please try again.",
         structured: { error: true },
       },
     };
