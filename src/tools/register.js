@@ -396,9 +396,15 @@ export function registerTools(server, ctx) {
       "Re-plugging an anonymously-created drop needs its owner_token instead of sign-in.",
     ),
     grid: z.string().optional().describe(
-      "On create: the grid slug to plug into (omit to use the caller's active grid). On re-plug the entity " +
-      "never moves grids, but pass its home grid here when it differs from your active grid (the API " +
-      "checks your membership in the entity's grid). Anonymous → always the Guest grid.",
+      "On create: the grid slug to plug into. The destination grid is the USER'S CHOICE — treat it like " +
+      "visibility: NEVER infer one silently, and never reuse a previous or active grid without the user. If " +
+      "the user has more than one grid, CONFIRM which grid before plugging (omit this and grid_plug returns " +
+      "needs_grid with the grid list to choose from); a single-grid user is not asked. State the destination " +
+      "in the user's own terms (\"plugging into <grid>\") BEFORE the entity is created — a new entity in the " +
+      "wrong grid gets the wrong URL, is exposed to the wrong grid's members, and inherits the wrong datastore " +
+      "tier and namespace, and that is expensive to catch after the fact. On re-plug the entity never moves " +
+      "grids, but pass its home grid here when it differs from your active grid (the API checks your " +
+      "membership in the entity's grid). Anonymous → always the Guest grid.",
     ),
     slug: z.string().optional().describe(
       "Alternative RE-PLUG handle: paired with `grid`, resolves to an existing entity (the pickup " +
@@ -453,6 +459,10 @@ export function registerTools(server, ctx) {
         "Without target_entity_id: CREATE a new entity with a new URL. " +
         "With target_entity_id (or grid+slug): UPDATE the existing deployment IN PLACE, keeping the same URL — " +
         "this is the only deploy/publish tool, so do not look for a separate 'update' or 'redeploy' tool. " +
+        "GRID CHOICE (new plug): the destination grid is the user's choice, like visibility — do NOT infer or " +
+        "reuse a grid silently. For a user with more than one grid, CONFIRM which grid before plugging (omit " +
+        "`grid` and grid_plug returns needs_grid to ask); a single-grid user is not asked. State the " +
+        "destination before the entity is created. On re-plug the grid is fixed by the entity — never re-asked. " +
         "Sources (pass exactly one): `html` — a single self-contained HTML page (instant, any edition)" +
         (ctx.edition === "web"
           ? " or `artifact_files` — a multi-file app inline. "

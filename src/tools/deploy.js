@@ -104,7 +104,15 @@ export async function fetchUserOrgs(token) {
 //   - >1 grid and none supplied           → { picker } (a ready-to-return result)
 //   - exactly one grid                    → { single: annotatedOrg } — the caller
 //         decides how to treat a not-ready single grid (drop blocks; plug warns)
-//   - no orgs / listing failed            → { proceed: true } (fall through)
+//   - no orgs / listing failed            → { picker } needs_grid_create (asks)
+// Every return shape either ASKS (a picker) or names an explicit grid — none is a
+// silent proceed. That is load-bearing: register.js returns the picker or sets
+// input.grid from `grid`/`single` before runPlug, so the create path never
+// reaches runPlug's headerless fallback (#327). Do NOT reintroduce a
+// `{ proceed: true }` "fall through" shape here — a proceed with NO grid slips
+// past register.js without setting input.grid, into an ungated runPlug where
+// orgSlug is null and the SERVER picks the grid silently: exactly the wrong-grid
+// create this PR removed. A listing failure must ASK, never fall through.
 // User-facing text says "grid" (Gilad's org→grid rename); the structured payload
 // carries `needs_grid` AND the `needs_org`/`orgs`/`org`-slug fields the existing
 // org-picker web widget reads, so the web card keeps working. Stateless — no
@@ -1838,13 +1846,42 @@ export async function runPlug(ctx, input, deps = {}) {
     //      through — never a silent redirect.
     //   4. the target entity itself      — a pickup round-trip, only if 1–3 all
     //      came up empty. Reuse a pickup already done above to resolve the id.
-    orgSlug = grid || (await ctx.getActiveGrid());
-    if (!orgSlug) orgSlug = gridFromCloudgridUrl(targetUrl);
-    if (!orgSlug && isEdit) {
-      if (!pickupData && targetEntityId) {
-        pickupData = await resolveEntityViaPickup(ctx, { target: targetEntityId });
+    if (isEdit) {
+      // EDIT: the destination is NOT ambiguous — the entity already lives in
+      // exactly one grid, so derive it (never ask). explicit `grid` → active
+      // grid → URL host → entity lookup (#296/#301/#316). This chain must stay
+      // intact: re-asking on every re-plug is noise and would undo those fixes.
+      orgSlug = grid || (await ctx.getActiveGrid());
+      if (!orgSlug) orgSlug = gridFromCloudgridUrl(targetUrl);
+      if (!orgSlug) {
+        if (!pickupData && targetEntityId) {
+          pickupData = await resolveEntityViaPickup(ctx, { target: targetEntityId });
+        }
+        if (pickupData?.grid) orgSlug = pickupData.grid;
       }
-      if (pickupData?.grid) orgSlug = pickupData.grid;
+    } else {
+      // CREATE (#327): the destination grid is the USER'S CHOICE and must be
+      // EXPLICIT — never silently reuse the persisted active grid. A stale
+      // active grid (weeks old, not surfaced to the user) silently lands a NEW
+      // entity in the wrong grid, and the grid decides the URL, who can open it
+      // (grid-scoped visibility), the datastore tier it inherits, and the
+      // namespace it runs in.
+      //
+      // What makes this safe is the grid-picker gate — resolveGridOrAsk (defined
+      // above; called from register.js): it either ASKS (returns a picker) or
+      // sets input.grid to an explicit slug (the single grid, or the user's
+      // choice) BEFORE runPlug runs. So on the real create path `grid` is always
+      // populated here.
+      //
+      // `null` is NOT a backstop — it is the DEFECT value. A headerless authed
+      // create does not refuse; it delegates the choice to the server, which
+      // resolves a default and picks a grid silently (the hosted half of this
+      // bug). The only reason a null is ever safe is that the gate above never
+      // lets an unresolved authed create reach here. Refusing on null (returning
+      // needs_grid instead of proceeding) is the stronger fix, tracked as a #327
+      // follow-up — do NOT rely on `orgSlug = grid || null` alone to prevent a
+      // wrong-grid create.
+      orgSlug = grid || null;
     }
     // Grid-native header + X-CloudGrid-Org alias (same slug) during the soak.
     if (orgSlug) {

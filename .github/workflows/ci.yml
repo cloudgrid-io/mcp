@@ -60,6 +60,11 @@ jobs:
       # Create-path hard gates: no-auth create -> needs_auth (not silent anon);
       # authed multi-grid create -> needs_grid; anon/edit/explicit-grid bypass.
       - run: npm run test:create-gates
+      # #327: a NEW plug must not silently pick a grid. A create resolves its
+      # grid from the explicit `grid` param only (never the stale active grid),
+      # and the picker gate asks on multi-grid; the edit path's #296/#301/#316
+      # derivation chain stays intact. Both editions (local persists, hosted null).
+      - run: npm run test:plug-create-grid-choice
       # Zero-grid golden path (#235): create on a provisioning grid returns an
       # honest wait message (not an immediate re-call that fails); grid_plug
       # retries 409 ORG_PROVISIONING to a bounded budget then succeeds; budget
