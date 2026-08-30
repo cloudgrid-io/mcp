@@ -84,7 +84,7 @@ posted). `CLOUDGRID_QA_IDLE_MS` overrides the abandoned-idle window (default
 <!-- gen:tools -->
 ## Tools
 
-38 tools registered (16 shared across both editions, 22 local-only). No deprecated aliases. MIN_CLI_VERSION: 0.15.26.
+38 tools registered (17 shared across both editions, 21 local-only). No deprecated aliases. MIN_CLI_VERSION: 0.15.26.
 
 ### Direct-API tools (both editions)
 
@@ -106,6 +106,7 @@ posted). `CLOUDGRID_QA_IDLE_MS` overrides the abandoned-idle window (default
 | `grid_get_template` | corpus | Load a specific CloudGrid workflow, template, example, rule, or doc by name — deterministic retrieval from the bundle... |
 | `grid_report` | API | Report a genuine CloudGrid failure to the CloudGrid team — ONLY with the user's explicit consent. |
 | `grid_hello` | API | Create a minimal hello page and plug it into the user's grid, returning the live URL. |
+| `grid_delete` | `grid delete entity` | Archive a CloudGrid inspiration. |
 
 The direct-API tools call the platform without the CLI, so they also work in
 the web edition. `grid_login` writes the same `~/.cloudgrid/credentials` the
@@ -129,7 +130,6 @@ CLI uses, so the two share one identity.
 | `grid_edit_existing_app` | `grid pull` | Continue/edit an EXISTING entity locally: download its source + cloudgrid.yaml and link the folder so your next `grid... |
 | `grid_rename` | `grid rename` | Rename a CloudGrid entity's display name (slug stays the same). |
 | `grid_take_offline` | `grid unplug` | Take an entity off the grid. |
-| `grid_delete` | `grid delete entity` | Archive a CloudGrid inspiration. |
 | `grid_rollback_deploy` | `grid rollback` | Rollback an entity to a previous version. |
 | `grid_list_versions` | `grid versions` | List published versions for an entity. |
 | `grid_set_env` | `grid env` | Manage environment variables for an entity. |
