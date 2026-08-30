@@ -386,13 +386,15 @@ export function mountOAuth(app, publicBase, opts = {}) {
       denyToken(res, "unsupported_grant_type", "grant_type must be authorization_code", `(got ${JSON.stringify(grant_type ?? null)})`);
       return;
     }
-    const rec = authCodes.get(String(code));
+    const codeKey = String(code);
+    const rec = authCodes.get(codeKey);
     if (!rec) {
       // Also the retry case: codes are single-use, so a second exchange of a
       // code that already succeeded lands here.
       denyToken(res, "invalid_grant", "authorization code is unknown, expired or already exchanged");
       return;
     }
+    authCodes.delete(codeKey); // single use — consume before validation so a failed attempt cannot be retried
     if (rec.client_id !== String(client_id)) {
       denyToken(
         res,
@@ -412,7 +414,6 @@ export function mountOAuth(app, publicBase, opts = {}) {
       denyToken(res, "invalid_grant", code_verifier === undefined ? "code_verifier is required (PKCE)" : "PKCE verification failed");
       return;
     }
-    authCodes.delete(String(code)); // single use
     const claims = decodeJwt(rec.jwt);
     const expiresIn = claims.exp ? Math.max(60, claims.exp - Math.floor(Date.now() / 1000)) : 30 * 86400;
     res.json({ access_token: rec.jwt, token_type: "Bearer", expires_in: expiresIn, scope: "cloudgrid" });

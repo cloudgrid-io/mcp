@@ -186,6 +186,23 @@ test("a code_verifier that is present but wrong fails PKCE, not the required che
   assert.match(body.error_description, /PKCE verification failed/);
 });
 
+test("a failed PKCE attempt consumes the code — no second chance", async () => {
+  const { client_id, code, verifier } = await codeInHand();
+  const form = (cv) =>
+    new URLSearchParams({ grant_type: "authorization_code", code, code_verifier: cv, redirect_uri: REDIRECT, client_id });
+  const post = (cv) =>
+    fetch(`${web.baseUrl}/oauth/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: form(cv),
+    });
+  const bad = await post("wrong-verifier");
+  assert.equal(bad.status, 400, "wrong verifier should fail");
+  const retry = await post(verifier);
+  assert.equal(retry.status, 400, "correct verifier after a failed attempt should still fail — code was consumed");
+  assert.match((await retry.json()).error_description, /already exchanged/);
+});
+
 test("a mismatched redirect_uri names both values", async () => {
   const { status, body } = await exchange((b) => b.set("redirect_uri", `${REDIRECT}/`));
   assert.equal(status, 400);
