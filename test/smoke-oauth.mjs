@@ -35,6 +35,14 @@ let statusCalls = 0;
 let dropAuthHeader = null;
 const dropBodies = [];
 const mock = createServer((req, res) => {
+  if (req.url.startsWith("/auth/login")) {
+    // The console sign-in: hands the browser back to return_url with the same
+    // session code, which is what #333 relies on.
+    const u = new URL(req.url, "http://x");
+    res.writeHead(302, { Location: `${u.searchParams.get("return_url")}?code=${encodeURIComponent(u.searchParams.get("code"))}` });
+    res.end();
+    return;
+  }
   if (req.url.startsWith("/auth/status")) {
     statusCalls++;
     res.setHeader("Content-Type", "application/json");
@@ -121,21 +129,19 @@ try {
   ).json();
   check("registration returns a client_id", typeof reg.client_id === "string" && reg.client_id.length > 0);
 
-  // 3. Authorize (PKCE) → interstitial → poll → code.
+  // 3. Authorize (PKCE) → sign-in → back → code. #333: no page in between.
   const verifier = b64url(randomBytes(32));
   const challenge = b64url(createHash("sha256").update(verifier).digest());
   const authUrl = `${BASE}/oauth/authorize?response_type=code&client_id=${reg.client_id}&redirect_uri=${encodeURIComponent("http://localhost:9/cb")}&state=st1&code_challenge=${challenge}&code_challenge_method=S256`;
-  const page = await (await fetch(authUrl)).text();
-  const sid = page.match(/poll\?sid=([0-9a-f-]+)/)?.[1];
-  check("authorize renders the interstitial with a poll sid", !!sid);
+  const hop1 = await fetch(authUrl, { redirect: "manual" });
+  const signIn = hop1.headers.get("location");
+  check("authorize redirects to the sign-in with a return_url", hop1.status === 302 && /\/auth\/login\?/.test(signIn ?? "") && /return_url=/.test(signIn ?? ""));
 
-  let redirect = null;
-  for (let i = 0; i < 6 && !redirect; i++) {
-    const p = await (await fetch(`${BASE}/oauth/authorize/poll?sid=${sid}`)).json();
-    if (p.status === "ready") redirect = p.redirect;
-    else await sleep(150);
-  }
-  check("poll bridges CloudGrid sign-in to a redirect with code+state", !!redirect && redirect.includes("code=") && redirect.includes("state=st1"));
+  const hop2 = await fetch(signIn, { redirect: "manual" });          // the console sign-in
+  const backTo = hop2.headers.get("location");
+  const hop3 = await fetch(backTo, { redirect: "manual" });          // /oauth/authorize/complete
+  const redirect = hop3.headers.get("location");
+  check("sign-in returns to a redirect carrying code+state", hop3.status === 302 && !!redirect && redirect.includes("code=") && redirect.includes("state=st1"));
   const code = new URL(redirect).searchParams.get("code");
 
   // 4. Token exchange — wrong verifier rejected, right verifier returns the JWT.

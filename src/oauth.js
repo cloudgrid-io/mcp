@@ -21,7 +21,10 @@ const CODE_TTL_MS = 5 * 60 * 1000; // authorize sessions + auth codes live 5 min
 // are 5-minute, retry-on-failure sessions: losing them to a restart just means
 // the user clicks "sign in" again, never that they must re-add the connector.
 // Client REGISTRATIONS are NOT here — they are stateless (see below, #3060).
-const authSessions = new Map(); // sid -> { cgCode, client_id, redirect_uri, state, code_challenge, created }
+const authSessions = new Map(); // cgCode -> { client_id, redirect_uri, state, code_challenge, created }
+// Keyed by the CLOUDGRID session code, because that is the only identifier that
+// comes back: CloudGrid redirects to `<return_url>?code=<session code>`, and the
+// allowlist is an exact-string match so return_url cannot carry a sid of ours.
 const authCodes = new Map(); // code -> { jwt, client_id, redirect_uri, code_challenge, created }
 
 function sweep(map) {
@@ -128,9 +131,10 @@ function corsOk(res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, mcp-protocol-version");
 }
 
-// The §23-voice interstitial. Opens the CloudGrid sign-in in a new tab and polls
-// until it completes, then returns the browser to the client app.
-function interstitialHtml(sid, loginUrl) {
+// The ONLY page this bridge renders, and only when something has gone wrong.
+// The happy path renders nothing at all: /oauth/authorize redirects straight to
+// the CloudGrid sign-in, and the sign-in redirects straight back (#333).
+function problemHtml(message) {
   return `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -140,28 +144,12 @@ function interstitialHtml(sid, loginUrl) {
   body { margin:0; min-height:100vh; display:grid; place-items:center;
          font-family: Inter, system-ui, sans-serif; background:#0d0d0f; color:#fafafa; }
   main { max-width:420px; padding:2.5rem; text-align:center; }
-  a.btn { display:inline-block; margin-top:1.25rem; padding:.75rem 1.5rem; border-radius:8px;
-          background:#fafafa; color:#0d0d0f; text-decoration:none; font-weight:600; }
-  p.status { margin-top:1.5rem; font-size:.9rem; opacity:.7; }
+  p { opacity:.75; line-height:1.5; }
 </style></head>
 <body><main>
   <h1>Connect CloudGrid</h1>
-  <p>Sign in with your CloudGrid account. This page returns to the app when you finish.</p>
-  <a class="btn" href="${loginUrl}" target="_blank" rel="noopener">Sign in to CloudGrid</a>
-  <p class="status" id="st">Waiting for sign-in.</p>
-</main>
-<script>
-  async function tick() {
-    try {
-      const r = await fetch("/oauth/authorize/poll?sid=${sid}");
-      const d = await r.json();
-      if (d.status === "ready") { location.href = d.redirect; return; }
-      if (d.status === "expired") { document.getElementById("st").textContent = "The sign-in window expired. Close this page and connect again."; return; }
-    } catch {}
-    setTimeout(tick, 2000);
-  }
-  tick();
-</script></body></html>`;
+  <p>${message}</p>
+</main></body></html>`;
 }
 
 /**
@@ -274,7 +262,24 @@ export function mountOAuth(app, publicBase, opts = {}) {
     });
   });
 
-  // Authorization endpoint — render the bridge interstitial.
+  // Authorization endpoint — send the browser straight to the CloudGrid sign-in.
+  //
+  // #333. This used to render an interstitial: a page whose button opened the
+  // real sign-in in a SECOND TAB (target="_blank") while the page itself stayed
+  // behind in ChatGPT's OAuth popup, polling until the sign-in landed and then
+  // redirecting the popup back. Two consequences, both bad:
+  //
+  //   * two CloudGrid pages and an extra click, in two different design
+  //     languages, where the CLI shows one;
+  //   * the tab that completes the handshake is the one the user stopped
+  //     looking at. They finish in the new tab, read "you can close this
+  //     window", and never return to the popup — so a perfectly good
+  //     authorization code is minted and stranded, which reaches the user as
+  //     ChatGPT's "Something went wrong with setting up the connection".
+  //
+  // The interstitial was a workaround for not passing `return_url`, which the
+  // API has supported all along. With it, CloudGrid brings the browser back
+  // itself and there is nothing to poll from, so the page is not needed at all.
   app.get("/oauth/authorize", (req, res) => {
     sweep(authSessions);
     const { client_id, redirect_uri, state, code_challenge, code_challenge_method, response_type } = req.query;
@@ -287,58 +292,75 @@ export function mountOAuth(app, publicBase, opts = {}) {
       res.status(400).send("This server requires response_type=code with PKCE (S256).");
       return;
     }
-    const sid = randomUUID();
     const cgCode = newLoginCode();
-    authSessions.set(sid, {
-      cgCode,
+    authSessions.set(cgCode, {
       client_id: String(client_id),
       redirect_uri: String(redirect_uri),
       state: state ? String(state) : "",
       code_challenge: String(code_challenge),
       created: Date.now(),
     });
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.send(interstitialHtml(sid, buildLoginUrl(cgCode)));
+    res.redirect(buildLoginUrl(cgCode, `${base}/oauth/authorize/complete`));
   });
 
-  // The interstitial's poll — bridges to CloudGrid /auth/status.
-  app.get("/oauth/authorize/poll", async (req, res) => {
-    corsOk(res);
-    const sess = authSessions.get(String(req.query.sid));
-    if (!sess || Date.now() - sess.created > CODE_TTL_MS) {
-      res.json({ status: "expired" });
+  // Where CloudGrid returns the browser after sign-in, as
+  // `…/complete?code=<the same session code>`. Resolves the pending authorize
+  // session, mints the authorization code, and hands the browser back to the
+  // client. Renders nothing unless something is wrong.
+  app.get("/oauth/authorize/complete", async (req, res) => {
+    sweep(authSessions);
+    const cgCode = String(req.query.code ?? "");
+    const sess = authSessions.get(cgCode);
+    if (!sess) {
+      // Unknown, already used, or older than the window. The window is five
+      // minutes and it is the API that enforces it (createSession), so a
+      // first-time SIGN-UP — Google consent, account creation, onboarding — can
+      // outrun it. See cloudgrid-io/cloudgrid#3098.
+      console.error("[oauth] sign-in returned for an unknown or expired authorize session");
+      res.status(400).setHeader("Content-Type", "text/html; charset=utf-8");
+      res.send(problemHtml("This sign-in took too long, or was already completed. Close this page and connect again."));
       return;
     }
-    let upstream;
-    try {
-      upstream = await pollStatusOnce(sess.cgCode);
-    } catch {
-      res.json({ status: "pending" });
+
+    // CloudGrid redirects here only after a successful sign-in, so the session
+    // is authenticated by the time we look. The bounded retry is for the gap
+    // between the callback writing the JWT and this read seeing it — a stranded
+    // user is an expensive way to save two seconds.
+    let upstream = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        upstream = await pollStatusOnce(cgCode);
+      } catch {
+        upstream = null;
+      }
+      if (upstream?.status === "authenticated" && upstream.jwt) break;
+      if (upstream?.status === "expired") break;
+      await new Promise((r) => setTimeout(r, 400));
+    }
+
+    if (upstream?.status !== "authenticated" || !upstream.jwt) {
+      console.error(`[oauth] sign-in returned but CloudGrid reports status=${upstream?.status ?? "unreachable"}`);
+      res.status(400).setHeader("Content-Type", "text/html; charset=utf-8");
+      res.send(problemHtml("Sign-in did not complete. Close this page and connect again."));
       return;
     }
-    if (upstream.status === "authenticated" && upstream.jwt) {
-      const code = b64url(Buffer.from(randomUUID()));
-      authCodes.set(code, {
-        jwt: upstream.jwt,
-        client_id: sess.client_id,
-        redirect_uri: sess.redirect_uri,
-        code_challenge: sess.code_challenge,
-        created: Date.now(),
-      });
-      authSessions.delete(String(req.query.sid));
-      // The sign-in half succeeded. Without this line a connector failure gives
-      // no way to tell whether the user ever got through sign-in at all.
-      console.error("[oauth] authorization code issued after sign-in; awaiting token exchange");
-      const sep = sess.redirect_uri.includes("?") ? "&" : "?";
-      const redirect = `${sess.redirect_uri}${sep}code=${encodeURIComponent(code)}${sess.state ? `&state=${encodeURIComponent(sess.state)}` : ""}`;
-      res.json({ status: "ready", redirect });
-      return;
-    }
-    if (upstream.status === "expired") {
-      res.json({ status: "expired" });
-      return;
-    }
-    res.json({ status: "pending" });
+
+    const code = b64url(Buffer.from(randomUUID()));
+    authCodes.set(code, {
+      jwt: upstream.jwt,
+      client_id: sess.client_id,
+      redirect_uri: sess.redirect_uri,
+      code_challenge: sess.code_challenge,
+      created: Date.now(),
+    });
+    authSessions.delete(cgCode);
+    // The sign-in half succeeded. Without this line a connector failure gives
+    // no way to tell whether the user ever got through sign-in at all.
+    console.error("[oauth] authorization code issued after sign-in; awaiting token exchange");
+    const sep = sess.redirect_uri.includes("?") ? "&" : "?";
+    res.redirect(
+      `${sess.redirect_uri}${sep}code=${encodeURIComponent(code)}${sess.state ? `&state=${encodeURIComponent(sess.state)}` : ""}`,
+    );
   });
 
   // Token endpoint — PKCE-verified exchange; the CloudGrid JWT is the access token.

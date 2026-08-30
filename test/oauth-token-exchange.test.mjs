@@ -20,8 +20,12 @@ import { createHash, randomBytes } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 
 const SECRET = "test-oauth-hmac-secret-token-exchange-000000";
-// ChatGPT's real connector callback — the shape that matters for this bug.
-const REDIRECT = "https://chatgpt.com/connector_platform_oauth_redirect";
+// ChatGPT's real connector callback. Used where the SHAPE matters, and never
+// followed — a test must not put a request on the public internet.
+const CHATGPT_REDIRECT = "https://chatgpt.com/connector_platform_oauth_redirect";
+// The client redirect the chain tests actually follow: a local sink, so the
+// whole authorize -> sign-in -> complete -> client chain terminates in-process.
+let REDIRECT = null;
 
 const b64url = (b) => b.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
@@ -40,6 +44,16 @@ async function listen(server, p = 0) {
 async function startUpstream() {
   const jwt = fakeJwt();
   const server = createServer((req, res) => {
+    if (req.url.startsWith("/auth/login")) {
+      // Stands in for the console sign-in: the user signs in, and CloudGrid
+      // hands the browser to return_url with the same session code.
+      const u = new URL(req.url, "http://x");
+      const ret = u.searchParams.get("return_url");
+      const code = u.searchParams.get("code");
+      res.writeHead(302, { Location: `${ret}?code=${encodeURIComponent(code)}` });
+      res.end();
+      return;
+    }
     if (req.url.startsWith("/auth/status")) {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ status: "authenticated", jwt }));
@@ -81,11 +95,20 @@ async function startWeb(upstreamBase) {
   return { child, baseUrl, stderr: () => stderr };
 }
 
+// The client's callback. Terminates the redirect chain locally.
+const sink = createServer((_req, res) => {
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("client callback reached");
+});
+const sinkPort = await listen(sink);
+REDIRECT = `http://127.0.0.1:${sinkPort}/connector/callback`;
+
 const upstream = await startUpstream();
 const web = await startWeb(upstream.base);
 after(async () => {
   web.child.kill("SIGTERM");
   await new Promise((r) => upstream.server.close(r));
+  await new Promise((r) => sink.close(r));
 });
 
 // Walk the flow exactly as ChatGPT does, up to the point of holding a code.
@@ -104,16 +127,13 @@ async function codeInHand() {
     `${web.baseUrl}/oauth/authorize?response_type=code&client_id=${encodeURIComponent(client_id)}` +
     `&redirect_uri=${encodeURIComponent(REDIRECT)}&code_challenge=${challenge}` +
     `&code_challenge_method=S256&state=st-1&scope=cloudgrid`;
-  const page = await fetch(authorizeUrl);
-  assert.equal(page.status, 200, "authorize should render the interstitial");
-  const sid = (await page.text()).match(/sid=([0-9a-f-]{36})/)?.[1];
-  assert.ok(sid, "interstitial should carry a poll sid");
-
-  // The sign-in the user just completed.
-  const poll = await (await fetch(`${web.baseUrl}/oauth/authorize/poll?sid=${sid}`)).json();
-  assert.equal(poll.status, "ready", `poll should be ready once signed in: ${JSON.stringify(poll)}`);
-  const code = new URL(poll.redirect).searchParams.get("code");
-  assert.ok(code, "the redirect should carry an authorization code");
+  // No page is rendered anywhere on this path: authorize redirects to the
+  // CloudGrid sign-in, the sign-in redirects back, and the completion endpoint
+  // redirects to the client. Following it end to end is the test.
+  const landed = await fetch(authorizeUrl, { redirect: "follow" });
+  assert.equal(landed.status, 200, "the chain should end at the client redirect");
+  const code = new URL(landed.url).searchParams.get("code");
+  assert.ok(code, `the chain should end carrying an authorization code (ended at ${landed.url})`);
   return { client_id, code, verifier };
 }
 
@@ -225,4 +245,50 @@ test("authorization-server metadata is served at the path-inserted URL too", asy
   assert.equal(root.status, 200);
   assert.equal(nested.status, 200, "the path-inserted form must not 404");
   assert.deepEqual(await nested.json(), await root.json());
+});
+
+
+// The shape ChatGPT actually sends. Asserted on the Location header rather than
+// followed, so nothing leaves the machine.
+test("authorize redirects to the CloudGrid sign-in and renders no page of its own", async () => {
+  const reg = await fetch(`${web.baseUrl}/oauth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ redirect_uris: [CHATGPT_REDIRECT] }),
+  });
+  const { client_id } = await reg.json();
+  const verifier = b64url(randomBytes(32));
+  const challenge = b64url(createHash("sha256").update(verifier).digest());
+  const res = await fetch(
+    `${web.baseUrl}/oauth/authorize?response_type=code&client_id=${encodeURIComponent(client_id)}` +
+      `&redirect_uri=${encodeURIComponent(CHATGPT_REDIRECT)}&code_challenge=${challenge}` +
+      `&code_challenge_method=S256&state=st&scope=cloudgrid`,
+    { redirect: "manual" },
+  );
+  assert.equal(res.status, 302, "authorize must redirect, not render an interstitial");
+  const location = res.headers.get("location");
+  assert.match(location, /\/auth\/login\?/, "it should go to the CloudGrid sign-in");
+  assert.match(location, /return_url=/, "and carry a return_url so the browser comes back");
+  assert.match(location, /source=mcp/);
+  // The allowlist is an exact-string match, so the return_url must be bare.
+  const returnUrl = decodeURIComponent(new URL(location).searchParams.get("return_url"));
+  assert.equal(returnUrl, `${web.baseUrl}/oauth/authorize/complete`);
+  assert.ok(!returnUrl.includes("?"), "return_url must carry no query of its own");
+});
+
+test("a rejected client still never reaches the sign-in", async () => {
+  const res = await fetch(
+    `${web.baseUrl}/oauth/authorize?response_type=code&client_id=cg1.forged.forged` +
+      `&redirect_uri=${encodeURIComponent(CHATGPT_REDIRECT)}&code_challenge=x&code_challenge_method=S256`,
+    { redirect: "manual" },
+  );
+  assert.equal(res.status, 400, "a forged client_id must be refused before any redirect");
+});
+
+test("returning from sign-in with an unknown session shows a page, not a redirect", async () => {
+  const res = await fetch(`${web.baseUrl}/oauth/authorize/complete?code=00000000-0000-4000-8000-000000000000`, {
+    redirect: "manual",
+  });
+  assert.equal(res.status, 400);
+  assert.match(await res.text(), /took too long|already been completed|already completed/i);
 });
