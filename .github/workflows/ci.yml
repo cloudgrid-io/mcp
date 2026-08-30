@@ -192,6 +192,18 @@ jobs:
       # be placed from either end. This drives the real sequence against a stub
       # upstream and asserts each rejection names its cause.
       - run: npm run test:oauth-token-exchange
+      # OAuth flow observability (#345): the flow was only observable on the
+      # paths it did NOT take — a refused exchange logged (denyToken) but a
+      # SUCCESSFUL exchange and the authorize arrival logged nothing, so "no log
+      # line" meant both "never happened" and "worked fine" (this blocked the
+      # #329 ChatGPT diagnosis). Drives register → authorize → token against a
+      # stub upstream and asserts three new lines appear IN ORDER (authorize
+      # arrival, redirect handback, token success). The half that matters is the
+      # redaction test: a full flow with a known code, verifier, challenge,
+      # secret and JWT, asserting NONE of those literals reaches stderr — an
+      # auth path's logs are not private. Proven able to fail (a deliberate leak
+      # turns it red) so it certifies presence-not-values, not nothing.
+      - run: npm run test:oauth-observability
       # Capability logging at initialize (#297): the hosted edge records the
       # client's advertised MCP capabilities once per session as a KEY SHAPE
       # (names + value types, never values), so we can see whether Claude web
