@@ -33,6 +33,31 @@ function b64url(buf) {
   return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+// Observability helpers (#345). The OAuth flow was only observable on the paths
+// it did NOT take — a refused token exchange logs (denyToken), but a successful
+// one and the authorize arrival logged nothing, so "no log line" meant both
+// "never happened" and "worked fine". These emit SHAPE and PRESENCE, never
+// values: this is an auth path and a log aggregator is not private. See the
+// issue's redaction list — code, verifier, code_challenge value, JWT, secret,
+// the full client_id, and the full redirect_uri all stay out of the log.
+
+// A ~12-char prefix correlates lines without printing the signed client_id,
+// which embeds the redirect set.
+function clientIdPrefix(clientId) {
+  return clientId ? `${String(clientId).slice(0, 12)}…` : "absent";
+}
+
+// The HOST is the diagnostic value; the path can carry a per-install identifier,
+// so it is dropped.
+function hostOf(uri) {
+  if (!uri) return "absent";
+  try {
+    return new URL(String(uri)).host;
+  } catch {
+    return "invalid";
+  }
+}
+
 // --- Stateless client registration (#3060) -----------------------------------
 // A `client_id` is a signed token that CARRIES its own redirect-URI set, not a
 // random handle into a process-local Map. Registration signs the (sorted,
@@ -278,6 +303,16 @@ export function mountOAuth(app, publicBase, opts = {}) {
   app.get("/oauth/authorize", (req, res) => {
     sweep(authSessions);
     const { client_id, redirect_uri, state, code_challenge, code_challenge_method, response_type } = req.query;
+    // Observability (#345): the request SHAPE the client actually sent, logged
+    // before any check so a rejected request is still visible. Presence, not
+    // values — nothing here is reusable in a log aggregator.
+    console.error(
+      `[oauth] authorize request: client_id=${clientIdPrefix(client_id)} ` +
+        `response_type=${response_type ? String(response_type) : "absent"} ` +
+        `state=${state ? "present" : "absent"} ` +
+        `pkce=${code_challenge ? (code_challenge_method ? String(code_challenge_method) : "present(no-method)") : "absent"} ` +
+        `redirect_host=${hostOf(redirect_uri)}`,
+    );
     const client = verifyClientId(client_id, clientSecrets.secrets);
     if (!client || !client.redirect_uris.includes(String(redirect_uri))) {
       res.status(400).send("Unknown client or redirect_uri. Re-add the connector and try again.");
@@ -331,6 +366,10 @@ export function mountOAuth(app, publicBase, opts = {}) {
       console.error("[oauth] authorization code issued after sign-in; awaiting token exchange");
       const sep = sess.redirect_uri.includes("?") ? "&" : "?";
       const redirect = `${sess.redirect_uri}${sep}code=${encodeURIComponent(code)}${sess.state ? `&state=${encodeURIComponent(sess.state)}` : ""}`;
+      // Observability (#345): we handed control back to the client, and to
+      // where. The host only — the full redirect carries the code and a
+      // per-install path.
+      console.error(`[oauth] redirect handed back to client; redirect_host=${hostOf(sess.redirect_uri)}`);
       res.json({ status: "ready", redirect });
       return;
     }
@@ -415,6 +454,10 @@ export function mountOAuth(app, publicBase, opts = {}) {
     authCodes.delete(String(code)); // single use
     const claims = decodeJwt(rec.jwt);
     const expiresIn = claims.exp ? Math.max(60, claims.exp - Math.floor(Date.now() / 1000)) : 30 * 86400;
+    // Observability (#345): the success path. Without this, a successful
+    // exchange and total silence were the same observation. The token is never
+    // logged; client_id is a prefix only.
+    console.error(`[oauth] token exchange succeeded; access token issued (client_id=${clientIdPrefix(client_id)})`);
     res.json({ access_token: rec.jwt, token_type: "Bearer", expires_in: expiresIn, scope: "cloudgrid" });
   });
 }
