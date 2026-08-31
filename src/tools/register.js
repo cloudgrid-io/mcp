@@ -539,12 +539,12 @@ export function registerTools(server, ctx) {
       // live at a public URL in place. Versions + grid rollback exist, but the
       // honest MCP annotation for overwrite-live-state is destructive.
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
-      // ChatGPT-only binding: openai/outputTemplate points at the live-result
-      // widget. Deliberately NOT the MCP-Apps `ui.resourceUri` key — that is the
-      // one Claude reads. Since SEP-1865 both hosts render the same MIME
-      // (text/html;profile=mcp-app), so independence is by BINDING, not MIME:
-      // ChatGPT sees openai/outputTemplate, Claude never does. The two mechanisms
-      // stay independent (#308/#303).
+      // Bound via openai/outputTemplate, which ChatGPT honors as a compatibility
+      // alias for `_meta.ui.resourceUri` and which Claude ignores — so this
+      // widget renders in ChatGPT only. Deliberately NOT `_meta.ui.resourceUri`:
+      // since SEP-1865 both hosts read THAT key, so binding there would render the
+      // widget in Claude too. The two mechanisms stay independent because they
+      // bind on different keys, not different MIMEs (#308/#303).
       ...(ctx.edition === "web" && APPS_WIDGETS_ENABLED ? {
         _meta: { "openai/outputTemplate": LIVE_RESULT_URI },
       } : {}),
@@ -719,10 +719,11 @@ export function registerTools(server, ctx) {
         login_url: z.string().describe("URL to open in a browser to complete sign-in."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
-      // Bind the SEP-1865 sign-in card on the web edition (Claude web). This is
-      // the SEP-1865 key (_meta.ui.resourceUri); ChatGPT reads openai/outputTemplate
-      // and ignores it, and a client without the UI extension ignores it too and
-      // gets the text-first result below. NOT gated behind MCP_APPS_WIDGETS — a
+      // Bind the SEP-1865 sign-in card on the web edition (Claude web) via the
+      // standard `_meta.ui.resourceUri` key. It carries NO openai/outputTemplate
+      // and is not gated by MCP_APPS_WIDGETS, so it is the Claude sign-in card;
+      // a client without the UI extension ignores _meta.ui and gets the
+      // text-first result below. NOT gated behind MCP_APPS_WIDGETS — a
       // second, independent mechanism (see constants.js). The result shape is
       // unchanged: content[0] stays the sign-in URL text so the link is never
       // unreachable if the card does not render.
