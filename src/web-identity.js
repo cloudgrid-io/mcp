@@ -25,12 +25,18 @@ export function createWebIdentity({
   let transportToken = initialTransportToken;
   let explicitToken = null;
   let hasExplicitLogin = false;
+  const revokedTokens = new Set();
 
   // An explicit login wins over transport-token refreshes for the same subject.
   // A genuine transport subject change ends that override so credentials from
   // the previous person cannot persist on a connection now owned by another.
-  function effectiveToken() {
+  function rawEffectiveToken() {
     return hasExplicitLogin ? explicitToken : transportToken;
+  }
+
+  function effectiveToken() {
+    const tok = rawEffectiveToken();
+    return revokedTokens.has(tok) ? null : tok;
   }
 
   return {
@@ -62,7 +68,11 @@ export function createWebIdentity({
 
     async getCredentialsStatus() {
       const jwt = effectiveToken();
-      if (!jwt) return { creds: null, expired: false };
+      if (!jwt) {
+        // A revoked token is surfaced as expired so the client triggers re-auth.
+        const revoked = revokedTokens.has(rawEffectiveToken());
+        return { creds: null, expired: revoked || isTokenExpired(rawEffectiveToken(), now) };
+      }
       if (isTokenExpired(jwt, now)) return { creds: null, expired: true };
       return { creds: { jwt }, expired: false };
     },
@@ -71,6 +81,10 @@ export function createWebIdentity({
       explicitToken = jwt;
       hasExplicitLogin = true;
       return decodeJwt(jwt);
+    },
+
+    markRevoked(jwt) {
+      if (jwt) revokedTokens.add(jwt);
     },
   };
 }

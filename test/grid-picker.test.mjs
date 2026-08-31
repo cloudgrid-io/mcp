@@ -207,6 +207,14 @@ try {
     const none = await resolveGridOrAsk(ctx, { token: "jwt", suppliedGrid: undefined, edition: "web" }, { fetchUserOrgs: noGrids });
     check("resolveGridOrAsk no grids → needs_grid_create ask (never a 403 dead end)",
       none.picker?.structured?.needs_grid_create === true && /grid_create_grid/.test(none.picker?.text ?? ""));
+
+    // fetchUserOrgs throws → error picker, NOT needs_grid_create
+    const throwing = async () => { throw new Error("Grid listing failed (HTTP 500)"); };
+    const errResult = await resolveGridOrAsk(ctx, { token: "jwt", suppliedGrid: undefined, edition: "web" }, { fetchUserOrgs: throwing });
+    check("resolveGridOrAsk fetch error → picker with error (not needs_grid_create)",
+      errResult.picker?.structured?.error === true && !errResult.picker?.structured?.needs_grid_create);
+    check("resolveGridOrAsk fetch error → user-facing message",
+      /could not fetch/i.test(errResult.picker?.text ?? ""));
   }
 } finally {
   globalThis.fetch = realFetch;
