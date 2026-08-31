@@ -86,9 +86,13 @@ export const VISIBILITY_LABELS = {
 export const APPS_WIDGETS_ENABLED = process.env.MCP_APPS_WIDGETS === "1";
 // The mimeType ChatGPT's Apps-SDK renderer requires for a ui:// widget resource.
 // Since SEP-1865 (2026-01-26) this EQUALS RESOURCE_MIME_TYPE (`text/html;profile=
-// mcp-app`): both hosts now render the standard MCP-Apps MIME. The hosts stay
-// separated by BINDING, not MIME — ChatGPT reads `openai/outputTemplate`, Claude
-// reads `_meta.ui.resourceUri` — so sharing the MIME does not cross the paths.
+// mcp-app`): both hosts now render the standard MCP-Apps MIME. Both hosts also
+// read the SAME binding key, `_meta.ui.resourceUri`; ChatGPT honors
+// `openai/outputTemplate` only as a compatibility alias (OpenAI's own
+// deploy/troubleshooting page). So our two mechanisms stay separate not because
+// the hosts key off different MIMEs or different keys, but because WE bind them
+// on different keys: the ChatGPT widget via `openai/outputTemplate` (the alias,
+// which Claude ignores), the Claude card via `_meta.ui.resourceUri`.
 export const CHATGPT_WIDGET_MIME = "text/html;profile=mcp-app";
 export const LIVE_RESULT_URI = "ui://cloudgrid/live-result.html";
 // URI/resource-name/filename stay `org-picker` — that's the stable contract the
