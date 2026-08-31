@@ -207,7 +207,7 @@ try {
   check("html authed re-plug says Updated in place + same URL", /Updated in place/.test(a2.text) && a2.structured.url === "https://atomic.cloudgrid.io/s3");
   // #321: an edit/re-plug points the user at their grid (console) too — the app
   // URL alone leaves the most common follow-up with no way back to the grid.
-  check("edit → prints the console line pointing at THEIR grid", /see and manage all their apps in their grid/.test(a2.text) && a2.text.includes("https://console.cloudgrid.io/home?grid=atomic"));
+  check("edit → console line is an imperative pointing at THEIR grid (#359)", a2.text.includes("Give the user this link so they can see and manage all their apps in their grid") && a2.text.includes("https://console.cloudgrid.io/home?grid=atomic"));
   check("edit → console_url is the grid-specific link (#355)", a2.structured.console_url === "https://console.cloudgrid.io/home?grid=atomic");
   // Regression guard: the visibility ask stays a NEW-deploy-only prompt. It must
   // NOT fire on a re-plug (re-asking who can open the app on every edit is the
@@ -254,7 +254,7 @@ try {
     // #321 finding 3: guard the create path too. Inverting the gate to
     // `isEdit && data.entity_id` would keep the edit assertions green while
     // silently dropping the console line from NEW deploys — this catches that.
-    check("new deploy → prints the console line + grid-specific console_url (#355)", /see and manage all their apps in their grid/.test(w.text) && w.structured.console_url === "https://console.cloudgrid.io/home?grid=acme");
+    check("new deploy → console line is an imperative + grid-specific console_url (#355/#359)", w.text.includes("Give the user this link so they can see and manage all their apps in their grid") && w.structured.console_url === "https://console.cloudgrid.io/home?grid=acme");
   }
 
   // A runtime app create ALSO gets the visibility ask (universal, not auto-set).

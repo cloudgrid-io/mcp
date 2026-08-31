@@ -865,7 +865,7 @@ export function registerTools(server, ctx) {
         status: z.string().describe("The build status: success | failed | building | queued | unknown."),
         live: z.boolean().describe("True only when the build finished successfully and the URL serves."),
         url: z.string().optional().describe("The live URL, when known."),
-        console_url: z.string().optional().describe("On success: URL to view the app live in the grid alongside all the user's apps."),
+        console_url: z.string().optional().describe("On success: a link to see and manage all the apps in the grid, in the console."),
         error: z.string().optional().describe("User-language failure reason, when the build failed."),
         build_log_tail: z.string().optional().describe("Sanitized tail of the Cloud Build log (the real error), when the build failed."),
         suggested_fix: z.string().optional().describe("A suggested fix for the failure, when the platform provides one."),

@@ -2382,15 +2382,16 @@ export async function runPlug(ctx, input, deps = {}) {
   // /grids/<slug> form 404s; /home?grid= does not. Falls back to the root when
   // the slug is unknown.
   //
-  // NOT on the building branch: the line says "view it live", and a still-building
-  // app is not live — emitting it two lines under "Do NOT tell the user it is live"
-  // would hand a model the word "live" next to a pending app. For an async runtime
-  // build the console line arrives when liveness is confirmed, in runCheckDeploy's
-  // success branch.
+  // NOT on the building branch. This line invites the user to "see and manage all
+  // their apps in their grid" — an invitation that presumes the app is live. A
+  // still-building app is not, and it sits two lines under "Do NOT tell the user it
+  // is live", so relaying a manage-your-apps prompt there contradicts the honesty
+  // gate. For an async runtime build the console line arrives once liveness is
+  // confirmed, in runCheckDeploy's success branch.
   if (data.entity_id && !isBuilding) {
     const consoleUrl = consoleGridUrl(data.grid ?? grid ?? null);
     structured.console_url = consoleUrl;
-    lines.push(`Also give the user this link so they can see and manage all their apps in their grid: ${consoleUrl}`);
+    lines.push(`Give the user this link so they can see and manage all their apps in their grid: ${consoleUrl}`);
   }
 
   // Visibility is the user's choice — never set silently. On a NEW deploy,
@@ -2881,9 +2882,10 @@ export async function runCheckDeploy(ctx, { poll_url, grid } = {}) {
     return {
       // The "now live" moment for an async runtime build lands here, not in
       // runPlug (which returned "building"). Point the user at their grid too
-      // (#321) — this is where liveness is confirmed, so "view it live" is true.
+      // (#321) — this is where liveness is confirmed, so the manage-your-apps
+      // invitation is honest to make.
       text: `Live${url ? `: ${url}` : ""} — the build finished. Give the user the URL.\n` +
-        `Also give the user this link so they can see and manage all their apps in their grid: ${consoleGridUrl(gridSlug)}`,
+        `Give the user this link so they can see and manage all their apps in their grid: ${consoleGridUrl(gridSlug)}`,
       structured: { status: "success", live: true, ...(url ? { url } : {}), console_url: consoleGridUrl(gridSlug) },
     };
   }
