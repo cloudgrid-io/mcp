@@ -210,6 +210,16 @@ jobs:
       # advertises a UI extension. Drives a real initialize with a nested decoy
       # secret and asserts the log names the UI-extension key and leaks no value.
       - run: npm run test:web-capabilities-log
+      # Transport observability on POST /mcp (#353, unblocks #329): every one of
+      # the four exits — the 401 auth challenge, both 400 branches, and a
+      # successful session — now emits its own distinct log line, and the
+      # session-established line is UNCONDITIONAL (it fires even when the #297
+      # capability observation throws — the specific defect that sent the #329
+      # diagnosis sideways). Unit-drives the exit helpers and the capability-throws
+      # case, then spawns the real src/web.js to observe the actual 401/400/success
+      # paths. Redaction guard: a full session with a known bearer, asserting the
+      # token never reaches stderr — proven able to fail (deliberate leak → red).
+      - run: npm run test:mcp-transport-observability
       # Offline app-with-data test (0.9.0): the first runtime (DB-backed) build
       # path. Asserts the app-with-data workflow/template/example + persistent-apps
       # troubleshooting resolve via fetchCorpus and the real grid_fetch handler,
