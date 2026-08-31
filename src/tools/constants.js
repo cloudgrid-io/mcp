@@ -29,6 +29,16 @@ export const ANON_HTML_MAX_BYTES = 2_000_000;
 export const AUTHED_HTML_MAX_BYTES = 25_000_000;
 export const CONSOLE_URL = "https://console.cloudgrid.io/";
 
+// The console link handed to a user AFTER a plug. When the grid slug is known it
+// points at THAT grid (verified live: /home?grid=<slug> -> 200) instead of the
+// bare root, so a user with more than one grid lands on the one they just
+// plugged to (#355). Falls back to the root when the slug is unknown. The
+// earlier code hardcoded the root on the belief that "there is no per-grid page"
+// — that was wrong; only the /grids/<slug> form 404s, /home?grid= does not.
+export function consoleGridUrl(slug) {
+  return slug ? `${CONSOLE_URL}home?grid=${encodeURIComponent(slug)}` : CONSOLE_URL;
+}
+
 // Display labels for visibility values (two-axis model). The OPTIONS list is what
 // the post-plug ask offers; the LABELS map also keeps legacy keys (org,
 // authenticated, space) so an entity's CURRENT stored value still renders — do
