@@ -329,6 +329,49 @@ try {
   check("plug authed re-plug attaches the cloudgrid.yaml part", lastCall().form.get("cloudgrid.yaml") !== null);
   check("plug authed re-plug sends no owner_token", formField("owner_token") === null);
 
+  // ── Re-plug with cloudgrid.yaml in artifact_files (no explicit param) (#314) ─
+  // When the caller puts cloudgrid.yaml inside artifact_files but omits the
+  // separate cloudgrid_yaml parameter, the re-plug path must still send the
+  // manifest part.
+  {
+    const ctx314 = makeCtx({ token: "jwt-314", edition: "local" });
+    ctx314.getActiveGrid = async () => "atomic";
+    replies = [
+      { status: 202, body: { entity_id: "ent-314", slug: "s314", grid: "atomic", url: "https://atomic.cloudgrid.io/s314", status: "live" } },
+    ];
+    await runPlug(ctx314, {
+      artifact_files: [
+        { path: "index.html", content: "<h1>app</h1>" },
+        { path: "cloudgrid.yaml", content: "name: my-app\nservices:\n  web:\n    type: node\n" },
+      ],
+      target_entity_id: "ent-314",
+    });
+    const yamlPart = lastFormCall()?.form?.get("cloudgrid.yaml");
+    check("#314: re-plug with manifest in artifact_files sends cloudgrid.yaml part", yamlPart !== null);
+    const yamlText = typeof yamlPart === "string" ? yamlPart : yamlPart ? await yamlPart.text() : "";
+    check("#314: re-plug manifest part contains the artifact content", yamlText.includes("my-app"));
+  }
+
+  // Explicit cloudgrid_yaml param takes precedence over artifact_files entry.
+  {
+    const ctxPrec = makeCtx({ token: "jwt-prec", edition: "local" });
+    ctxPrec.getActiveGrid = async () => "atomic";
+    replies = [
+      { status: 202, body: { entity_id: "ent-prec", slug: "sprec", grid: "atomic", url: "https://atomic.cloudgrid.io/sprec", status: "live" } },
+    ];
+    await runPlug(ctxPrec, {
+      artifact_files: [
+        { path: "index.html", content: "<h1>app</h1>" },
+        { path: "cloudgrid.yaml", content: "name: from-artifacts\n" },
+      ],
+      cloudgrid_yaml: "name: from-param\n",
+      target_entity_id: "ent-prec",
+    });
+    const yamlPart = lastFormCall()?.form?.get("cloudgrid.yaml");
+    const yamlText = typeof yamlPart === "string" ? yamlPart : yamlPart ? await yamlPart.text() : "";
+    check("#314: explicit cloudgrid_yaml param wins over artifact_files entry", yamlText.includes("from-param"));
+  }
+
   // Edit without any authorization → client-side error, no call.
   const plugBare = makeCtx();
   const before2 = calls.length;
