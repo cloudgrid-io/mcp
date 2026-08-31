@@ -1038,6 +1038,80 @@ export async function runCollab(ctx, { entity_id, grid } = {}) {
   };
 }
 
+// ── grid_delete (hosted edition) — archive an inspiration via the API (#343) ──
+// The handler in register.js resolves auth + grid (via resolveGridOrAsk) before
+// calling this function, so token and grid are always present.
+export async function runDelete(ctx, { name, grid, confirm } = {}) {
+  if (confirm !== true) {
+    throw new Error("`confirm` must be true to proceed with deletion.");
+  }
+  const token = await ctx.getToken();
+  if (!token) {
+    throw new Error("You are not signed in. Run grid_login first.");
+  }
+  if (!name) {
+    throw new Error("`name` (entity slug) is required.");
+  }
+  if (!grid) {
+    throw new Error("`grid` is required — the handler must resolve it before calling runDelete.");
+  }
+
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "X-CloudGrid-Grid": grid,
+    "X-CloudGrid-Org": grid,
+  };
+
+  // Resolve the entity to get its id and kind.
+  const lookupUrl = `${API_BASE}/api/v2/inspirations/${encodeURIComponent(name)}`;
+  let lookupRes;
+  try {
+    lookupRes = await fetch(lookupUrl, { headers });
+  } catch (err) {
+    throw new Error(`Could not reach CloudGrid at ${API_BASE}: ${err.message}`);
+  }
+
+  if (!lookupRes.ok) {
+    const raw = await lookupRes.text();
+    let data = null;
+    try { data = JSON.parse(raw); } catch { /* */ }
+    const msg = data?.error?.message || data?.message || raw || `HTTP ${lookupRes.status}`;
+    if (lookupRes.status === 404) {
+      throw new Error(`No inspiration found for '${name}'. Check the slug and grid.`);
+    }
+    throw new Error(`Lookup failed (HTTP ${lookupRes.status}): ${msg}`);
+  }
+
+  const entity = await lookupRes.json();
+  // GET /api/v2/inspirations/:slug returns `id`; defensive fallback for `entity_id`.
+  const entityId = entity?.id || entity?.entity_id;
+  if (!entityId) {
+    throw new Error(`Could not resolve entity id for '${name}'.`);
+  }
+
+  // Archive the inspiration.
+  const deleteUrl = `${API_BASE}/api/v2/inspirations/${encodeURIComponent(entityId)}`;
+  let delRes;
+  try {
+    delRes = await fetch(deleteUrl, { method: "DELETE", headers });
+  } catch (err) {
+    throw new Error(`Could not reach CloudGrid at ${API_BASE}: ${err.message}`);
+  }
+
+  if (!delRes.ok) {
+    const raw = await delRes.text();
+    let data = null;
+    try { data = JSON.parse(raw); } catch { /* */ }
+    const msg = data?.error?.message || data?.message || raw || `HTTP ${delRes.status}`;
+    throw new Error(`Delete failed (HTTP ${delRes.status}): ${msg}`);
+  }
+
+  return {
+    text: `Deleted '${name}' (${entityId}) from ${grid}.`,
+    structured: { deleted: true, entity_id: entityId, slug: name, grid },
+  };
+}
+
 // Turn a policy 403 into a request: POST /:id/collab-requests and tell the user
 // what happens next (mirrors CLI collab-requests.ts requestCollabAccess). A
 // request IS a success outcome, so this returns a normal result, never throws for
@@ -1059,7 +1133,7 @@ async function requestCollabAccess(ctx, target, headers) {
     return {
       text:
         `The owner gates who can collaborate on '${target}', so I asked them for push access on your behalf. ` +
-        `They've been notified — once they approve, run grid_collab again to join, then grid_pull to get the code.`,
+        `They've been notified — once they approve, access is live immediately. Then run grid_pull to get the code.`,
       structured: { access_requested: true, request_pending: true, owner_is_you: false, can_edit: false },
     };
   }
@@ -1504,6 +1578,9 @@ function plugErrorMessage(status, code, msg, ctxFlags = {}) {
   if (status === 400 && isGridHeaderError(code, msg)) {
     return `Plug failed (HTTP 400): ${rewriteGridHeaderError(msg)}`;
   }
+  if (status === 400 && /cloudgrid\.yaml.*required/i.test(msg)) {
+    return `Plug failed (HTTP 400): no cloudgrid.yaml found — provide it via the \`cloudgrid_yaml\` parameter or include a \`cloudgrid.yaml\` entry in \`artifact_files\`. Server: ${msg}`;
+  }
   const base = `Plug failed (HTTP ${status}${code ? ` ${code}` : ""}): ${msg}`;
   const guidance = errorGuidance({ status, code, ...ctxFlags });
   return guidance ? `${base} — ${guidance}` : base;
@@ -1916,20 +1993,24 @@ export async function runPlug(ctx, input, deps = {}) {
   }
   if (useAnonWire && ctx.state.anonCookie) headers["Cookie"] = ctx.state.anonCookie;
 
+  // ── Resolve manifest from all sources ────────────────────────────────────────
+  // The explicit `cloudgrid_yaml` param takes precedence; fall back to a
+  // `cloudgrid.yaml` entry in `artifact_files`. This resolves the asymmetry
+  // where create honoured artifact_files but re-plug ignored it (#314).
+  const resolvedManifestYaml = cloudgrid_yaml
+    || (hasArtifacts && artifact_files.find((f) => f?.path === "cloudgrid.yaml")?.content)
+    || null;
+
   // ── CREATE manifest injection (issue #48) ───────────────────────────────────
-  // On a folder-walk create, a `cloudgrid.yaml` on disk is walked into the tree
-  // and — because directory reads surface it before the nested `services/…`
-  // files — rides the multipart body as the FIRST `artifact` part, with the
-  // walk's uniform `application/octet-stream` content-type. The runtime build
-  // orchestrator relies on the manifest leading the bundle (it drives the
-  // service graph + the entity name). The inline `artifact_files` create used to
-  // APPEND the `cloudgrid_yaml` manifest LAST and as `text/plain`, so a
+  // The runtime build orchestrator relies on the manifest leading the bundle
+  // (it drives the service graph + the entity name). The inline `artifact_files`
+  // create used to APPEND the manifest LAST and as `text/plain`, so a
   // multi-service runtime rolled out with no service graph (0 replicas /
   // rollout_failed) and an auto `drop-XXXX` name. Fold the manifest into the
   // artifact list as the first entry (deduping any `cloudgrid.yaml` the caller
   // already inlined) so both create paths emit a byte-equivalent bundle.
-  if (!isEdit && cloudgrid_yaml) {
-    const manifest = { path: "cloudgrid.yaml", buffer: Buffer.from(cloudgrid_yaml, "utf8") };
+  if (!isEdit && resolvedManifestYaml) {
+    const manifest = { path: "cloudgrid.yaml", buffer: Buffer.from(resolvedManifestYaml, "utf8") };
     const rest = artifacts.filter((a) => a.path !== "cloudgrid.yaml");
     artifacts = [manifest, ...rest];
   }
@@ -1954,7 +2035,7 @@ export async function runPlug(ctx, input, deps = {}) {
       // (materializePlugTarball); an inspiration edit ignores its content.
       form.append(
         "cloudgrid.yaml",
-        new Blob([cloudgrid_yaml || ""], { type: "text/plain" }),
+        new Blob([resolvedManifestYaml || ""], { type: "text/plain" }),
         "cloudgrid.yaml",
       );
     }
@@ -1964,7 +2045,7 @@ export async function runPlug(ctx, input, deps = {}) {
   // auto `drop-XXXX` slug. Harmless if the server owns slug generation; on a
   // re-plug the entity's name is authoritative, so only send on create.
   if (!isEdit) {
-    const manifestName = parseManifestName(cloudgrid_yaml);
+    const manifestName = parseManifestName(resolvedManifestYaml);
     if (manifestName) {
       form.append("name", manifestName);
       form.append("slug", manifestName);

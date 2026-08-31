@@ -25,6 +25,7 @@ import {
   runReport,
   runPull,
   runCollab,
+  runDelete,
   runPlug,
   runPickup,
   runCreateGrid,
@@ -273,7 +274,7 @@ export function registerTools(server, ctx) {
     "grid_collab",
     {
       title: "Get push access to an app you don't own",
-      description: "Collab: GET PUSH ACCESS to the SAME live entity that someone else owns — you become a collaborator on THAT entity, not a copy. This grants PERMISSION ONLY and fetches nothing: after it succeeds, run grid_pull to get the code, then grid_plug (with its target_entity_id) updates the SHARED entity in place (the team sees the new version and can roll it back). This is NOT a fork — it never mints a new entity and never carries forked_from lineage; if you want your OWN separate copy instead, that is grid_pickup. If the owner GATES who may join, this does NOT dead-end: it sends the owner a request for access on your behalf, and once they approve you run grid_collab again to join. Use this — not grid_pickup — whenever the user asks to \"collab\" on, \"join\", or \"get push/write access to\" an app they don't own. Requires sign-in. Calls the API directly (both editions).",
+      description: "Collab: GET PUSH ACCESS to the SAME live entity that someone else owns — you become a collaborator on THAT entity, not a copy. This grants PERMISSION ONLY and fetches nothing: after it succeeds, run grid_pull to get the code, then grid_plug (with its target_entity_id) updates the SHARED entity in place (the team sees the new version and can roll it back). This is NOT a fork — it never mints a new entity and never carries forked_from lineage; if you want your OWN separate copy instead, that is grid_pickup. If the owner GATES who may join, this does NOT dead-end: it sends the owner a request for access on your behalf, and once they approve, access is live immediately — no need to re-run grid_collab. Use this — not grid_pickup — whenever the user asks to \"collab\" on, \"join\", or \"get push/write access to\" an app they don't own. Requires sign-in. Calls the API directly (both editions).",
       inputSchema: {
         entity_id: z.string().describe("The app to get push access to: a canonical UUID or <grid-slug>/<entity-slug>."),
         grid: z.string().optional().describe("Grid to resolve a bare slug in. Required only when a bare slug is ambiguous across grids you belong to."),
@@ -286,7 +287,7 @@ export function registerTools(server, ctx) {
         owner_is_you: z.boolean().optional().describe("True if you already own it (nothing to grant)."),
         can_edit: z.boolean().optional().describe("True once you have push access (owner or collaborator). False = still view-only."),
         access_requested: z.boolean().optional().describe("True when the owner gates access and a request was sent on your behalf."),
-        request_pending: z.boolean().optional().describe("True when a request is awaiting the owner's decision — join with grid_collab again once approved."),
+        request_pending: z.boolean().optional().describe("True when a request is awaiting the owner's decision — access is live as soon as they approve (no re-run needed)."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
@@ -1244,6 +1245,66 @@ export function registerTools(server, ctx) {
       }
     },
   );
+
+  // grid_delete (hosted edition) — archive an inspiration via the direct API
+  // (#343). The local edition has a CLI-wrapping version below the edition gate;
+  // this direct-API version runs on web (hosted) where the CLI is unavailable.
+  if (ctx.edition !== "local") {
+    reg(
+      "grid_delete",
+      {
+        title: "Delete an inspiration",
+        description:
+          "Archive a CloudGrid inspiration by slug. Destructive — requires `confirm: true`. " +
+          "If the user has more than one grid and `grid` is not given, this returns needs_grid with " +
+          "the list — ASK the user which grid, then call again with `grid` set. Never guess the grid. " +
+          "Only works for inspirations (static pages); runtime apps and agents must be removed " +
+          "with `grid unplug --hard` from the CLI. Requires sign-in. Calls the API directly.",
+        inputSchema: {
+          name: z.string().describe("Entity slug to delete (required)."),
+          grid: z.string().optional().describe("Grid slug to delete from. Omit on the first call to be asked."),
+          confirm: z.literal(true).describe("Must be true to proceed."),
+        },
+        outputSchema: {
+          deleted: z.boolean().describe("True when the entity was archived."),
+          entity_id: z.string().optional().describe("The archived entity's id."),
+          slug: z.string().optional().describe("The archived entity's slug."),
+          grid: z.string().optional().describe("The grid the entity was deleted from."),
+          needs_auth: z.boolean().optional().describe("True when the user must sign in first."),
+          needs_grid: z.boolean().optional().describe("True when the user must choose a grid."),
+          error: z.boolean().optional().describe("True when the grid listing failed (network/auth error)."),
+        },
+        annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+      },
+      async (input) => {
+        try {
+          // 1. AUTH
+          const token = await ctx.getToken();
+          if (!token) {
+            return okResult({
+              text: "Deleting an inspiration needs an account. Call grid_login to sign in, then re-call grid_delete.",
+              structured: { needs_auth: true },
+            });
+          }
+
+          // 2. GRID — never fall back to the active grid on a destructive op (#343).
+          const decision = await resolveGridOrAsk(ctx, {
+            token,
+            suppliedGrid: input?.grid,
+            edition: ctx.edition,
+          });
+          if (decision.picker) return okResult(decision.picker);
+          const grid = decision.grid || decision.single?.slug;
+          if (!grid) return fail("Could not resolve a grid. Pass `grid` explicitly.");
+
+          // 3. DELETE
+          return okResult(await runDelete(ctx, { ...input, grid }));
+        } catch (err) {
+          return fail(err.message);
+        }
+      },
+    );
+  }
 
   if (ctx.edition !== "local") return; // web edition stops here — no CLI tools
 
