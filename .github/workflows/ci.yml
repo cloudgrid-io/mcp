@@ -205,6 +205,19 @@ jobs:
       # auth path's logs are not private. Proven able to fail (a deliberate leak
       # turns it red) so it certifies presence-not-values, not nothing.
       - run: npm run test:oauth-observability
+      # RFC 8707 Resource Indicators (#329): ChatGPT sends
+      # `resource=https://…/mcp` on /oauth/authorize and we ignored it — not read,
+      # not validated, not bound to the code. This drives register → authorize →
+      # token against a stub upstream and asserts the server now (1) accepts a
+      # MATCHING resource and binds it to the code, (2) accepts a cosmetically
+      # different but canonically-equivalent URI (case / trailing slash), (3)
+      # refuses a MISMATCH as invalid_target with no code issued, (4) STILL
+      # succeeds end to end with NO resource — the Claude web / Claude Code
+      # compatibility guard — (5) refuses and logs a token whose resource differs
+      # from the bound one, and (6) advertises the resource identifier in the AS
+      # metadata (`protected_resources`, RFC 9728 §4). The mismatch guard is proven
+      # able to fail (forcing the compare always-true turns it red).
+      - run: npm run test:oauth-resource-indicators
       # Capability logging at initialize (#297): the hosted edge records the
       # client's advertised MCP capabilities once per session as a KEY SHAPE
       # (names + value types, never values), so we can see whether Claude web
