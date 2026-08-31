@@ -11,7 +11,7 @@ import {
   MCP_VERSION,
   ANON_HTML_MAX_BYTES,
   AUTHED_HTML_MAX_BYTES,
-  CONSOLE_URL,
+  consoleGridUrl,
   VISIBILITY_LABELS,
   VISIBILITY_OPTIONS,
   APPS_WIDGETS_ENABLED,
@@ -2376,8 +2376,11 @@ export async function runPlug(ctx, input, deps = {}) {
   // or re-plug (#321). The app URL says where the app lives; the console line says
   // where the grid lives, so the common follow-up interaction (an edit) does not
   // end with a bare URL and no way back. The console root self-routes per account
-  // state (sign-in wall → their grid → onboarding); there is no per-grid page to
-  // link, so keep the root — a `/grids/<slug>` path 404s today.
+  // state (sign-in wall → their grid → onboarding). Point at the SPECIFIC grid
+  // when we know its slug — /home?grid=<slug> renders (verified), so a user with
+  // several grids lands on the one they just plugged to (#355). Only the
+  // /grids/<slug> form 404s; /home?grid= does not. Falls back to the root when
+  // the slug is unknown.
   //
   // NOT on the building branch: the line says "view it live", and a still-building
   // app is not live — emitting it two lines under "Do NOT tell the user it is live"
@@ -2385,8 +2388,9 @@ export async function runPlug(ctx, input, deps = {}) {
   // build the console line arrives when liveness is confirmed, in runCheckDeploy's
   // success branch.
   if (data.entity_id && !isBuilding) {
-    structured.console_url = CONSOLE_URL;
-    lines.push(`You can view it live in your grid along with all the apps you build here: ${CONSOLE_URL}`);
+    const consoleUrl = consoleGridUrl(data.grid ?? grid ?? null);
+    structured.console_url = consoleUrl;
+    lines.push(`You can view it live in your grid along with all the apps you build here: ${consoleUrl}`);
   }
 
   // Visibility is the user's choice — never set silently. On a NEW deploy,
@@ -2879,8 +2883,8 @@ export async function runCheckDeploy(ctx, { poll_url, grid } = {}) {
       // runPlug (which returned "building"). Point the user at their grid too
       // (#321) — this is where liveness is confirmed, so "view it live" is true.
       text: `Live${url ? `: ${url}` : ""} — the build finished. Give the user the URL.\n` +
-        `You can view it live in your grid along with all the apps you build here: ${CONSOLE_URL}`,
-      structured: { status: "success", live: true, ...(url ? { url } : {}), console_url: CONSOLE_URL },
+        `You can view it live in your grid along with all the apps you build here: ${consoleGridUrl(gridSlug)}`,
+      structured: { status: "success", live: true, ...(url ? { url } : {}), console_url: consoleGridUrl(gridSlug) },
     };
   }
   if (verdict.status === "failed") {

@@ -14,7 +14,6 @@
 // Run: node test/plug-wire.test.mjs
 
 import { runPlug, resolvePlugUrl, parseManifestName, scanInlineSecrets } from "../src/tools.js";
-import { CONSOLE_URL } from "../src/tools/constants.js";
 
 let failures = 0;
 function check(label, cond) {
@@ -208,8 +207,8 @@ try {
   check("html authed re-plug says Updated in place + same URL", /Updated in place/.test(a2.text) && a2.structured.url === "https://atomic.cloudgrid.io/s3");
   // #321: an edit/re-plug points the user at their grid (console) too — the app
   // URL alone leaves the most common follow-up with no way back to the grid.
-  check("edit → prints the console line (view it in your grid)", /view it live in your grid/.test(a2.text) && a2.text.includes(CONSOLE_URL));
-  check("edit → populates structured.console_url", a2.structured.console_url === CONSOLE_URL);
+  check("edit → prints the console line pointing at THEIR grid", /view it live in your grid/.test(a2.text) && a2.text.includes("https://console.cloudgrid.io/home?grid=atomic"));
+  check("edit → console_url is the grid-specific link (#355)", a2.structured.console_url === "https://console.cloudgrid.io/home?grid=atomic");
   // Regression guard: the visibility ask stays a NEW-deploy-only prompt. It must
   // NOT fire on a re-plug (re-asking who can open the app on every edit is the
   // regression this split invites). Passes before AND after the change.
@@ -255,7 +254,7 @@ try {
     // #321 finding 3: guard the create path too. Inverting the gate to
     // `isEdit && data.entity_id` would keep the edit assertions green while
     // silently dropping the console line from NEW deploys — this catches that.
-    check("new deploy → prints the console line + console_url", /view it live in your grid/.test(w.text) && w.structured.console_url === CONSOLE_URL);
+    check("new deploy → prints the console line + grid-specific console_url (#355)", /view it live in your grid/.test(w.text) && w.structured.console_url === "https://console.cloudgrid.io/home?grid=acme");
   }
 
   // A runtime app create ALSO gets the visibility ask (universal, not auto-set).

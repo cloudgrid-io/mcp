@@ -502,7 +502,7 @@ export function registerTools(server, ctx) {
         claim_url: z.string().optional().describe("Anon create only: sign-in link to claim ownership."),
         claim_message: z.string().optional().describe("Anon create only: the claim nudge to relay."),
         owner_token: z.string().optional().describe("Anonymous drops: the bearer owner token (re-plug + claim). Re-minted on every anonymous edit — persist the newest."),
-        console_url: z.string().optional().describe("Web authed inspiration create: URL to manage all apps in the grid."),
+        console_url: z.string().optional().describe("Emitted on every non-building plug (both editions): a link to the grid in the console."),
         current_visibility: z.string().optional().describe("Web authed inspiration create: the visibility set after publish (link)."),
         visibility_options: z.array(z.object({
           value: z.string().describe("Visibility value to pass to grid_visibility."),
