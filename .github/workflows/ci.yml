@@ -308,6 +308,9 @@ jobs:
       # nested shape (<name>.<org>.cloudgrid.io). Prevents regression of the
       # 62-file fix.
       - run: npm run test:url-shape
+      # grid_delete hosted path (#343): confirm gate, entity lookup,
+      # DELETE call, and error handling for the hosted edition.
+      - run: npm run test:delete-hosted
 
   readme-tool-table:
     runs-on: ubuntu-latest

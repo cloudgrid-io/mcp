@@ -25,6 +25,7 @@ import {
   runReport,
   runPull,
   runCollab,
+  runDelete,
   runPlug,
   runPickup,
   runCreateGrid,
@@ -1244,6 +1245,66 @@ export function registerTools(server, ctx) {
       }
     },
   );
+
+  // grid_delete (hosted edition) — archive an inspiration via the direct API
+  // (#343). The local edition has a CLI-wrapping version below the edition gate;
+  // this direct-API version runs on web (hosted) where the CLI is unavailable.
+  if (ctx.edition !== "local") {
+    reg(
+      "grid_delete",
+      {
+        title: "Delete an inspiration",
+        description:
+          "Archive a CloudGrid inspiration by slug. Destructive — requires `confirm: true`. " +
+          "If the user has more than one grid and `grid` is not given, this returns needs_grid with " +
+          "the list — ASK the user which grid, then call again with `grid` set. Never guess the grid. " +
+          "Only works for inspirations (static pages); runtime apps and agents must be removed " +
+          "with `grid unplug --hard` from the CLI. Requires sign-in. Calls the API directly.",
+        inputSchema: {
+          name: z.string().describe("Entity slug to delete (required)."),
+          grid: z.string().optional().describe("Grid slug to delete from. Omit on the first call to be asked."),
+          confirm: z.literal(true).describe("Must be true to proceed."),
+        },
+        outputSchema: {
+          deleted: z.boolean().describe("True when the entity was archived."),
+          entity_id: z.string().optional().describe("The archived entity's id."),
+          slug: z.string().optional().describe("The archived entity's slug."),
+          grid: z.string().optional().describe("The grid the entity was deleted from."),
+          needs_auth: z.boolean().optional().describe("True when the user must sign in first."),
+          needs_grid: z.boolean().optional().describe("True when the user must choose a grid."),
+          error: z.boolean().optional().describe("True when the grid listing failed (network/auth error)."),
+        },
+        annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+      },
+      async (input) => {
+        try {
+          // 1. AUTH
+          const token = await ctx.getToken();
+          if (!token) {
+            return okResult({
+              text: "Deleting an inspiration needs an account. Call grid_login to sign in, then re-call grid_delete.",
+              structured: { needs_auth: true },
+            });
+          }
+
+          // 2. GRID — never fall back to the active grid on a destructive op (#343).
+          const decision = await resolveGridOrAsk(ctx, {
+            token,
+            suppliedGrid: input?.grid,
+            edition: ctx.edition,
+          });
+          if (decision.picker) return okResult(decision.picker);
+          const grid = decision.grid || decision.single?.slug;
+          if (!grid) return fail("Could not resolve a grid. Pass `grid` explicitly.");
+
+          // 3. DELETE
+          return okResult(await runDelete(ctx, { ...input, grid }));
+        } catch (err) {
+          return fail(err.message);
+        }
+      },
+    );
+  }
 
   if (ctx.edition !== "local") return; // web edition stops here — no CLI tools
 
