@@ -21,8 +21,8 @@ const CODE_TTL_MS = 5 * 60 * 1000; // authorize sessions + auth codes live 5 min
 // are 5-minute, retry-on-failure sessions: losing them to a restart just means
 // the user clicks "sign in" again, never that they must re-add the connector.
 // Client REGISTRATIONS are NOT here — they are stateless (see below, #3060).
-const authSessions = new Map(); // sid -> { cgCode, client_id, redirect_uri, state, code_challenge, created }
-const authCodes = new Map(); // code -> { jwt, client_id, redirect_uri, code_challenge, created }
+const authSessions = new Map(); // sid -> { cgCode, client_id, redirect_uri, state, code_challenge, resource, created }
+const authCodes = new Map(); // code -> { jwt, client_id, redirect_uri, code_challenge, resource, created }
 
 function sweep(map) {
   const now = Date.now();
@@ -55,6 +55,34 @@ function hostOf(uri) {
     return new URL(String(uri)).host;
   } catch {
     return "invalid";
+  }
+}
+
+// --- RFC 8707 Resource Indicators (#329) --------------------------------------
+// The MCP 2025-06-18 authorization spec has clients send `resource` — the
+// canonical URI of the MCP server the token is for — on BOTH the authorize and
+// token requests. We accept it, validate it against this server's own resource
+// identifier (the `${base}/mcp` value /.well-known/oauth-protected-resource
+// returns), and bind it to the code. A mismatch is `invalid_target` (RFC 8707
+// §2). A MISSING resource stays acceptable: Claude web / Claude Code work today
+// and may not send it, and the spec is explicit that clients "MUST send this
+// parameter regardless of whether authorization servers support it" — i.e. the
+// server may still honour requests without it.
+//
+// Comparison is on the CANONICAL form, not a raw string, so a cosmetically
+// different but equivalent URI (uppercase scheme/host, a trailing slash, a
+// default port) is not falsely rejected. Per the spec: lowercase scheme and
+// host (URL parsing does this), no fragment, and the trailing-slash-free path.
+// Returns null for anything that is not an absolute URI — that then fails the
+// equality check as a mismatch.
+function normalizeResource(uri) {
+  try {
+    const u = new URL(String(uri));
+    if (!u.host) return null;
+    const path = u.pathname.replace(/\/+$/, ""); // …/mcp/ ≡ …/mcp
+    return `${u.protocol}//${u.host}${path}`; // protocol + host are already lowercased & default-port-stripped
+  } catch {
+    return null;
   }
 }
 
@@ -198,6 +226,10 @@ function interstitialHtml(sid, loginUrl) {
 export function mountOAuth(app, publicBase, opts = {}) {
   if (!opts.requireAuth) return;
   const base = publicBase.replace(/\/+$/, "");
+  // This server's resource identifier — the exact value the protected-resource
+  // metadata returns and the canonical `resource` a client must send (#329).
+  const resourceId = `${base}/mcp`;
+  const expectedResource = normalizeResource(resourceId);
 
   // Resolve the client-registration signing secret(s) once at mount. Log which
   // mode is active — durable vs. ephemeral — so a production deploy can be
@@ -236,6 +268,14 @@ export function mountOAuth(app, publicBase, opts = {}) {
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none"],
     scopes_supported: ["cloudgrid"],
+    // RFC 8707 Resource Indicators support (#329). RFC 8707 defines NO
+    // authorization-server metadata field of its own, and neither does the MCP
+    // spec; the only IANA-registered resource-related AS-metadata field is
+    // `protected_resources` (RFC 9728 §4) — a JSON array of the resource
+    // identifiers this AS issues tokens for. Advertising ours here lets a client
+    // discover the canonical `resource` value to send, and signals that we honour
+    // the parameter rather than ignoring it.
+    protected_resources: [resourceId],
   };
 
   app.options(/^\/(\.well-known|oauth)\/.*/, (_req, res) => {
@@ -302,16 +342,19 @@ export function mountOAuth(app, publicBase, opts = {}) {
   // Authorization endpoint — render the bridge interstitial.
   app.get("/oauth/authorize", (req, res) => {
     sweep(authSessions);
-    const { client_id, redirect_uri, state, code_challenge, code_challenge_method, response_type } = req.query;
-    // Observability (#345): the request SHAPE the client actually sent, logged
-    // before any check so a rejected request is still visible. Presence, not
-    // values — nothing here is reusable in a log aggregator.
+    const { client_id, redirect_uri, state, code_challenge, code_challenge_method, response_type, resource } = req.query;
+    // Observability (#345/#329): the request SHAPE the client actually sent,
+    // logged before any check so a rejected request is still visible. Presence,
+    // not values — nothing here is reusable in a log aggregator. The resource
+    // HOST is included: it is not a secret, and its presence/absence is the exact
+    // signal that distinguishes ChatGPT (sends it) from Claude (does not).
     console.error(
       `[oauth] authorize request: client_id=${clientIdPrefix(client_id)} ` +
         `response_type=${response_type ? String(response_type) : "absent"} ` +
         `state=${state ? "present" : "absent"} ` +
         `pkce=${code_challenge ? (code_challenge_method ? String(code_challenge_method) : "present(no-method)") : "absent"} ` +
-        `redirect_host=${hostOf(redirect_uri)}`,
+        `redirect_host=${hostOf(redirect_uri)} ` +
+        `resource_host=${hostOf(resource)}`,
     );
     const client = verifyClientId(client_id, clientSecrets.secrets);
     if (!client || !client.redirect_uris.includes(String(redirect_uri))) {
@@ -322,6 +365,26 @@ export function mountOAuth(app, publicBase, opts = {}) {
       res.status(400).send("This server requires response_type=code with PKCE (S256).");
       return;
     }
+    // RFC 8707 (#329): if a `resource` is present it must be THIS server's
+    // resource identifier. Compared on the canonical form so an equivalent URI
+    // (case, trailing slash, default port) is accepted. A mismatch is
+    // invalid_target; a MISSING resource stays acceptable (Claude compatibility).
+    // The bound value is the canonical string, so the token endpoint can compare
+    // apples to apples later.
+    let boundResource = "";
+    if (resource !== undefined && String(resource) !== "") {
+      const requested = normalizeResource(resource);
+      if (!requested || requested !== expectedResource) {
+        console.error(
+          `[oauth] authorize refused: invalid_target resource_host=${hostOf(resource)} expected_host=${hostOf(resourceId)}`,
+        );
+        res
+          .status(400)
+          .send("The requested resource does not match this server (invalid_target). Re-add the connector and try again.");
+        return;
+      }
+      boundResource = requested;
+    }
     const sid = randomUUID();
     const cgCode = newLoginCode();
     authSessions.set(sid, {
@@ -330,6 +393,7 @@ export function mountOAuth(app, publicBase, opts = {}) {
       redirect_uri: String(redirect_uri),
       state: state ? String(state) : "",
       code_challenge: String(code_challenge),
+      resource: boundResource,
       created: Date.now(),
     });
     res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -358,6 +422,7 @@ export function mountOAuth(app, publicBase, opts = {}) {
         client_id: sess.client_id,
         redirect_uri: sess.redirect_uri,
         code_challenge: sess.code_challenge,
+        resource: sess.resource, // RFC 8707 binding carried from the authorize session (#329)
         created: Date.now(),
       });
       authSessions.delete(String(req.query.sid));
@@ -420,7 +485,7 @@ export function mountOAuth(app, publicBase, opts = {}) {
   app.post("/oauth/token", (req, res) => {
     corsOk(res);
     sweep(authCodes);
-    const { grant_type, code, code_verifier, redirect_uri, client_id } = req.body ?? {};
+    const { grant_type, code, code_verifier, redirect_uri, client_id, resource } = req.body ?? {};
     if (grant_type !== "authorization_code") {
       denyToken(res, "unsupported_grant_type", "grant_type must be authorization_code", `(got ${JSON.stringify(grant_type ?? null)})`);
       return;
@@ -447,6 +512,23 @@ export function mountOAuth(app, publicBase, opts = {}) {
       // a trailing slash, a case change, an added query parameter.
       denyToken(res, "invalid_grant", "redirect_uri does not match the authorize request", `(sent ${JSON.stringify(redirect_uri ?? null)}, expected ${JSON.stringify(rec.redirect_uri)})`);
       return;
+    }
+    // RFC 8707 (#329): if the client repeats `resource` at the token endpoint it
+    // must be the one bound at authorize. Mismatch → invalid_target, refused via
+    // denyToken so it is logged. A token request with NO resource stays
+    // acceptable (Claude compatibility), even when one was bound. Only the HOSTS
+    // are logged — the resource URI is not a secret but nothing bearer-shaped is.
+    if (resource !== undefined && String(resource) !== "") {
+      const requested = normalizeResource(resource);
+      if (!requested || requested !== rec.resource) {
+        denyToken(
+          res,
+          "invalid_target",
+          "resource does not match the authorize request",
+          `(resource_host ${hostOf(resource)} vs bound ${hostOf(rec.resource)})`,
+        );
+        return;
+      }
     }
     const challenge = b64url(createHash("sha256").update(String(code_verifier ?? "")).digest());
     if (challenge !== rec.code_challenge) {

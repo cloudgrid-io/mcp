@@ -74,6 +74,7 @@
     "test:web-restart-recovery": "node --test test/web-restart-recovery.test.mjs",
     "test:oauth-client-persistence": "node --test test/oauth-client-persistence.test.mjs",
     "test:oauth-token-exchange": "node --test test/oauth-token-exchange.test.mjs",
+    "test:oauth-resource": "node --test test/oauth-resource-indicators.test.mjs",
     "test:oauth-observability": "node --test test/oauth-flow-observability.test.mjs",
     "test:web-capabilities-log": "node --test test/web-capabilities-log.test.mjs",
     "test:mcp-transport-observability": "node --test test/mcp-transport-observability.test.mjs",
