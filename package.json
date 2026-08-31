@@ -58,6 +58,7 @@
     "test:widgets": "node test/apps-widgets.test.mjs",
     "test:set-sharing": "node test/set-sharing.test.mjs",
     "test:check-deploy": "node test/check-deploy.test.mjs",
+    "test:console-grid-url": "node test/console-grid-url.test.mjs",
     "test:staleness": "node test/staleness.test.mjs",
     "test:proxy": "node test/proxy.test.mjs",
     "test:system-ca": "node test/system-ca.test.mjs",

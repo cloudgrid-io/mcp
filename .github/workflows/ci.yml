@@ -129,6 +129,7 @@ jobs:
       # live in-call; failed -> user-language error; slow -> do-not-claim-live +
       # grid_check_deploy). Plus the boot staleness self-check. Mock fetch.
       - run: npm run test:check-deploy
+      - run: npm run test:console-grid-url
       - run: npm run test:staleness
       # Offline proxy support test: HTTPS_PROXY / NO_PROXY resolution, bypass
       # matching, installProxy never-throw, and the pollStatusOnce error path

@@ -11,7 +11,6 @@
 //
 // Run: node test/check-deploy.test.mjs
 import { runPlug, runCheckDeploy, pollDeployTrace, API_BASE } from "../src/tools.js";
-import { consoleGridUrl } from "../src/tools/constants.js";
 
 let failures = 0;
 const check = (label, cond) => { console.log(`${cond ? "ok  " : "FAIL"} ${label}`); if (!cond) failures++; };
@@ -135,8 +134,8 @@ try {
   // #321 finding 2: the "now live" moment for a runtime app arrives HERE, not from
   // runPlug. This is the case in the founder's report, so the console line +
   // console_url must land on this branch too.
-  check("check success: console line points at THEIR grid", /view it live in your grid/.test(okr.text) && okr.text.includes(consoleGridUrl("acme")));
-  check("check success: console_url is the grid-specific link (#355)", okr.structured.console_url === consoleGridUrl("acme"));
+  check("check success: console line points at THEIR grid", /view it live in your grid/.test(okr.text) && okr.text.includes("https://console.cloudgrid.io/home?grid=acme"));
+  check("check success: console_url is the grid-specific link (#355)", okr.structured.console_url === "https://console.cloudgrid.io/home?grid=acme");
 
   reset();
   traceReplies = [{ body: { status: "building" } }];
