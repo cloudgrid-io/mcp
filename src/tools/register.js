@@ -274,7 +274,7 @@ export function registerTools(server, ctx) {
     "grid_collab",
     {
       title: "Get push access to an app you don't own",
-      description: "Collab: GET PUSH ACCESS to the SAME live entity that someone else owns — you become a collaborator on THAT entity, not a copy. This grants PERMISSION ONLY and fetches nothing: after it succeeds, run grid_pull to get the code, then grid_plug (with its target_entity_id) updates the SHARED entity in place (the team sees the new version and can roll it back). This is NOT a fork — it never mints a new entity and never carries forked_from lineage; if you want your OWN separate copy instead, that is grid_pickup. If the owner GATES who may join, this does NOT dead-end: it sends the owner a request for access on your behalf, and once they approve you run grid_collab again to join. Use this — not grid_pickup — whenever the user asks to \"collab\" on, \"join\", or \"get push/write access to\" an app they don't own. Requires sign-in. Calls the API directly (both editions).",
+      description: "Collab: GET PUSH ACCESS to the SAME live entity that someone else owns — you become a collaborator on THAT entity, not a copy. This grants PERMISSION ONLY and fetches nothing: after it succeeds, run grid_pull to get the code, then grid_plug (with its target_entity_id) updates the SHARED entity in place (the team sees the new version and can roll it back). This is NOT a fork — it never mints a new entity and never carries forked_from lineage; if you want your OWN separate copy instead, that is grid_pickup. If the owner GATES who may join, this does NOT dead-end: it sends the owner a request for access on your behalf, and once they approve, access is live immediately — no need to re-run grid_collab. Use this — not grid_pickup — whenever the user asks to \"collab\" on, \"join\", or \"get push/write access to\" an app they don't own. Requires sign-in. Calls the API directly (both editions).",
       inputSchema: {
         entity_id: z.string().describe("The app to get push access to: a canonical UUID or <grid-slug>/<entity-slug>."),
         grid: z.string().optional().describe("Grid to resolve a bare slug in. Required only when a bare slug is ambiguous across grids you belong to."),
@@ -287,7 +287,7 @@ export function registerTools(server, ctx) {
         owner_is_you: z.boolean().optional().describe("True if you already own it (nothing to grant)."),
         can_edit: z.boolean().optional().describe("True once you have push access (owner or collaborator). False = still view-only."),
         access_requested: z.boolean().optional().describe("True when the owner gates access and a request was sent on your behalf."),
-        request_pending: z.boolean().optional().describe("True when a request is awaiting the owner's decision — join with grid_collab again once approved."),
+        request_pending: z.boolean().optional().describe("True when a request is awaiting the owner's decision — access is live as soon as they approve (no re-run needed)."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
