@@ -99,7 +99,7 @@ try {
   // #321 finding 1: the console line says "view it live" — it must NOT appear on
   // the pending/building branch, two lines under "Do NOT tell the user it is live".
   // Liveness is confirmed by grid_check_deploy, so the console line belongs there.
-  check("slow build: no console line while pending", !/view it live in your grid/.test(slow.text));
+  check("slow build: no console line while pending", !/see and manage all their apps in their grid/.test(slow.text));
   check("slow build: no console_url while pending", slow.structured.console_url === undefined);
   check("slow build: lastDrop carries poll_url for the no-args check", true);
 
@@ -134,7 +134,7 @@ try {
   // #321 finding 2: the "now live" moment for a runtime app arrives HERE, not from
   // runPlug. This is the case in the founder's report, so the console line +
   // console_url must land on this branch too.
-  check("check success: console line points at THEIR grid", /view it live in your grid/.test(okr.text) && okr.text.includes("https://console.cloudgrid.io/home?grid=acme"));
+  check("check success: console line points at THEIR grid", /see and manage all their apps in their grid/.test(okr.text) && okr.text.includes("https://console.cloudgrid.io/home?grid=acme"));
   check("check success: console_url is the grid-specific link (#355)", okr.structured.console_url === "https://console.cloudgrid.io/home?grid=acme");
 
   reset();

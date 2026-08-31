@@ -2390,7 +2390,7 @@ export async function runPlug(ctx, input, deps = {}) {
   if (data.entity_id && !isBuilding) {
     const consoleUrl = consoleGridUrl(data.grid ?? grid ?? null);
     structured.console_url = consoleUrl;
-    lines.push(`You can view it live in your grid along with all the apps you build here: ${consoleUrl}`);
+    lines.push(`Also give the user this link so they can see and manage all their apps in their grid: ${consoleUrl}`);
   }
 
   // Visibility is the user's choice — never set silently. On a NEW deploy,
@@ -2883,7 +2883,7 @@ export async function runCheckDeploy(ctx, { poll_url, grid } = {}) {
       // runPlug (which returned "building"). Point the user at their grid too
       // (#321) — this is where liveness is confirmed, so "view it live" is true.
       text: `Live${url ? `: ${url}` : ""} — the build finished. Give the user the URL.\n` +
-        `You can view it live in your grid along with all the apps you build here: ${consoleGridUrl(gridSlug)}`,
+        `Also give the user this link so they can see and manage all their apps in their grid: ${consoleGridUrl(gridSlug)}`,
       structured: { status: "success", live: true, ...(url ? { url } : {}), console_url: consoleGridUrl(gridSlug) },
     };
   }
