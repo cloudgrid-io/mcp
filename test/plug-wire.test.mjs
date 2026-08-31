@@ -255,6 +255,16 @@ try {
     // `isEdit && data.entity_id` would keep the edit assertions green while
     // silently dropping the console line from NEW deploys — this catches that.
     check("new deploy → console line is an imperative + grid-specific console_url (#355/#359)", w.text.includes("Give the user this link so they can see and manage all their apps in their grid") && w.structured.console_url === "https://console.cloudgrid.io/home?grid=acme");
+    // POSITION is the fix: the console link must sit on the line immediately after
+    // the app URL, not buried below the transport/re-plug lines — the model relays
+    // the success line and drops a link 40 lines down (observed live on 0.21.16).
+    {
+      const urlIdx = w.text.indexOf("Your app is live");
+      const consoleIdx = w.text.indexOf("Give the user this link");
+      const sourceIdx = w.text.indexOf("Source:");
+      check("new deploy → console link is adjacent to the URL, above the Source line (position fix)",
+        urlIdx >= 0 && consoleIdx > urlIdx && (sourceIdx === -1 || consoleIdx < sourceIdx));
+    }
   }
 
   // A runtime app create ALSO gets the visibility ask (universal, not auto-set).

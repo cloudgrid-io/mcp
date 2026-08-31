@@ -2358,6 +2358,23 @@ export async function runPlug(ctx, input, deps = {}) {
   } else {
     lines.push(`Live: ${url}`);
   }
+
+  // Console link, on the line RIGHT AFTER the app URL — not buried below the
+  // transport/re-plug/claim lines. Position is the lever: the model relays the
+  // success line and summarises away a link 40 lines down (observed live on
+  // 0.21.16 — #356/#359 made the URL and the wording right but left it buried, so
+  // it still dropped). runCheckDeploy already emits it adjacent to the URL and was
+  // never reported broken; this makes runPlug match.
+  //
+  // NOT on the building branch (the first if/else arm above): the line invites the
+  // user to manage their live apps, and a still-building app is not live — it would
+  // contradict "Do NOT tell the user it is live". The async-build console line
+  // arrives once liveness is confirmed, in runCheckDeploy's success branch.
+  if (data.entity_id && !isBuilding) {
+    const consoleUrl = consoleGridUrl(data.grid ?? grid ?? null);
+    structured.console_url = consoleUrl;
+    lines.push(`Give the user this link so they can see and manage all their apps in their grid: ${consoleUrl}`);
+  }
   // Suggestion 3: always disclose the transport; Suggestion 1: steer multi-file
   // inline deploys to the CLI's disk-based plug.
   lines.push(sourceLine);
@@ -2372,27 +2389,6 @@ export async function runPlug(ctx, input, deps = {}) {
     lines.push("The owner_token was re-minted for the reset expiry — replace the stored one.");
   }
 
-  // Point the user at their grid (the console) after a deploy that is LIVE — new
-  // or re-plug (#321). The app URL says where the app lives; the console line says
-  // where the grid lives, so the common follow-up interaction (an edit) does not
-  // end with a bare URL and no way back. The console root self-routes per account
-  // state (sign-in wall → their grid → onboarding). Point at the SPECIFIC grid
-  // when we know its slug — /home?grid=<slug> renders (verified), so a user with
-  // several grids lands on the one they just plugged to (#355). Only the
-  // /grids/<slug> form 404s; /home?grid= does not. Falls back to the root when
-  // the slug is unknown.
-  //
-  // NOT on the building branch. This line invites the user to "see and manage all
-  // their apps in their grid" — an invitation that presumes the app is live. A
-  // still-building app is not, and it sits two lines under "Do NOT tell the user it
-  // is live", so relaying a manage-your-apps prompt there contradicts the honesty
-  // gate. For an async runtime build the console line arrives once liveness is
-  // confirmed, in runCheckDeploy's success branch.
-  if (data.entity_id && !isBuilding) {
-    const consoleUrl = consoleGridUrl(data.grid ?? grid ?? null);
-    structured.console_url = consoleUrl;
-    lines.push(`Give the user this link so they can see and manage all their apps in their grid: ${consoleUrl}`);
-  }
 
   // Visibility is the user's choice — never set silently. On a NEW deploy,
   // surface the current visibility + the full option set and have the agent ASK
