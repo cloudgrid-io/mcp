@@ -73,6 +73,10 @@ function hostOf(uri) {
 // different but equivalent URI (uppercase scheme/host, a trailing slash, a
 // default port) is not falsely rejected. Per the spec: lowercase scheme and
 // host (URL parsing does this), no fragment, and the trailing-slash-free path.
+// The QUERY STRING is also dropped by construction (we rebuild from protocol +
+// host + path only), so `…/mcp?x=1` compares EQUAL to `…/mcp`. That is the
+// permissive direction and fine here — our resource identifier carries no
+// query — but it is stated because nobody would predict it from the code.
 // Returns null for anything that is not an absolute URI — that then fails the
 // equality check as a mismatch.
 function normalizeResource(uri) {
@@ -375,12 +379,25 @@ export function mountOAuth(app, publicBase, opts = {}) {
     if (resource !== undefined && String(resource) !== "") {
       const requested = normalizeResource(resource);
       if (!requested || requested !== expectedResource) {
+        // RFC 6749 §4.1.2.1: the redirect_uri is already verified as registered
+        // (the render-path 400 above), so an authorization error is returned by
+        // REDIRECTING to it with error= and state=, NOT by rendering an opaque
+        // body the client cannot read — RFC 8707 §2 defines invalid_target as
+        // exactly such an OAuth error code. This is the whole point of the PR:
+        // a spec fix that makes a silent failure legible must not add a new
+        // illegible one (an opaque 400 where ChatGPT expects
+        // error=invalid_target&state=… would just be another #329-shaped
+        // symptom). The two 400s above STAY renders: an unverified client or
+        // redirect_uri must NEVER be redirected to, so they are not precedent.
         console.error(
-          `[oauth] authorize refused: invalid_target resource_host=${hostOf(resource)} expected_host=${hostOf(resourceId)}`,
+          `[oauth] authorize refused (redirect): invalid_target resource_host=${hostOf(resource)} expected_host=${hostOf(resourceId)}`,
         );
-        res
-          .status(400)
-          .send("The requested resource does not match this server (invalid_target). Re-add the connector and try again.");
+        const sep = String(redirect_uri).includes("?") ? "&" : "?";
+        let location = `${redirect_uri}${sep}error=invalid_target&error_description=${encodeURIComponent(
+          "The requested resource does not identify this server.",
+        )}`;
+        if (state) location += `&state=${encodeURIComponent(String(state))}`;
+        res.redirect(302, location);
         return;
       }
       boundResource = requested;

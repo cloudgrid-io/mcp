@@ -158,13 +158,56 @@ test("authorize accepts a cosmetically different but equivalent resource URI", a
   assert.ok(code, "a code should be issued for the equivalent URI");
 });
 
-// (2) A resource that is NOT this server → invalid_target, no code issued.
-test("authorize with a mismatched resource is refused as invalid_target and issues no code", async () => {
-  const { status, body, sid, code } = await authorize("https://evil.example.com/mcp");
-  assert.equal(status, 400, "a mismatched resource must not render the interstitial");
-  assert.match(body, /invalid_target/, `the refusal must name invalid_target; got: ${body}`);
-  assert.ok(!sid, "no interstitial (and so no poll sid) on a mismatched resource");
-  assert.ok(!code, "no authorization code on a mismatched resource");
+// (2) A resource that is NOT this server → invalid_target. Because the
+// redirect_uri has already been verified as registered by the time this check
+// runs, RFC 6749 §4.1.2.1 requires the error be returned by REDIRECTING to that
+// URI with error= and state=, not by rendering an opaque 400 body the client
+// cannot parse. RFC 8707 §2 defines invalid_target as one of those error codes.
+// (Reviewer finding on #358: an opaque 400 where ChatGPT expects
+// error=invalid_target&state=… would just add another #329-shaped symptom.)
+test("authorize with a mismatched resource redirects to the registered redirect_uri with error=invalid_target and state — not a 400 body", async () => {
+  const client_id = await register();
+  const verifier = b64url(randomBytes(32));
+  const challenge = b64url(createHash("sha256").update(verifier).digest());
+  const url =
+    `${web.baseUrl}/oauth/authorize?response_type=code&client_id=${encodeURIComponent(client_id)}` +
+    `&redirect_uri=${encodeURIComponent(REDIRECT)}&code_challenge=${challenge}` +
+    `&code_challenge_method=S256&state=st-mismatch&scope=cloudgrid` +
+    `&resource=${encodeURIComponent("https://evil.example.com/mcp")}`;
+  const res = await fetch(url, { redirect: "manual" });
+  assert.equal(res.status, 302, `a mismatched resource must REDIRECT, not render a 400; got ${res.status}`);
+  const loc = res.headers.get("location");
+  assert.ok(loc, "a Location header must be present on the redirect");
+  const u = new URL(loc);
+  assert.equal(`${u.origin}${u.pathname}`, REDIRECT, "must redirect to the client's registered redirect_uri");
+  assert.equal(u.searchParams.get("error"), "invalid_target", `error must be invalid_target; got ${u.searchParams.get("error")}`);
+  assert.equal(u.searchParams.get("state"), "st-mismatch", "the original state must be carried through per RFC 6749");
+  assert.ok(!u.searchParams.get("code"), "no authorization code on a mismatched resource");
+});
+
+// The two 400 render-paths ABOVE the resource check must STAY renders: an
+// unverified client or an unregistered redirect_uri must NEVER be redirected
+// to. Locked here so a future refactor cannot sweep them into the redirect the
+// resource path now uses. A 400 with NO Location header is a render; a 3xx with
+// a Location is a redirect.
+test("an unknown/unverifiable client_id renders a 400 and does NOT redirect", async () => {
+  const url =
+    `${web.baseUrl}/oauth/authorize?response_type=code&client_id=not-a-signed-client` +
+    `&redirect_uri=${encodeURIComponent(REDIRECT)}&code_challenge=x&code_challenge_method=S256&state=st&scope=cloudgrid`;
+  const res = await fetch(url, { redirect: "manual" });
+  assert.equal(res.status, 400, "an unknown client must render, not redirect");
+  assert.ok(!res.headers.get("location"), "an unverified client must never be redirected to");
+});
+
+test("a valid client with an UNREGISTERED redirect_uri renders a 400 and does NOT redirect", async () => {
+  const client_id = await register(); // registered for REDIRECT only
+  const url =
+    `${web.baseUrl}/oauth/authorize?response_type=code&client_id=${encodeURIComponent(client_id)}` +
+    `&redirect_uri=${encodeURIComponent("https://evil.example.com/callback")}` +
+    `&code_challenge=x&code_challenge_method=S256&state=st&scope=cloudgrid`;
+  const res = await fetch(url, { redirect: "manual" });
+  assert.equal(res.status, 400, "an unregistered redirect_uri must render, not redirect");
+  assert.ok(!res.headers.get("location"), "an unverified redirect_uri must never be redirected to");
 });
 
 // (3) THE compatibility guard. Claude web / Claude Code work today and may not
