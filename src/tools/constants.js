@@ -64,25 +64,32 @@ export const VISIBILITY_LABELS = {
 // the widget HTML is verified to render. The resources stay registered either
 // way (harmless when no tool references them via outputTemplate).
 //
-// 2026-08-25 (#308): the black frame was diagnosed as a MIME mismatch. ChatGPT
-// discovers an Apps-SDK widget by a tool carrying openai/outputTemplate PLUS a
-// ui:// resource whose mimeType is `text/html+skybridge` (verified against
-// OpenAI's shipped example servers — openai/openai-apps-sdk-examples
-// solar-system/shopping_cart/kitchen_sink main.py). Our two ChatGPT widgets
-// declared `text/html;profile=mcp-app` — the SEP-1865/MCP-Apps MIME that CLAUDE
-// reads (RESOURCE_MIME_TYPE in @modelcontextprotocol/ext-apps). ChatGPT saw the
-// outputTemplate pointer, opened the skybridge iframe (dark chrome), but the
-// resource was not a skybridge document, so the HTML/bridge never populated —
-// the empty dark frame covering the text. CHATGPT_WIDGET_MIME below is the
-// correct type. The flag STAYS OFF until a card is seen rendering in real
-// ChatGPT (Developer Mode custom connector against staging); this only makes the
-// machinery correct for that verification.
+// 2026-08-31 (#308, corrected): the widgets targeted a RETIRED MIME. At DevDay
+// (Oct 2025) ChatGPT's Apps SDK used `text/html+skybridge`, and #309 switched us
+// to it. But the Apps SDK merged with MCP Apps into SEP-1865, ratified
+// 2026-01-26, and OpenAI's CURRENT docs (developers.openai.com/apps-sdk
+// build/custom-ux, deploy/troubleshooting) now specify `text/html;profile=mcp-app`
+// — the same MIME Claude reads. skybridge is not mentioned anywhere in the
+// current docs. So ChatGPT opened the iframe on our skybridge resource, could not
+// recognise it, and never populated it — the empty frame over the text.
+//
+// The clincher: our own Claude sign-in card (#303) RENDERS, and it declares
+// `text/html;profile=mcp-app`. The MIME that renders is the standard one; the one
+// that does not is skybridge. The two hosts converged; the old separation was the
+// defect. CHATGPT_WIDGET_MIME below now equals RESOURCE_MIME_TYPE by value. The
+// widget bridge (window.openai.toolOutput / openExternal / callTool /
+// ui/notifications/tool-result) is already current — verified against
+// developers.openai.com/apps-sdk/reference — so only the MIME changes.
+//
+// The flag stays where the platform sets it; this only makes the resource the
+// type ChatGPT now expects. Done is a card seen rendering in real ChatGPT.
 export const APPS_WIDGETS_ENABLED = process.env.MCP_APPS_WIDGETS === "1";
 // The mimeType ChatGPT's Apps-SDK renderer requires for a ui:// widget resource.
-// Distinct from RESOURCE_MIME_TYPE (`text/html;profile=mcp-app`, the SEP-1865
-// key Claude reads) — the two hosts key off different MIME types, so the ChatGPT
-// widgets and the Claude sign-in card must NOT share one.
-export const CHATGPT_WIDGET_MIME = "text/html+skybridge";
+// Since SEP-1865 (2026-01-26) this EQUALS RESOURCE_MIME_TYPE (`text/html;profile=
+// mcp-app`): both hosts now render the standard MCP-Apps MIME. The hosts stay
+// separated by BINDING, not MIME — ChatGPT reads `openai/outputTemplate`, Claude
+// reads `_meta.ui.resourceUri` — so sharing the MIME does not cross the paths.
+export const CHATGPT_WIDGET_MIME = "text/html;profile=mcp-app";
 export const LIVE_RESULT_URI = "ui://cloudgrid/live-result.html";
 // URI/resource-name/filename stay `org-picker` — that's the stable contract the
 // web card is registered under; only the JS identifier moves toward grid.

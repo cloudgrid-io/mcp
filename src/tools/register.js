@@ -133,9 +133,10 @@ export function registerTools(server, ctx) {
 
   // ── Widget resources (web edition, ChatGPT Apps SDK) ──────────────────────
   if (ctx.edition === "web") {
-    // ChatGPT Apps-SDK widgets. mimeType MUST be text/html+skybridge
-    // (CHATGPT_WIDGET_MIME) — NOT the MCP-Apps `text/html;profile=mcp-app` the
-    // Claude card uses; that mismatch was the black frame (#308). widgetAccessible
+    // ChatGPT Apps-SDK widgets. mimeType is CHATGPT_WIDGET_MIME, which since
+    // SEP-1865 (2026-01-26) IS `text/html;profile=mcp-app` — the standard MCP-Apps
+    // type. The old `text/html+skybridge` was retired and was the black frame
+    // (#308); the hosts stay separated by binding, not MIME. widgetAccessible
     // lets the widget call tools back over window.openai.callTool (the visibility
     // pills call grid_visibility). These make no direct network requests, so no
     // openai/widgetCSP is declared — the default deny is correct.
@@ -538,11 +539,12 @@ export function registerTools(server, ctx) {
       // live at a public URL in place. Versions + grid rollback exist, but the
       // honest MCP annotation for overwrite-live-state is destructive.
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
-      // ChatGPT-only binding: openai/outputTemplate points at the skybridge
-      // widget. Deliberately NOT the MCP-Apps `ui.resourceUri` key — that is
-      // Claude's, and the live-result resource is now text/html+skybridge, which
-      // Claude cannot render; carrying it here would regress the Claude path when
-      // this flag is flipped. The two mechanisms stay independent (#308/#303).
+      // ChatGPT-only binding: openai/outputTemplate points at the live-result
+      // widget. Deliberately NOT the MCP-Apps `ui.resourceUri` key — that is the
+      // one Claude reads. Since SEP-1865 both hosts render the same MIME
+      // (text/html;profile=mcp-app), so independence is by BINDING, not MIME:
+      // ChatGPT sees openai/outputTemplate, Claude never does. The two mechanisms
+      // stay independent (#308/#303).
       ...(ctx.edition === "web" && APPS_WIDGETS_ENABLED ? {
         _meta: { "openai/outputTemplate": LIVE_RESULT_URI },
       } : {}),
@@ -1194,6 +1196,13 @@ export function registerTools(server, ctx) {
         error: z.boolean().optional().describe("True when the grid listing failed (network/auth error). The text carries a human-readable message. Do NOT treat this as needs_grid_create."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+      // ChatGPT Apps-SDK card, same binding as grid_plug: grid_hello returns a
+      // runPlug result, so it deserves the same live-result widget. Without this a
+      // grid_hello success renders no card even when the MIME is correct (#308).
+      // openai/outputTemplate is ChatGPT-only; Claude ignores it, so #303 is safe.
+      ...(ctx.edition === "web" && APPS_WIDGETS_ENABLED ? {
+        _meta: { "openai/outputTemplate": LIVE_RESULT_URI },
+      } : {}),
     },
     async (input) => {
       try {

@@ -23,11 +23,15 @@ function check(label, cond) {
 const TOOLS_URL = new URL("../src/tools.js", import.meta.url).href;
 const LIVE_RESULT_URI = "ui://cloudgrid/live-result.html";
 const GRID_PICKER_URI = "ui://cloudgrid/org-picker.html";
-// #308: the ChatGPT Apps-SDK renderer requires this exact resource mimeType
-// (verified against OpenAI's shipped example servers). It is NOT the MCP-Apps /
-// Claude MIME `text/html;profile=mcp-app` — the mismatch was the black frame.
-const SKYBRIDGE_MIME = "text/html+skybridge";
-const CLAUDE_MIME = "text/html;profile=mcp-app";
+// #308 (corrected 2026-08-31): ChatGPT's Apps-SDK renderer requires
+// `text/html;profile=mcp-app` — the standard MCP-Apps MIME, verified against
+// OpenAI's CURRENT docs (developers.openai.com/apps-sdk build/custom-ux,
+// deploy/troubleshooting). The old `text/html+skybridge` (DevDay 2025) was
+// retired by SEP-1865 (2026-01-26) and was the black frame. Both hosts now use
+// this one MIME; independence is by BINDING (openai/outputTemplate for ChatGPT,
+// _meta.ui.resourceUri for Claude), asserted below — not by MIME.
+const WIDGET_MIME = "text/html;profile=mcp-app";
+const RETIRED_SKYBRIDGE_MIME = "text/html+skybridge";
 
 // Fake server capturing tool CONFIGS + full resource registrations (config
 // mimeType AND the read-callback contents), so the test observes the actual
@@ -52,16 +56,18 @@ const resByUri = (resources, uri) => resources.find((r) => r.uri === uri);
 const { configs, resources } = inspect("web");
 const plugTpl = configs["grid_plug"]?._meta?.["openai/outputTemplate"];
 check("default: grid_plug has NO openai/outputTemplate (text-first, no black square)", plugTpl == null);
+check("default: grid_hello has NO openai/outputTemplate (text-first)", configs["grid_hello"]?._meta?.["openai/outputTemplate"] == null);
 check("default: live-result widget resource is still registered", !!resByUri(resources, LIVE_RESULT_URI));
 
-// #308 contract: BOTH ChatGPT widgets declare the skybridge MIME at registration
-// AND in their served contents — this is what fixes the black frame.
+// #308 contract: BOTH ChatGPT widgets declare the standard MCP-Apps MIME at
+// registration AND in their served contents — this is what fixes the black frame.
+// The retired skybridge MIME must be gone (a regression to it re-breaks ChatGPT).
 for (const uri of [LIVE_RESULT_URI, GRID_PICKER_URI]) {
   const r = resByUri(resources, uri);
-  check(`#308: ${uri} config mimeType is ${SKYBRIDGE_MIME}`, r?.config?.mimeType === SKYBRIDGE_MIME);
+  check(`#308: ${uri} config mimeType is ${WIDGET_MIME}`, r?.config?.mimeType === WIDGET_MIME);
   const contents = (await r?.reader?.())?.contents?.[0];
-  check(`#308: ${uri} served content mimeType is ${SKYBRIDGE_MIME}`, contents?.mimeType === SKYBRIDGE_MIME);
-  check(`#308: ${uri} does NOT serve the Claude MIME (independence)`, contents?.mimeType !== CLAUDE_MIME);
+  check(`#308: ${uri} served content mimeType is ${WIDGET_MIME}`, contents?.mimeType === WIDGET_MIME);
+  check(`#308: ${uri} does NOT declare the retired skybridge MIME`, r?.config?.mimeType !== RETIRED_SKYBRIDGE_MIME && contents?.mimeType !== RETIRED_SKYBRIDGE_MIME);
 }
 
 // #308: grid_visibility is marked widgetAccessible so the widget's callTool works.
@@ -74,14 +80,18 @@ const configs = {};
 registerTools({ registerTool:(n,c)=>{configs[n]=c;}, tool(){}, registerResource(){} },
   { edition:"web", state:{ lastDrop:null }, getToken:async()=>null, getActiveGrid:async()=>null });
 const m = configs["grid_plug"]?._meta ?? {};
-process.stdout.write(JSON.stringify({ tpl: m["openai/outputTemplate"] ?? null, ui: m.ui ?? null }));
+const h = configs["grid_hello"]?._meta ?? {};
+process.stdout.write(JSON.stringify({ tpl: m["openai/outputTemplate"] ?? null, ui: m.ui ?? null, helloTpl: h["openai/outputTemplate"] ?? null }));
 `;
 const out = execFileSync(process.execPath, ["--input-type=module", "-e", child],
   { env: { ...process.env, MCP_APPS_WIDGETS: "1" }, encoding: "utf-8" }).trim();
 const flagOn = JSON.parse(out);
 check("MCP_APPS_WIDGETS=1: grid_plug outputTemplate is restored", flagOn.tpl === LIVE_RESULT_URI);
-// #308/#303 independence: even with the flag ON, grid_plug must NOT carry the
-// Claude `ui.resourceUri` key — the live-result resource is skybridge-typed and
+// #308: grid_hello returns a runPlug result, so it carries the SAME live-result
+// binding — without it a grid_hello success renders no card even with the MIME fixed.
+check("MCP_APPS_WIDGETS=1: grid_hello carries the live-result outputTemplate too", flagOn.helloTpl === LIVE_RESULT_URI);
+// #308/#303 independence is by BINDING, not MIME: even with the flag ON,
+// grid_plug must NOT carry the Claude `ui.resourceUri` key — ChatGPT reads
 // Claude cannot render it; carrying it would regress the Claude path.
 check("MCP_APPS_WIDGETS=1: grid_plug carries NO Claude ui.resourceUri (independence)", flagOn.ui == null);
 
