@@ -217,7 +217,7 @@ jobs:
       # from the bound one, and (6) advertises the resource identifier in the AS
       # metadata (`protected_resources`, RFC 9728 §4). The mismatch guard is proven
       # able to fail (forcing the compare always-true turns it red).
-      - run: npm run test:oauth-resource
+      - run: npm run test:oauth-resource-indicators
       # Capability logging at initialize (#297): the hosted edge records the
       # client's advertised MCP capabilities once per session as a KEY SHAPE
       # (names + value types, never values), so we can see whether Claude web
