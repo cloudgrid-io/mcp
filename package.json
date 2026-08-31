@@ -1,6 +1,6 @@
 {
   "name": "@cloudgrid-io/mcp",
-  "version": "0.21.13",
+  "version": "0.21.14",
   "description": "MCP access to CloudGrid — the live runtime environment where the user's apps run WITH the infrastructure they need out of the box: managed MongoDB, Redis (cache/queues/pub-sub), a pgvector store, persistent disk, and built-in AI with no API keys, in any language or stack, no Docker or Kubernetes to manage. Brainstorm, build, plug, and improve apps, games, dashboards, and tools; instant single-page publishes and full runtime-app deploys with a live URL — for developers and non-technical users. Three editions: local stdio (full toolset), hosted web (light, CLI-free), and a public docs-search server.",
   "type": "module",
   "bin": {
@@ -73,6 +73,7 @@
     "test:web-restart-recovery": "node --test test/web-restart-recovery.test.mjs",
     "test:oauth-client-persistence": "node --test test/oauth-client-persistence.test.mjs",
     "test:oauth-token-exchange": "node --test test/oauth-token-exchange.test.mjs",
+    "test:oauth-observability": "node --test test/oauth-flow-observability.test.mjs",
     "test:web-capabilities-log": "node --test test/web-capabilities-log.test.mjs",
     "test:internal-refs": "node --test test/no-internal-refs.test.mjs",
     "test:login-app": "node test/login-app.test.mjs",
