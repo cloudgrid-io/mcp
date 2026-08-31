@@ -86,6 +86,7 @@ function makeWebContext(sessionId, identity) {
     getCredentialsStatus: identity.getCredentialsStatus,
     getActiveGrid: async () => null,
     saveToken: identity.saveToken,
+    markTokenRevoked(jwt) { identity.markRevoked(jwt); },
     savedLocationNote: () => "You are signed in for this session.",
     trustedServer: TRUSTED_SERVER_SECRET
       ? { secret: TRUSTED_SERVER_SECRET, endUserId: sessionId }
