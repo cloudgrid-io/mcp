@@ -90,7 +90,7 @@
     "express": "^4.22.2",
     "fflate": "^0.8.3",
     "undici": "^8.10.0",
-    "zod": "^3.23.0"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"
