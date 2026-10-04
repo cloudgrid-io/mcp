@@ -135,8 +135,8 @@ try {
   // #321 finding 2: the "now live" moment for a runtime app arrives HERE, not from
   // runPlug. This is the case in the founder's report, so the console line +
   // console_url must land on this branch too.
-  check("check success: console line is an imperative pointing at THEIR grid (#359)", okr.text.includes("Give the user this link so they can see and manage all their apps in their grid") && okr.text.includes("https://console.cloudgrid.io/home?grid=acme"));
-  check("check success: console_url is the grid-specific link (#355)", okr.structured.console_url === "https://console.cloudgrid.io/home?grid=acme");
+  check("check success: console line is an imperative pointing at THEIR grid (#359)", okr.text.includes("Give the user this link so they can see and manage all their apps in their grid") && okr.text.includes("https://my.cloudgrid.io/home?grid=acme"));
+  check("check success: console_url is the grid-specific link (#355)", okr.structured.console_url === "https://my.cloudgrid.io/home?grid=acme");
 
   reset();
   traceReplies = [{ body: { status: "building" } }];
