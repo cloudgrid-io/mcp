@@ -101,8 +101,10 @@
     "type": "git",
     "url": "https://github.com/cloudgrid-io/mcp.git"
   },
+  "//overrides-qs": "qs is held at 6.15.x by express and body-parser, which both declare ~6.15.1: a tilde range that excludes 6.16.0, so no lockfile refresh reaches the patched version. cloudgrid runs this same override in packages/api and functions/event-consumer through the identical pins. REMOVE once express/body-parser declare a range admitting >= 6.16.0: npm view body-parser dependencies.qs . See cloudgrid-io/cloudgrid#4346.",
   "overrides": {
     "proxy-addr": "^2.0.8",
-    "fast-uri": "^3.1.8"
+    "fast-uri": "^3.1.8",
+    "qs": "^6.16.0"
   }
 }
