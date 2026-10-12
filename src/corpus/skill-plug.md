@@ -52,9 +52,9 @@ Signed in, publish into your own grid instead (owned, no claim needed):
 
 ```
 JWT=$(jq -r .jwt ~/.cloudgrid/credentials 2>/dev/null)
-ORG=$(grep -E '^\s*active_org_slug:' ~/.cloudgrid/config.yaml | awk '{print $2}')
+GRID=$(grep -E '^\s*active_org_slug:' ~/.cloudgrid/config.yaml | awk '{print $2}')
 curl -sS -X POST https://api.cloudgrid.io/api/v2/plug \
-  -H "Authorization: Bearer $JWT" -H "X-CloudGrid-Org: $ORG" \
+  -H "Authorization: Bearer $JWT" -H "X-CloudGrid-Grid: $GRID" \
   -F "artifact=@/path/to/index.html;type=text/html"
 ```
 
@@ -107,8 +107,8 @@ Other shapes:
 - **A URL as an inspiration:** `grid plug https://example.com`
 - **Bind to an existing entity first:** `grid plug --existing <entity-id>`
 
-If this is the user's first deploy in the org, the CLI may ask which org to use.
-Pass `--org <slug>` to skip that prompt.
+If this is the user's first deploy in the grid, the CLI may ask which grid to use.
+Pass `--grid <slug>` to skip that prompt.
 
 ## After plug
 

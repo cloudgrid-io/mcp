@@ -148,7 +148,7 @@ scale: auto                         # 'auto' (default), 'alert', or integer 1-10
 
 # ─── Infrastructure needs (v2, CANONICAL — the deployer injects from these) ─
 needs:
-  database: true                    # Mongo (org-tier). Injects DATABASE_MONGODB_URL.
+  database: true                    # Mongo (grid-tier). Injects DATABASE_MONGODB_URL.
   cache: true                       # Redis with LRU eviction. Injects CACHE_REDIS_URL.
   kv: true                          # Redis, no eviction. Injects KV_REDIS_URL.
   queue: true                       # Redis for BullMQ etc. Injects QUEUE_REDIS_URL.
@@ -160,12 +160,12 @@ needs:
 
 # ─── Inter-entity communication ────────────────────────────────────
 calls:                              # Entities this app calls (outbound grants).
-  - org:atomic/billing-api
-  - org:atomic/content-service
+  - atomic/billing-api              # <grid-slug>/<app-slug>, a bare slug, or an entity id.
+  - atomic/content-service
 
 callers:                            # Inbound caller policy.
   policy: auto                      # 'auto' or 'manual' (default: 'manual').
-  scope: org                        # 'org', 'space', or 'explicit' (default: 'org').
+  scope: org                        # 'org' (the whole grid), 'space', or 'explicit' (default: 'org').
   fallback: deny                    # 'deny' or 'warn' (default: 'deny').
 
 # ─── Vault ──────────────────────────────────────────────────────────
@@ -176,7 +176,7 @@ vault:                              # Map of ENV_VAR: vault_item_key. Optional.
 # ─── Connectors and hooks ──────────────────────────────────────────
 connectors:
   - id: team-slack
-    target: org                     # 'system' or 'org'
+    target: org                     # 'system' or 'org' (your grid)
     channel: "#deploys"
 
 hooks:                              # Outbound events. on ∈ release.published |

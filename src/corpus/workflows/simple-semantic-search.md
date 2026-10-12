@@ -52,7 +52,7 @@ grid plug                      # first plug registers the entity from cloudgrid.
 grid visibility set <slug> link
 ```
 
-`.cloudgrid/link.json` (entity_id / org / slug binding) is WRITTEN BY THE CLI on
+`.cloudgrid/link.json` (entity_id / grid / slug binding) is WRITTEN BY THE CLI on
 the first `grid plug` — never hand-author it. If the folder was copied from someone else's project,
 `rm -rf .cloudgrid` first so `grid plug` doesn't update THEIR app.
 
