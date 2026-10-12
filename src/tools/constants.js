@@ -27,7 +27,10 @@ export const ANON_HTML_MAX_BYTES = 2_000_000;
 // ~6x stricter by design — a normal page is well under 1 MB, and past
 // 25 MB the right shape is a folder plug (multipart, see deploy.js:756).
 export const AUTHED_HTML_MAX_BYTES = 25_000_000;
-export const CONSOLE_URL = "https://console.cloudgrid.io/";
+// The Console's canonical host is my.cloudgrid.io (cloudgrid-io/cloudgrid#4135).
+// console.cloudgrid.io stays as a permanent redirect, so links printed by
+// earlier releases still land.
+export const CONSOLE_URL = "https://my.cloudgrid.io/";
 
 // The console link handed to a user AFTER a plug. When the grid slug is known it
 // points at THAT grid (verified live: /home?grid=<slug> -> 200) instead of the

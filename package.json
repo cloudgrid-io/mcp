@@ -1,6 +1,6 @@
 {
   "name": "@cloudgrid-io/mcp",
-  "version": "0.21.17",
+  "version": "0.21.18",
   "description": "MCP access to CloudGrid — the live runtime environment where the user's apps run WITH the infrastructure they need out of the box: managed MongoDB, Redis (cache/queues/pub-sub), a pgvector store, persistent disk, and built-in AI with no API keys, in any language or stack, no Docker or Kubernetes to manage. Brainstorm, build, plug, and improve apps, games, dashboards, and tools; instant single-page publishes and full runtime-app deploys with a live URL — for developers and non-technical users. Three editions: local stdio (full toolset), hosted web (light, CLI-free), and a public docs-search server.",
   "type": "module",
   "bin": {
@@ -86,10 +86,10 @@
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "^1.7.5",
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "express": "^4.22.2",
     "fflate": "^0.8.3",
-    "undici": "^8.10.0",
+    "undici": "^8.11.2",
     "zod": "^3.23.0"
   },
   "devDependencies": {
@@ -100,5 +100,11 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/cloudgrid-io/mcp.git"
+  },
+  "//overrides-qs": "qs is held at 6.15.x by express and body-parser, which both declare ~6.15.1: a tilde range that excludes 6.16.0, so no lockfile refresh reaches the patched version. cloudgrid runs this same override in packages/api and functions/event-consumer through the identical pins. REMOVE once express/body-parser declare a range admitting >= 6.16.0: npm view body-parser dependencies.qs . See cloudgrid-io/cloudgrid#4346.",
+  "overrides": {
+    "proxy-addr": "^2.0.8",
+    "fast-uri": "^3.1.8",
+    "qs": "^6.16.0"
   }
 }
