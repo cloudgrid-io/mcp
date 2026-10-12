@@ -2538,7 +2538,6 @@ export async function runVisibility(ctx, { target, visibility, inside, outside, 
   const normSpaces = [...new Set((spaces || []).map((s) => String(s).trim().toLowerCase()).filter(Boolean))];
   const useAxes = inside !== undefined || outside !== undefined;
   let body;
-  let requested; // for the result text when the response is sparse
   if (useAxes) {
     if (visibility) throw new Error("Pass either `visibility` or the `inside`/`outside` axes, not both.");
     if (!inside || !outside) {
@@ -2566,7 +2565,6 @@ export async function runVisibility(ctx, { target, visibility, inside, outside, 
       ...(require_signin === true ? { require_signin: true } : {}),
       ...(inside === "spaces" ? { visibility_spaces: normSpaces } : {}),
     };
-    requested = `inside: ${inside}${inside === "spaces" ? ` (${normSpaces.join(", ")})` : ""}, outside: ${outside}${require_signin === true ? " (sign-in required)" : ""}`;
   } else {
     let mode = String(visibility || "").trim().toLowerCase();
     if (!mode) throw new Error("Pass a visibility mode (private | grid | link), or the inside/outside axes.");
@@ -2586,7 +2584,6 @@ export async function runVisibility(ctx, { target, visibility, inside, outside, 
         throw new Error("`spaces` only applies with visibility: grid (or inside: spaces).");
       }
       body = { share_scope: "private", external_access: "link", require_signin: true };
-      requested = "link with sign-in required (the retired 'authenticated')";
     } else if (mode === "space") {
       // `space` is a pure internal audience (share_scope: spaces, external_access:
       // none). require_signin/indexed are external-link concerns — they have no
@@ -2601,7 +2598,6 @@ export async function runVisibility(ctx, { target, visibility, inside, outside, 
         throw new Error("'space' visibility needs the `spaces` list (which space slugs can see it) — or use inside: spaces with outside: none.");
       }
       body = { share_scope: "spaces", external_access: "none", visibility_spaces: normSpaces };
-      requested = `selected spaces (${normSpaces.join(", ")})`;
     } else if (mode === "private" || mode === "grid" || mode === "link") {
       if (require_signin === true && mode !== "link") {
         throw new Error("require_signin only applies with visibility: link (or outside: link).");
@@ -2627,12 +2623,10 @@ export async function runVisibility(ctx, { target, visibility, inside, outside, 
           throw new Error("require_signin cannot combine with indexed: a sign-in-gated link cannot be search-indexed.");
         }
         body = { share_scope: "private", external_access: "link", require_signin: true };
-        requested = "link with sign-in required";
       } else {
         body = { visibility: mode };
         if (mode === "grid" && normSpaces.length > 0) body.visibility_spaces = normSpaces;
         if (mode === "link") body.link_indexed = indexed === true;
-        requested = mode + (mode === "link" && indexed === true ? " (search-indexed)" : "");
       }
     } else {
       throw new Error(`Unknown visibility '${visibility}'. Use private | grid | link (public = link alias), or the inside/outside axes.`);
@@ -2679,8 +2673,10 @@ export async function runVisibility(ctx, { target, visibility, inside, outside, 
     last = await patch(route === "runtime" ? runtimePath : inspirationPath);
     if (last.res.ok) {
       const d = last.data || {};
-      // Prefer the server's stored axes (stored axes are authoritative on
-      // the wire); fall back to what we asked for.
+      // The confirmation is always derived from the server's echo: stored
+      // axes first, the legacy enum otherwise. Never the request (#372), so
+      // a sparse echo says it is unconfirmed instead of repeating what was
+      // asked for (the CLI's rule: a confirmation is never the typed value).
       const lines = [];
       if (d.share_scope || d.external_access) {
         const insideLine =
@@ -2692,14 +2688,16 @@ export async function runVisibility(ctx, { target, visibility, inside, outside, 
           d.external_access === "link" ? `anyone with the link${d.require_signin ? " (signed-in accounts only)" : ""}${d.link_indexed ? ", search-indexed" : ""}` :
           d.external_access === "public" ? "anyone, findable by search engines" : d.external_access;
         lines.push(`Visibility set — inside the grid: ${insideLine}; outside: ${outsideLine}.`);
+      } else if (d.visibility) {
+        lines.push(`Visibility is now ${d.visibility}.`);
       } else {
-        lines.push(`Visibility is now ${d.visibility || requested}.`);
+        lines.push("The change was accepted, but the server did not report the stored visibility, so it is not confirmed here. Check it in the Console before telling the user it changed.");
       }
       if (d.url) lines.push(d.url);
       return {
         text: lines.join("\n"),
         structured: {
-          visibility: d.visibility || (useAxes ? undefined : String(visibility || "").trim().toLowerCase() || undefined),
+          visibility: d.visibility || undefined,
           ...(d.share_scope ? { share_scope: d.share_scope } : {}),
           ...(d.external_access ? { external_access: d.external_access } : {}),
           ...(d.require_signin !== undefined ? { require_signin: d.require_signin === true } : {}),
