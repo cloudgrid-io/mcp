@@ -273,6 +273,31 @@ try {
     check(`legacy: spaces + ${badMode} no wire call`, fetchCalls.length === 0);
   }
 
+  // 13. A sparse echo is never confirmed with the REQUESTED value (#372).
+  //     The confirmation comes from the server's response only: an echo with
+  //     neither the axes nor `visibility` must say it is unconfirmed, and must
+  //     not name the mode that was asked for, in the text or the structured result.
+  for (const [label, echo] of [["empty echo", {}], ["url-only echo", { url: "https://e.cloudgrid.io" }]]) {
+    for (const mode of ["grid", "link", "private"]) {
+      reset();
+      replies.runtime = { status: 200, body: JSON.stringify(echo) };
+      const r13 = await runVisibility(makeCtx({ kind: "app", entity_id: "e_sparse" }), { visibility: mode });
+      check(`${label}, ${mode}: text does not claim "Visibility is now"`, !/Visibility is now/.test(r13.text));
+      check(`${label}, ${mode}: text does not name the requested mode`, !new RegExp(`\\b${mode}\\b`).test(r13.text.replace(/https?:\/\/\S+/g, "")));
+      check(`${label}, ${mode}: text says it is not confirmed`, /not confirmed/.test(r13.text));
+      check(`${label}, ${mode}: structured.visibility is not the requested value`, r13.structured.visibility === undefined);
+    }
+  }
+  reset();
+  replies.runtime = { status: 200, body: JSON.stringify({}) };
+  const r13b = await runVisibility(makeCtx({ kind: "app", entity_id: "e_sparse_axes" }), { inside: "grid", outside: "link" });
+  check("empty echo, axes: no confirmation naming the requested axes", !/inside the grid|everyone in the grid|anyone with the link/.test(r13b.text) && /not confirmed/.test(r13b.text));
+  // And the echo still wins when it is there.
+  reset();
+  replies.runtime = { status: 200, body: JSON.stringify({ visibility: "private" }) };
+  const r13c = await runVisibility(makeCtx({ kind: "app", entity_id: "e_echo" }), { visibility: "grid" });
+  check("echo present: the confirmation is the STORED value, not the request", /Visibility is now private\./.test(r13c.text) && r13c.structured.visibility === "private");
+
   console.log(failures === 0 ? "\nAll set-sharing checks passed." : `\n${failures} set-sharing check(s) FAILED.`);
   process.exit(failures === 0 ? 0 : 1);
 } catch (err) {
