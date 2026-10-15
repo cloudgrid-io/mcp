@@ -108,40 +108,36 @@ try {
   check("web deploy has `target_entity_id` param", "target_entity_id" in plugProps);
   check("web deploy has `owner_token` param", "owner_token" in plugProps);
 
-  // AUTH HARD GATE (field bug 2026-07-26, Claude web): the FIRST unauthenticated
-  // create in a session must return the sign-in-vs-guest ask (needs_auth) even
-  // when the model passed anon: true — silent one-call guest publishing is not
-  // possible. A re-call with anon: true after the ask proceeds.
+  // CREATE REQUIRES SIGN-IN (#395): the anonymous create path is closed. An
+  // unauthenticated create over the real HTTP transport must return needs_auth
+  // and publish NOTHING — even with anon: true, which no longer selects a guest
+  // wire. This proves the gate holds end-to-end on the hosted edition (the one
+  // that resolves identity per-session), with no credentials needed.
   const gated = await client.callTool({
     name: "grid_plug",
     arguments: { html: "<h1>web edition smoke</h1>", anon: true },
   });
   const gatedText = gated.content?.[0]?.text ?? "";
   const gatedStructured = gated.structuredContent ?? gated.structured ?? {};
-  console.log("--- web anon plug, first call (expect needs_auth gate) ---\n" + gatedText);
-  // The gate is the structured needs_auth field (byte-identical across the #298
-  // wording change); the text must offer BOTH the sign-in and guest paths and
-  // must not already be a live drop.
-  check("first unauthenticated create returns the sign-in-vs-guest ask (even with anon: true)",
-    gatedStructured.needs_auth === true &&
-    /grid_login/.test(gatedText) && /guest/i.test(gatedText) &&
-    !gatedText.includes("guest.cloudgrid.io"));
+  console.log("--- web anon:true plug, first call (expect needs_auth, no publish) ---\n" + gatedText);
+  check("unauthenticated anon:true create returns needs_auth",
+    gatedStructured.needs_auth === true);
+  check("the refusal routes to sign-in only (grid_login, no guest/anon path)",
+    /grid_login/.test(gatedText) && !/guest/i.test(gatedText) && !/anon/i.test(gatedText));
+  check("the refusal is NOT a live drop (nothing published)",
+    !gatedText.includes("guest.cloudgrid.io") && !/\bLive:\s*https/i.test(gatedText));
 
-  const drop = await client.callTool({
+  // No "offer once then allow" escape hatch: a second anon:true create is still
+  // refused — nothing is ever published without a token.
+  const gated2 = await client.callTool({
     name: "grid_plug",
     arguments: { html: "<h1>web edition smoke</h1>", anon: true },
   });
-  const text = drop.content?.[0]?.text ?? "";
-  console.log("--- web anonymous plug (html, after gate) ---\n" + text);
-  // A 429 means the shared anonymous-drop quota is exhausted — a platform rate
-  // limit, not a broken drop. Skip (don't false-fail) so CI isn't gated on quota;
-  // any OTHER outcome (401, wrong URL, error) still fails the guest-URL check —
-  // preserving the signal that caught the /drop/auto regression in Task 27.
-  if (/HTTP 429|daily anonymous-drop limit|reached the daily/i.test(text)) {
-    console.log("skip anonymous drop over HTTP — rate-limited (429), not a functional failure");
-  } else {
-    check("anonymous drop over HTTP returned a guest URL", text.includes("guest.cloudgrid.io"));
-  }
+  const gated2Structured = gated2.structuredContent ?? gated2.structured ?? {};
+  const gated2Text = gated2.content?.[0]?.text ?? "";
+  console.log("--- web anon:true plug, second call (expect needs_auth again) ---\n" + gated2Text);
+  check("a later anon:true create is STILL refused (no publish)",
+    gated2Structured.needs_auth === true && !gated2Text.includes("guest.cloudgrid.io"));
 } finally {
   try {
     await client?.close();
