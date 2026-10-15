@@ -15,6 +15,7 @@
 //
 // Run: node test/login-required-create.test.mjs
 import { registerTools } from "../src/tools.js";
+import { PLAYBOOK, INSTRUCTIONS_WEB, INSTRUCTIONS_LOCAL } from "../src/playbook.js";
 
 let failures = 0;
 const check = (label, cond) => { console.log(`${cond ? "ok  " : "FAIL"} ${label}`); if (!cond) failures++; };
@@ -230,6 +231,80 @@ try {
     check("publisher log states whether the entity is ephemeral", /ephemeral=(true|false)/.test(line || ""));
     check("REDACTION: publisher log carries NO email", !(line || "").includes(LEAK_EMAIL) && !/@/.test(line || ""));
     check("REDACTION: publisher log carries NO token", !(line || "").includes(JWT));
+  }
+
+  // ── NO MODEL-FACING SURFACE PROMISES A SIGN-IN-FREE PUBLISH (#395) ───────────
+  // The behaviour and the human-facing message were fixed, but the model reads
+  // the SCHEMA descriptions and the PLAYBOOK to decide what to do. If those still
+  // offer anonymous publishing, the model offers it, the user picks it, and the
+  // next call is refused (the mcp#336 loop). This guard scans every machine-facing
+  // string and fails if any advertises guest/anonymous publishing. Mutation check:
+  // restore any old "re-call grid_plug with anon: true to publish anonymously" /
+  // "plug it as a guest" / "guest fallback" string → a check here goes red.
+  {
+    // Capture grid_plug's tool config (descriptions) from the real registration.
+    let plugConfig = null;
+    const server = {
+      registerTool: (name, cfg) => { if (name === "grid_plug") plugConfig = cfg; },
+      tool: () => {},
+      registerResource: () => {},
+    };
+    registerTools(server, makeCtx({ token: null }));
+
+    // Walk a zod schema (or a plain {key: zodType} map) collecting every .describe() string.
+    const collect = (t, out) => {
+      if (!t || typeof t !== "object") return;
+      if (typeof t.description === "string") out.push(t.description);
+      const def = t._def || {};
+      if (def.typeName === "ZodObject") {
+        const shape = typeof def.shape === "function" ? def.shape() : t.shape;
+        for (const k of Object.keys(shape || {})) collect(shape[k], out);
+      } else if (def.typeName === "ZodArray") {
+        collect(def.type, out);
+      } else if (def.innerType) {
+        collect(def.innerType, out);
+      }
+    };
+    const descs = [];
+    if (plugConfig?.description) descs.push(plugConfig.description);
+    for (const t of Object.values(plugConfig?.inputSchema || {})) collect(t, descs);
+    for (const t of Object.values(plugConfig?.outputSchema || {})) collect(t, descs);
+
+    // The full machine-facing corpus the model reads to decide how to publish.
+    const corpus = [...descs, PLAYBOOK, INSTRUCTIONS_WEB, INSTRUCTIONS_LOCAL];
+
+    // Phrases that only make sense as an OFFER of sign-in-free publishing. Each is
+    // chosen so a correct NEGATION ("there is no guest option") never matches it.
+    const BANNED = [
+      /plug it as a guest/i,
+      /publish (it )?anonymously/i,
+      /anonymously \(claimable/i,
+      /\bguest fallback\b/i,
+      /with a guest fallback/i,
+      /re-?call grid_plug with anon:\s*true/i,
+      /no account (is )?(needed|required)/i,
+      /as a guest\b[^.]{0,30}\b(live|publish|plug|claim)/i,
+      /guest link[^.]{0,30}expire/i,
+    ];
+    let offending = null, hitPhrase = null;
+    outer:
+    for (const text of corpus) {
+      for (const re of BANNED) {
+        if (re.test(text)) { offending = text; hitPhrase = re; break outer; }
+      }
+    }
+    check(`no schema/playbook surface offers sign-in-free publishing${offending ? ` (matched ${hitPhrase} in: "${offending.slice(0, 80)}…")` : ""}`, offending === null);
+
+    // Positive: the anon param tells the model it is dead, not how to use it.
+    const anonDesc = plugConfig?.inputSchema?.anon?.description || "";
+    check("anon param is documented as deprecated / no-effect on create",
+      /deprecat|no effect|ignored|rejected/i.test(anonDesc));
+    check("anon param does NOT instruct the model to choose a guest option",
+      !/chose the guest option|only pass this after the user/i.test(anonDesc));
+
+    // Positive: the playbook states sign-in is required to publish.
+    check("playbook states publishing requires sign-in",
+      /publishing requires sign-in|requires? (a )?(cloudgrid )?account|no guest option/i.test(PLAYBOOK));
   }
 } finally {
   globalThis.fetch = realFetch;
