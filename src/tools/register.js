@@ -890,7 +890,7 @@ export function registerTools(server, ctx) {
     "grid_list_grids",
     {
       title: "List your grids",
-      description: "List the signed-in user's grids, each with slug, name, role, and provisioning status. A grid that is still provisioning (render_ready false) may not serve pages yet — prefer a ready grid, and if the user insists on a not-ready one, warn them that pages may not load. Requires sign-in.",
+      description: "List the signed-in user's grids, each with slug, name, role, and provisioning status. Requires sign-in. To plug onto a brand-new grid, call grid_plug right away: it waits for the grid to be ready itself, so do not poll render_ready or wait before plugging.",
       inputSchema: {},
       outputSchema: {
         orgs: z.array(z.object({
@@ -936,10 +936,10 @@ export function registerTools(server, ctx) {
         const suffix = tags.length ? ` (${tags.join(", ")})` : "";
         return `${o.slug} — ${o.name} (${o.role})${suffix}`;
       });
-      const readyCount = annotated.filter((o) => o.render_ready).length;
-      if (readyCount === 0 && annotated.length > 0) {
-        lines.push("\nNone of your grids are fully set up yet. Wait until provisioning completes (grid_start will show render_ready: true) before plugging. Do not switch to anonymous unless the user asks for it.");
-      }
+      // No "none of your grids are set up yet, wait" line here (cloudgrid#2428).
+      // The platform reports render_ready true for every grid, so that branch
+      // never ran, and its advice (poll, then plug) is what playbook rule 3b
+      // tells the model NOT to do: grid_plug waits for a new grid itself.
       // Structured output stays `orgs` (its declared schema); user text says grid.
       return okResult({ text: lines.join("\n"), structured: { orgs: annotated } });
     },
