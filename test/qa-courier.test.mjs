@@ -37,17 +37,17 @@ function stubSink() {
   return { sent, send: async (payload) => { sent.push(payload); } };
 }
 
-function makeCtx({ token = null, sink, loggerOpts = {}, withLogger = true } = {}) {
+function makeCtx({ token = "jwt", sink, loggerOpts = {}, withLogger = true } = {}) {
   const ctx = {
     edition: "web",
-    // authChoiceOffered: the sign-in-vs-guest ask already surfaced in this
-    // session (the auth hard gate would otherwise intercept the first
-    // unauthenticated anon: true create — see create-gates.test.mjs, which
-    // owns that contract; this test is about the QA courier, post-gate).
-    state: { pendingLoginCode: null, lastAnonClaim: null, lastDrop: null, anonCookie: null, authChoiceOffered: true, client: { name: "test", version: "1" } },
+    // CREATE now requires sign-in (#395): the anonymous create path is closed, so
+    // this test drives a SIGNED-IN create (the auth gate is owned by
+    // create-gates.test.mjs / login-required-create.test.mjs). A single grid is
+    // mocked in installFetch so the authed create proceeds without a picker.
+    state: { pendingLoginCode: null, lastAnonClaim: null, lastDrop: null, anonCookie: null, client: { name: "test", version: "1" } },
     canOpenBrowser: false,
     getToken: async () => token,
-    getActiveGrid: async () => null,
+    getActiveGrid: async () => "g1",
     saveToken: async () => ({}),
     savedLocationNote: () => "",
     trustedServer: null,
@@ -67,6 +67,12 @@ function installFetch() {
   wireBodies.length = 0;
   globalThis.fetch = async (url, init) => {
     const u = String(url);
+    if (u.endsWith("/api/v2/grids") || u.endsWith("/api/v2/orgs")) {
+      return new Response(
+        JSON.stringify({ grids: [{ slug: "g1", name: "Grid One", role: "owner", render_ready: true }] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
     if (u.includes("/api/v2/plug")) {
       try { wireBodies.push(await new Request(u, init).text()); } catch { wireBodies.push(""); }
       return new Response(

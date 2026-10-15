@@ -57,9 +57,15 @@ jobs:
       - run: npm run test:plug-output-schema
       # Zip deploys: extraction guards, static-app wrapper, CLI leg, html+zip combo.
       - run: npm run test:zip-deploy
-      # Create-path hard gates: no-auth create -> needs_auth (not silent anon);
-      # authed multi-grid create -> needs_grid; anon/edit/explicit-grid bypass.
+      # Create-path hard gates: no-auth create -> needs_auth; authed multi-grid
+      # create -> needs_grid; edit/explicit-grid bypass.
       - run: npm run test:create-gates
+      # #395: the anonymous CREATE path is closed — every published entity is
+      # owned by a signed-in user, and the publisher is logged (stable id, no
+      # email/token). Negative assertions prove no plug request is made on a
+      # refused path. Regression guards: an existing guest drop still re-plugs
+      # with its owner_token, and claim_token still claims (both editions).
+      - run: npm run test:login-required-create
       # #327: a NEW plug must not silently pick a grid. A create resolves its
       # grid from the explicit `grid` param only (never the stale active grid),
       # and the picker gate asks on multi-grid; the edit path's #296/#301/#316
