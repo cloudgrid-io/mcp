@@ -1,0 +1,50 @@
+# The semantic-search template's Python services, installed and imported.
+#
+# The template ships exact-pinned requirements.txt files that builders start
+# from. Before this job, no workflow installed or imported them, so a
+# Dependabot bump to one of those files went green with nothing having run it.
+# A broken pin does not break this repo; it breaks a builder's first run.
+#
+# Per service: pip install -r its requirements.txt on the Python the platform
+# builds with (python:3.12-slim), import every module in its `app` package, and
+# check the PDF extraction path against a golden output. The same smoke script
+# runs in cloudgrid-io/skills against its copy of the template.
+name: template-python
+
+on:
+  pull_request:
+    paths:
+      - "src/corpus/templates/semantic-search/services/**"
+      - ".github/scripts/semantic-search-smoke.py"
+      - ".github/fixtures/semantic-search/**"
+      - ".github/workflows/template-python.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/corpus/templates/semantic-search/services/**"
+      - ".github/scripts/semantic-search-smoke.py"
+      - ".github/fixtures/semantic-search/**"
+      - ".github/workflows/template-python.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  semantic-search:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [backend, refresh]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install the service's pinned requirements
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --disable-pip-version-check -r src/corpus/templates/semantic-search/services/${{ matrix.service }}/requirements.txt
+      - name: Import every app module, and check the PDF golden output
+        run: .venv/bin/python .github/scripts/semantic-search-smoke.py src/corpus/templates/semantic-search/services/${{ matrix.service }}
