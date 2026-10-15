@@ -63,7 +63,8 @@ globalThis.fetch = async (url) => {
 const resetPlug = () => { globalThis.__PLUG_CALLS__ = 0; };
 
 try {
-  // ── AUTH gate: no token, no anon → needs_auth, no network ──
+  // ── AUTH gate: no token → needs_auth, no network. CREATE requires sign-in
+  //    (#395): there is no longer a guest/anonymous publishing option. ──
   {
     globalThis.__GRIDS__ = [];
     resetPlug();
@@ -71,33 +72,32 @@ try {
     const res = await h(HTML);
     check("no-auth create did NOT deploy", globalThis.__PLUG_CALLS__ === 0);
     check("no-auth create returns needs_auth", parse(res).needs_auth === true);
-    check("no-auth create offers sign-in AND anonymous", /grid_login/.test(res?.content?.[0]?.text ?? "") && /anon/i.test(res?.content?.[0]?.text ?? ""));
+    check("no-auth create routes to sign-in only (grid_login, no guest/anon)",
+      /grid_login/.test(res?.content?.[0]?.text ?? "") &&
+      !/guest/i.test(res?.content?.[0]?.text ?? "") &&
+      !/anon/i.test(res?.content?.[0]?.text ?? ""));
 
     // #298: the ask reads as a designed thing, not a paragraph at the model.
     const askText = res?.content?.[0]?.text ?? "";
     check("#298: user-facing text is separated from the model-directed steps", /\(assistant:/.test(askText));
-    check("#298: both options present and evenly weighted (two `- ` bullets)", (askText.match(/^\s*- /gm) || []).length === 2);
-    check("#298: guest option is not framed as a lesser fallback", /guest/i.test(askText) && !/fallback/i.test(askText));
     check("#298: §23 voice — no emoji, no exclamation marks", !/[!]/.test(askText) && !/\p{Extended_Pictographic}/u.test(askText));
     check("#298: no retired vocabulary (no 'deploy'/'org')", !/\bdeploy\b/i.test(askText) && !/\borg\b/i.test(askText));
     check("#298: model-directed 'stop and wait' lives in the assistant line, not the user text", /\(assistant:[^)]*[Ss]top/.test(askText));
   }
 
-  // ── AUTH gate is NOT model-bypassable (field bug 2026-07-26, Claude web):
-  //    the FIRST unauthenticated create in a session returns needs_auth EVEN
-  //    with anon:true — the model cannot self-serve a silent guest publish.
-  //    After the ask was surfaced (same session state), anon:true proceeds. ──
+  // ── The anonymous CREATE path is closed (#395): anon:true no longer bypasses
+  //    the auth gate, on the first call or any later call. An unauthenticated
+  //    create publishes NOTHING. ──
   {
     globalThis.__GRIDS__ = [];
     resetPlug();
     const ctx = makeCtx({ token: null });
     const h = captureDeploy(ctx);
     const first = await h({ ...HTML, anon: true });
-    check("first anon:true create is still gated (no deploy)", globalThis.__PLUG_CALLS__ === 0);
+    check("first anon:true create is gated (no deploy)", globalThis.__PLUG_CALLS__ === 0);
     check("first anon:true create returns needs_auth", parse(first).needs_auth === true);
-    check("gate marks the session (authChoiceOffered)", ctx.state.authChoiceOffered === true);
     await h({ ...HTML, anon: true });
-    check("anon:true AFTER the ask proceeds (deploy attempted)", globalThis.__PLUG_CALLS__ === 1);
+    check("anon:true is STILL refused on a later call (no deploy)", globalThis.__PLUG_CALLS__ === 0);
   }
 
   // ── GRID gate: authed, >1 grid, no grid → needs_grid, no deploy ──

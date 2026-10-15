@@ -70,21 +70,19 @@ const escapeHtml = (s) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
+// Publishing requires sign-in (#395): every entity must be owned by a real
+// account so the publisher is known. There is NO guest option — offering a path
+// the server will not honour strands the model (it asks, the user picks guest,
+// the next call fails). This is the same reasoning grid_hello applies at
+// register.js's signed-out branch after mcp#336: say ONLY what the tool can
+// actually do, and route to the one recovery action (grid_login). §23 voice:
+// plain, no emoji, no exclamation; the model-directed step is quarantined in the
+// trailing (assistant: …) line so it is not read aloud.
 const AUTH_ASK_SIGNED_OUT =
-  "How would you like to plug this?\n" +
-  "  - Sign in to your grid — it stays in your CloudGrid account.\n" +
-  "  - As a guest — live now at a link that expires in 7 days unless you claim it.\n\n" +
-  "(assistant: offer both options and let the user choose — do not choose for them. " +
-  "To sign in, call grid_login; as a guest, re-call grid_plug with anon: true. " +
-  "Stop and wait for their answer.)";
-const authAskSignedIn = (who) =>
-  `You are signed in${who}.\n\n` +
-  "How would you like to plug this?\n" +
-  "  - To your grid — it stays in your CloudGrid account.\n" +
-  "  - As a guest — live now at a link that expires in 7 days unless you claim it.\n\n" +
-  "(assistant: offer both options and let the user choose — do not choose for them. " +
-  "For their grid, re-call grid_plug; as a guest, re-call grid_plug with anon: true. " +
-  "Stop and wait for their answer.)";
+  "Plugging to a grid needs an account, so the page is saved to the user's CloudGrid " +
+  "account and belongs to them. Call grid_login to sign in, then re-call grid_plug.\n\n" +
+  "(assistant: call grid_login now; after they finish, retry grid_plug. Do not offer " +
+  "any sign-in-free path. Stop and wait for the sign-in to complete.)";
 
 // ── Registration ───────────────────────────────────────────────────────────────
 // Registers the tools onto `server`. ctx.edition decides whether the CLI-wrapping
@@ -593,53 +591,46 @@ export function registerTools(server, ctx) {
         }
         if (!isEdit) {
           const token = await ctx.getToken();
-          if (input?.anon === true && ctx.state?.authChoiceOffered !== true) {
+          // CREATE requires sign-in (#395). Every published entity must be owned
+          // by a known account so "who published this?" is answerable. `anon:
+          // true` no longer selects a guest wire — an unauthenticated create is
+          // refused and publishes nothing. The guest/anon path is GONE for
+          // create; it survives only for editing pre-cutover drops (the
+          // owner-token wire, which is an EDIT and never reaches here).
+          if (!token) {
             if (ctx.state) ctx.state.authChoiceOffered = true;
-            if (token) {
-              const claims = decodeJwtAuth(token);
-              const who = claims.email ? ` as ${claims.email}` : "";
+            return okResult({
+              text: AUTH_ASK_SIGNED_OUT,
+              structured: { needs_auth: true },
+            });
+          }
+          // Signed in — never ride the anon wire on a create. Drop a stale
+          // `anon: true` so it cannot re-select the guest wire inside runPlug
+          // (runPlug keys the wire on `anon === true` for creates).
+          if (input?.anon) input = { ...(input || {}), anon: false };
+          const decision = await resolveGridOrAsk(ctx, {
+            token,
+            suppliedGrid: input?.grid,
+            edition: ctx.edition,
+          });
+          if (decision.picker) {
+            // Do NOT silently default to the active grid — surface the ask.
+            return okResult(decision.picker);
+          }
+          if (decision.single) {
+            // Proceed into the single grid; warn (don't block) if not set up yet.
+            input = { ...(input || {}), grid: decision.single.slug };
+            if (decision.single.render_ready === false) {
+              const res = await runPlug(ctx, input || {});
               return okResult({
-                text: authAskSignedIn(who),
-                structured: { needs_auth: true },
+                ...res,
+                text:
+                  `Warning: your only grid "${decision.single.slug}" isn't fully set up yet — the page may not load until provisioning completes.\n` +
+                  res.text,
               });
             }
-            return okResult({
-              text: AUTH_ASK_SIGNED_OUT,
-              structured: { needs_auth: true },
-            });
-          }
-          if (!token && input?.anon !== true) {
-            if (ctx.state) ctx.state.authChoiceOffered = true;
-            return okResult({
-              text: AUTH_ASK_SIGNED_OUT,
-              structured: { needs_auth: true },
-            });
-          }
-          if (token && input?.anon !== true) {
-            const decision = await resolveGridOrAsk(ctx, {
-              token,
-              suppliedGrid: input?.grid,
-              edition: ctx.edition,
-            });
-            if (decision.picker) {
-              // Do NOT silently default to the active grid — surface the ask.
-              return okResult(decision.picker);
-            }
-            if (decision.single) {
-              // Proceed into the single grid; warn (don't block) if not set up yet.
-              input = { ...(input || {}), grid: decision.single.slug };
-              if (decision.single.render_ready === false) {
-                const res = await runPlug(ctx, input || {});
-                return okResult({
-                  ...res,
-                  text:
-                    `Warning: your only grid "${decision.single.slug}" isn't fully set up yet — the page may not load until provisioning completes.\n` +
-                    res.text,
-                });
-              }
-            } else if (decision.grid) {
-              input = { ...(input || {}), grid: decision.grid };
-            }
+          } else if (decision.grid) {
+            input = { ...(input || {}), grid: decision.grid };
           }
         }
         const res = await runPlug(ctx, input || {});

@@ -79,7 +79,10 @@ function makeJwt(claims) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// 3. anon: true + valid token + no prior choice offered → returns choice prompt
+// 3 & 4. CREATE requires sign-in (#395): the anonymous create path is closed, so
+// `anon: true` no longer selects a guest wire. A SIGNED-IN create with anon: true
+// now publishes straight into the caller's grid on the AUTHED wire — no choice
+// prompt, on the first call or any later call.
 // ═══════════════════════════════════════════════════════════════════════════════
 {
   const { registerTools } = await import("../src/tools.js");
@@ -130,20 +133,15 @@ function makeJwt(claims) {
     const h3 = captureDeploy(ctx3);
     plugCalls = 0;
 
-    // First call: anon: true + valid token + no authChoiceOffered → gate fires
+    // First call: anon: true + valid token → publishes authed (no choice prompt).
     const res3 = await h3({ html: "<h1>hi</h1>", anon: true });
-    check("3a. anon+token+no-choice: no deploy", plugCalls === 0);
-    check("3b. anon+token+no-choice: returns needs_auth", parse(res3).needs_auth === true);
-    const text3 = res3?.content?.[0]?.text ?? "";
-    check("3c. anon+token+no-choice: mentions signed in", /signed in/.test(text3));
+    check("3a. anon+token: deploy proceeds (no gate)", plugCalls === 1);
+    check("3b. anon+token: not a needs_auth prompt", parse(res3).needs_auth !== true);
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    // 4. anon: true + choice-offered state → proceeds (feature still works)
-    // ═══════════════════════════════════════════════════════════════════════════
-    check("4a. authChoiceOffered is now true", ctx3.state.authChoiceOffered === true);
+    // A later anon: true create behaves identically — no "offer once" state.
     plugCalls = 0;
     await h3({ html: "<h1>hi</h1>", anon: true });
-    check("4b. anon+token+choice-offered: deploy proceeds", plugCalls === 1);
+    check("4. anon+token: a later create also publishes authed", plugCalls === 1);
 
   } finally {
     globalThis.fetch = realFetch;
