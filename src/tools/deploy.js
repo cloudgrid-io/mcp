@@ -20,6 +20,23 @@ import {
 } from "./constants.js";
 import { okResult } from "./util.js";
 import { runCloudgrid } from "./cli.js";
+import { decodeJwt } from "../auth.js";
+import { logSafe } from "../web-observability.js";
+
+// Publisher attribution (#395): on a signed-in CREATE, record WHO published, into
+// WHICH grid, and whether the entity is ephemeral. Log a STABLE account id (the
+// JWT `sub`) only — NEVER an email or token. Logs are not a private surface
+// (redaction standard, #347/#353): identifiers and presence, never a value
+// sensitive on its own. logSafe flattens control chars so the id cannot forge a
+// log line. The emit is read from console.error at call time so tests can
+// capture it.
+export function logCreatePublisher(claims, grid, ephemeral, emit = (m) => console.error(m)) {
+  const sub = claims && typeof claims.sub === "string" && claims.sub.length > 0 ? claims.sub : null;
+  emit(
+    `cloudgrid-mcp: grid_plug create publisher user_id=${sub ? logSafe(sub) : "-"} ` +
+      `grid=${logSafe(grid || "-")} ephemeral=${ephemeral ? "true" : "false"}`,
+  );
+}
 
 /**
  * The API refuses an infra-dependent write while a grid is still provisioning.
@@ -2209,6 +2226,18 @@ export async function runPlug(ctx, input, deps = {}) {
     };
   } else if (!useAnonWire) {
     ctx.state.lastAnonClaim = null;
+  }
+
+  // Publisher attribution (#395): every successful authed CREATE is logged with
+  // the publisher's stable account id so the guest-drop blind spot is closed —
+  // CREATE only (an edit re-plug keeps the owner's identity on the existing
+  // entity) and the authed wire only (the owner-token guest wire is out of
+  // scope). An inspiration is ephemeral (expires unless pinned); a runtime
+  // app/agent is not.
+  if (!isEdit && !useAnonWire) {
+    const kind = data.detection?.kind ?? data.kind ?? null;
+    const ephemeral = kind !== "app" && kind !== "agent";
+    logCreatePublisher(decodeJwt(authToken), data.grid ?? orgSlug ?? grid ?? null, ephemeral);
   }
 
   // Confirm-before-claiming-live: a runtime build is async (status "building" +

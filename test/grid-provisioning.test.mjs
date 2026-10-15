@@ -169,5 +169,30 @@ await (async () => {
   check("a non-provisioning 409 is still EDIT_REJECTED", /cannot be updated/i.test(gEdit || ""));
 }
 
+// ── The proactive zero-grid path (cloudgrid#2428, #235 AC 3) ─────────────────
+// Rule 3b is the REACTIVE path (grid_plug already said needs_grid_create).
+// Rule 8 is the proactive one, and it must cover zero grids too, so a first-time
+// user's app is not built and uploaded before the grid exists.
+{
+  const { PLAYBOOK } = await import("../src/playbook.js");
+  const rule8 = PLAYBOOK.split("\n").find((l) => /^8\. /.test(l)) || "";
+  check("playbook rule 8 exists", rule8.length > 0);
+  check("rule 8 establishes the grid up front for a new app", /UP FRONT/.test(rule8));
+  check("rule 8 has a zero-grid branch", /\bNONE\b|no grids?|zero/i.test(rule8));
+  check("rule 8's zero-grid branch points at rule 3b and grid_create_grid",
+    /3b/.test(rule8) && /grid_create_grid/.test(rule8));
+  check("rule 8 says to do it BEFORE building",
+    /before you start building/.test(rule8.slice(0, rule8.search(/more than one/))));
+  check("rule 8 still covers the more-than-one case", /more than one/.test(rule8) && /which grid should this go on/.test(rule8));
+
+  // grid_list_grids must not teach polling on render_ready, which the platform
+  // hardwires true and rule 3b tells the model not to wait on.
+  const { readFileSync } = await import("node:fs");
+  const register = readFileSync(new URL("../src/tools/register.js", import.meta.url), "utf8");
+  check("grid_list_grids no longer says 'prefer a ready grid'", !/prefer a ready grid/.test(register));
+  check("grid_list_grids has no unreachable 'none of your grids are set up' branch",
+    !/None of your grids are fully set up yet/.test(register));
+}
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
