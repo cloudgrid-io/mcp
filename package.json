@@ -86,7 +86,7 @@
     "build:login-widget": "node scripts/build-login-widget.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/ext-apps": "^1.7.5",
+    "@modelcontextprotocol/ext-apps": "^2.0.3",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "express": "^4.22.2",
     "fflate": "^0.8.3",
