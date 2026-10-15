@@ -19,7 +19,7 @@
 
 # Entity slug (REQUIRED). 2-42 chars, lowercase alphanumeric + hyphens.
 # Must start and end with a letter or digit.
-# Becomes part of your public URL: <name>-<4hex>--<org>.cloudgrid.io
+# Becomes part of your public URL: <name>-<4hex>--<grid>.cloudgrid.io
 name: semantic-search
 
 # One-line summary. Max 280 chars. If omitted, Grid Brain auto-generates one.
@@ -54,7 +54,7 @@ name: semantic-search
 
 # ─── DEPLOY NOTIFICATIONS ──────────────────────────────────────────────────
 
-# Slack notification to the org's default channel on deploy failure.
+# Slack notification to the grid's default channel on deploy failure.
 # true = notify (default), false = silent.
 # notify: true
 
@@ -108,20 +108,20 @@ name: semantic-search
 
 # Entities this app calls (outbound). Service-account token injected per pair.
 # calls:
-#   - org:atomic/billing-api
+#   - atomic/billing-api
 
 # Inbound caller policy — who can call YOUR entity.
 # callers:
 #   policy: auto                 # 'auto' | 'manual' (default).
-#   scope: org                   # 'org' (default) | 'space' | 'explicit'.
+#   scope: org                   # 'org' (the whole grid; default) | 'space' | 'explicit'.
 #   fallback: deny               # 'deny' (default) | 'warn'.
 #   # allowed_apps:              # required only when scope: explicit
-#   #   - org:atomic/frontend
+#   #   - atomic/frontend
 
 
 # ─── VAULT ──────────────────────────────────────────────────────────────────
 
-# Map org vault items to env vars. Keys UPPER_SNAKE_CASE; values = vault item keys.
+# Map grid vault items to env vars. Keys UPPER_SNAKE_CASE; values = vault item keys.
 # The source + embeddings secrets can also be stored directly with
 # `grid secrets set KEY=VALUE` — see AGENTS.md.
 # vault:
@@ -133,7 +133,7 @@ name: semantic-search
 
 # connectors:
 #   - id: team-slack
-#     target: org                # 'system' | 'org'.
+#     target: org                # 'system' | 'org' (your grid).
 #     channel: "#deploys"
 # hooks:
 #   - on: deploy.failed          # release.published | deploy.failed | feedback.received | entity.created

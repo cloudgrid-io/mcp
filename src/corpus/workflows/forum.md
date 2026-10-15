@@ -8,7 +8,7 @@ kind: blueprint
 capabilities_note: >-
   persistent — needs a database (Mongo). Runtime app, async build, local edition
   only. Sign-in-to-post auth via a hosted provider (Clerk/Auth0) with keys from
-  the org vault (vault block maps items to env vars). Declare the canonical needs
+  the grid vault (vault block maps items to env vars). Declare the canonical needs
   database=true; the deployer injects DATABASE_MONGODB_URL (+legacy MONGODB_URL).
   BLUEPRINT — ships structure + cloudgrid.yaml, not app code.
 summary: >-

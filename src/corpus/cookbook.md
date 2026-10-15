@@ -105,6 +105,6 @@ the drop's expiry. Editing an archived or expired drop returns 409
 
 ## Notes
 
-- Every command uses the active org and linked entity when you omit the name. Run
+- Every command uses the active grid and linked entity when you omit the name. Run
   `grid whoami` to see the active context.
 - These skills wrap the CLI. Anything the CLI can do, a skill can drive.

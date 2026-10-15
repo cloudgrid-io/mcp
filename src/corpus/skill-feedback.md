@@ -3,7 +3,7 @@ version: 0.2.0
 name: feedback
 description: |
   Read the CloudGrid feedback feed. Use when the user wants to see feedback, check
-  what people said, review reactions, or read recent feedback events for their org.
+  what people said, review reactions, or read recent feedback events for their grid.
   Wraps grid feedback list.
 argument-hint: "[--since 7d]"
 allowed-tools: Bash
@@ -11,7 +11,7 @@ allowed-tools: Bash
 
 # CloudGrid Feedback
 
-List recent feedback events for the active org. Wraps `grid feedback list`.
+List recent feedback events for the active grid. Wraps `grid feedback list`.
 
 ## Step 0 — Bootstrap
 
@@ -31,15 +31,15 @@ List recent feedback events for the active org. Wraps `grid feedback list`.
 grid feedback list
 ```
 
-The feed is scoped to the active org. It is not filtered by entity. Useful flags:
+The feed is scoped to the active grid. It is not filtered by entity. Useful flags:
 
 - `--since <duration>` — only events newer than this, for example `24h`, `7d`.
 - `--limit <n>` — number of events. Default 50, max 200.
-- `--org <slug>` — read another org's feed (where you have access).
+- `--grid <slug>` — read another grid's feed (where you have access).
 
 ## Reading the output
 
-Each event has a time, an id, an org, and a message. Group or summarize by theme
+Each event has a time, an id, a grid, and a message. Group or summarize by theme
 when there are many. Surface the ones that look like bugs or blockers first.
 
 ## Note: reading vs sending

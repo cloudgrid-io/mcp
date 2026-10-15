@@ -50,7 +50,7 @@ Verify: `grid --version` and `grid doctor`.
 
 ```
 grid login          # Google OAuth in the browser
-grid whoami         # confirm user + active org
+grid whoami         # confirm user + active grid
 grid plug           # build + deploy the current directory, prints the live URL
 grid open           # open it in the browser
 ```
@@ -72,7 +72,7 @@ grid logs --since 10m
 grid visibility set my-api link
 grid feedback
 
-# Switch org, list what's on the grid
+# Switch grid, list what's on the grid
 grid use atomic
 grid grid
 ```
@@ -81,19 +81,19 @@ grid grid
 
 | Command | Purpose |
 |---|---|
-| `login` / `logout` / `whoami` | Sign in (Google OAuth), sign out, show user + active org |
-| `use [slug]` | Set or show the active org |
+| `login` / `logout` / `whoami` | Sign in (Google OAuth), sign out, show user + active grid |
+| `use [slug]` | Set or show the active grid |
 | `new <name>` | Scaffold a new app or agent project (`--type`, `--needs`, `--agent`, `--dir`); the entity is created on first `plug` |
 | `plug [target]` | Build + deploy (or redeploy); first plug auto-creates the entity from `cloudgrid.yaml`; prints the live URL |
 | `dev` | Run the linked entity locally with grid-injected resources |
-| `status [name]` | Org dashboard, entity detail, or a deploy snapshot |
+| `status [name]` | Grid dashboard, entity detail, or a deploy snapshot |
 | `logs [name]` | Stream entity logs |
 | `open [name]` | Open the entity URL in the browser |
 | `info [name]` / `builds [name]` | Entity metadata; recent deploys |
 | `visibility set <slug> <mode>` | private \| grid \| link — or the axes: `--inside <private\|spaces\|grid> --outside <none\|link\|public>` (+ `--require-signin`, `--space <slug>`) |
 | `rollback` / `versions` | Roll back to a prior deploy; list/tag minted versions |
 | `env` / `secrets` | Manage runtime env vars and secrets (secret values are never printed) |
-| `grid` / `list` | List what's on your hub / org |
+| `grid` / `list` | List what's on your hub / grid |
 | `rename` / `delete` / `unplug` | Rename, archive, take off the grid |
 | `collab` / `pull` / `pickup` | Grant push access (`collab`), continue in place (`pull`), or fork a copy (`pickup`) |
 | `feedback [message]` | Send feedback to the CloudGrid team |
@@ -111,7 +111,7 @@ Global:
 - `-h, --help` — help for any command
 
 Common per-command:
-- `--org <slug>` — pick/override the org
+- `--grid <slug>` — pick/override the grid
 - `--json` — machine-readable output (where supported)
 - `--no-clipboard` / `--no-notify` — suppress clipboard copy / OS notification on `plug`
 - `--since <dur>` / `--tail <n>` — `logs` window
@@ -135,7 +135,7 @@ rm -rf ~/.cloudgrid                  # remove stored credentials + config
 ## Troubleshooting
 
 - **`grid: command not found`** — ensure the npm global bin (or Homebrew bin) is on `$PATH`; re-run the installer.
-- **Auth errors / 401** — `grid login` again; check `grid whoami` shows the expected org, switch with `grid use <org>`.
+- **Auth errors / 401** — `grid login` again; check `grid whoami` shows the expected grid, switch with `grid use <grid>`.
 - **Deploy fails** — run `grid doctor`; check `grid logs` and `grid status <name>` for the trace.
 
 ## Support
