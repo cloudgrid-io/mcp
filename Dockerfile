@@ -11,6 +11,9 @@ RUN npm ci --omit=dev
 COPY src ./src
 
 ENV PORT=8080
+# Production mode for Express and its dependencies. The server answers errors
+# itself (src/web-errors.js); this keeps any library default terse as well.
+ENV NODE_ENV=production
 EXPOSE 8080
 USER node
 
