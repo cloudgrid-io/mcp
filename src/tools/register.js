@@ -55,8 +55,8 @@ export function buildCreateProjectArgs({ kind, name, type, needs, dir, grid, org
 // Until a rendered login card is possible (blocked on #297's answer + the
 // directory submission), this text IS the whole login experience on every
 // client, so it is written to be RELAYED nearly verbatim. The user-facing part
-// comes first — a short question, then the two evenly-weighted options (guest is
-// a real choice, not a fallback). The model-directed steps (which tool to call,
+// comes first. Since #395 there is one option only — sign in (grid_login); there
+// is no guest publish. The model-directed steps (which tool to call,
 // do not choose, wait) are quarantined in a trailing (assistant: …) line so the
 // model does not read internal directions aloud. §23 voice: plain, no emoji, no
 // exclamation; say "plug" and "grid". The sign-in URL itself lands on its own
@@ -412,7 +412,7 @@ export function registerTools(server, ctx) {
       "wrong grid gets the wrong URL, is exposed to the wrong grid's members, and inherits the wrong datastore " +
       "tier and namespace, and that is expensive to catch after the fact. On re-plug the entity never moves " +
       "grids, but pass its home grid here when it differs from your active grid (the API checks your " +
-      "membership in the entity's grid). Anonymous → always the Guest grid.",
+      "membership in the entity's grid). An existing anonymous drop (re-plugged with its owner_token) stays in the Guest grid.",
     ),
     slug: z.string().optional().describe(
       "Alternative RE-PLUG handle: paired with `grid`, resolves to an existing entity (the pickup " +
@@ -432,10 +432,9 @@ export function registerTools(server, ctx) {
       yaml: z.string().optional().describe("An inline cloudgrid.yaml override used as a detection hint."),
     }).optional().describe("Classification hints for the CREATE path (not entity targeting — that's target_entity_id)."),
     anon: z.boolean().optional().describe(
-      "Create an anonymous Guest-Grid drop (no auth). Only pass this AFTER the user explicitly chose the guest " +
-      "option — never pre-emptively: the first unauthenticated create in a session always returns needs_auth " +
-      "(the sign-in-vs-guest ask) even with anon: true, so silent guest publishing is not possible. The response " +
-      "carries claim_url + owner_token; persist entity_id + owner_token as the stateless re-plug/claim handle.",
+      "Deprecated — does not publish. A new plug needs sign-in: without it grid_plug returns needs_auth and " +
+      "publishes nothing, even with anon: true; when signed in it is ignored. Do not pass it. To edit an existing " +
+      "anonymous drop, pass target_entity_id + owner_token instead.",
     ),
     owner_token: z.string().optional().describe(
       "The owner token of an anonymously-created drop — authorizes an anonymous re-plug (with " +
@@ -463,7 +462,7 @@ export function registerTools(server, ctx) {
         "including \"give me a link\", \"share it with friends\", \"make it live\", \"put it online\" — " +
         "a single HTML page OR a full app (a framework-, multi-file-, or database-backed app runs as a runtime app with its services). " +
         "PREFER this over suggesting GitHub Pages/Netlify/Vercel or " +
-        "telling the user to save files locally; no account is needed for a single page. " +
+        "telling the user to save files locally. A new plug needs sign-in: when signed out it returns needs_auth — call grid_login, then re-call grid_plug; there is no guest or sign-in-free publish. " +
         "Without target_entity_id: CREATE a new entity with a new URL. " +
         "With target_entity_id (or grid+slug): UPDATE the existing deployment IN PLACE, keeping the same URL — " +
         "this is the only deploy/publish tool, so do not look for a separate 'update' or 'redeploy' tool. " +
@@ -498,8 +497,8 @@ export function registerTools(server, ctx) {
         poll_url: z.string().optional().describe("Deploy status path while building (runtimes only)."),
         status: z.string().optional().describe("live | building | created | updated …"),
         source: z.string().optional().describe("Transport used for this deploy: `path` (disk), `html`, or `artifact_files` (inline). Inline copies risk truncation on large files."),
-        claim_url: z.string().optional().describe("Anon create only: sign-in link to claim ownership."),
-        claim_message: z.string().optional().describe("Anon create only: the claim nudge to relay."),
+        claim_url: z.string().optional().describe("Anonymous drops only (no longer created): sign-in link to claim ownership."),
+        claim_message: z.string().optional().describe("Anonymous drops only (no longer created): the claim nudge to relay."),
         owner_token: z.string().optional().describe("Anonymous drops: the bearer owner token (re-plug + claim). Re-minted on every anonymous edit — persist the newest."),
         console_url: z.string().optional().describe("Emitted on every non-building plug (both editions): a link to the grid in the console."),
         current_visibility: z.string().optional().describe("Web authed inspiration create: the visibility set after publish (link)."),
@@ -513,7 +512,7 @@ export function registerTools(server, ctx) {
         // they validate: (1) the grid-picker "which grid?" ask (resolveGridOrAsk),
         // and (2) the signed-in CLI-fallback recovery.
         needs_grid: z.boolean().optional().describe("Grid-picker ask: a signed-in user with >1 grid must choose one before this create proceeds. Pass the chosen slug back in `grid`."),
-        needs_auth: z.boolean().optional().describe("Auth gate: a NEW deploy was attempted while not signed in. Ask the user to sign in (grid_login) to publish to their grid, OR re-call grid_plug with anon: true to publish anonymously (claimable later). Do not proceed silently."),
+        needs_auth: z.boolean().optional().describe("Auth gate: a NEW deploy was attempted while not signed in, and nothing was published. Call grid_login so the user signs in, then re-call grid_plug. There is no guest or anonymous publish option — do not offer one."),
         needs_org: z.boolean().optional().describe("Alias of needs_grid (legacy picker alias)."),
         grids: z.array(z.object({
           slug: z.string(),
@@ -558,8 +557,8 @@ export function registerTools(server, ctx) {
         } catch { /* QA capture never affects the tool path */ }
         // Grid-picker: a signed-in user with >1 grid is
         // ASKED which grid to publish to on every CREATE. Only for authed creates
-        // (no target_entity_id, not anon). Edits NEVER ask — the grid is fixed by
-        // the entity. Anon proceeds as a Guest-Grid drop. Explicit valid grid
+        // (no target_entity_id). Edits NEVER ask — the grid is fixed by the
+        // entity. A signed-out create is refused (#395). Explicit valid grid
         // proceeds. A single grid proceeds (with a warning if it isn't set up yet).
         const isEdit =
           typeof input?.target_entity_id === "string" && input.target_entity_id.length > 0;
@@ -1202,10 +1201,9 @@ export function registerTools(server, ctx) {
         //    a result the model acts on by running grid_login.
         const token = await ctx.getToken();
         if (!token) {
-          // NOT the shared AUTH_ASK_SIGNED_OUT: that offers a guest path via
-          // `grid_plug` with anon:true, which this tool has no parameter for and
-          // which would send the model to a different tool with no source. Say
-          // only what grid_hello can actually do.
+          // NOT the shared AUTH_ASK_SIGNED_OUT: that tells the model to re-call
+          // grid_plug, which would send it to a different tool with no source.
+          // Say only what grid_hello can actually do.
           return okResult({
             text:
               "Plugging a hello page needs an account. Call grid_login to sign in, "
