@@ -161,6 +161,22 @@ npm run smoke
 
 It needs a logged-in CLI on `$PATH`.
 
+### Live smoke scripts
+
+Three more scripts run against the live API on demand. They are not part of CI.
+A new plug needs sign-in, so none of them creates an anonymous drop. Each one
+skips a step, and says why, when the variables that step needs are missing.
+Tokens come only from the environment and are never printed.
+
+| Script | Without secrets | With secrets |
+|---|---|---|
+| `npm run smoke:drop` | A signed-out create with `anon: true` returns `needs_auth` and publishes nothing. | `CLOUDGRID_TOKEN` (and `CLOUDGRID_SMOKE_GRID` if the account has several grids): a signed-in create publishes an owned page and its URL serves. |
+| `npm run smoke:redrop` | Same signed-out check, through the web edition. | `CLOUDGRID_SMOKE_REDROP_ENTITY_ID` + `CLOUDGRID_SMOKE_REDROP_OWNER_TOKEN` (or `CLOUDGRID_SMOKE_REDROP_OWNER_TOKEN_FILE`) for an existing anonymous drop: the edit updates it in place, with no sign-in. The owner token is re-minted on every edit; a token file is rewritten with the fresh one. |
+| `npm run smoke:claim` | Skips. | `CLOUDGRID_TOKEN`: a signed-in plug. Add `CLOUDGRID_SMOKE_CLAIM_ENTITY_ID` + `CLOUDGRID_SMOKE_CLAIM_TOKEN` for an existing anonymous drop: `grid_pull` claims it into the account. A drop can be claimed once. |
+
+The signed-out check is refused inside the server before any publish request is
+sent, so it is safe to run at any time.
+
 ## Design
 
 - Shells out with `execFile` and an argument array, so there is no shell and no
