@@ -135,17 +135,16 @@ try {
     check("plug single grid → published (no ask)", plugCalled() && !res.structuredContent?.needs_grid);
   }
 
-  // ── Case 4b: plug + anon → proceeds (guest, no ask, no grid fetch) ───────────
-  // Pre-set authChoiceOffered: the auth gate is tested in create-gates; here we
-  // verify the grid picker is bypassed for anon creates.
+  // ── Case 4b: plug + anon no longer bypasses the picker (#395) ────────────────
+  // The anonymous create path is closed: `anon: true` is ignored on a create, so
+  // a signed-in multi-grid create still ASKS which grid — it is NOT a free pass
+  // past the picker any more.
   {
-    orgsReply = TWO_GRIDS; // even with many grids, anon never asks
+    orgsReply = TWO_GRIDS;
     resetCalls();
     const h = handlersFor({ token: "jwt", edition: "web" });
-    h.__ctx.state.authChoiceOffered = true;
     const res = await h.grid_plug({ artifact_files: artifact, anon: true });
-    check("plug anon → published, no ask", plugCalled() && !res.structuredContent?.needs_grid);
-    check("plug anon did not fetch the grid list", !calls.some((c) => c.url.includes("/api/v2/grids") || c.url.includes("/api/v2/orgs")));
+    check("plug anon:true multi-grid → asks (no bypass)", !plugCalled() && res.structuredContent?.needs_grid === true);
   }
 
   // ── Case 4c: plug + single grid NOT ready → proceeds with a warning ─────────

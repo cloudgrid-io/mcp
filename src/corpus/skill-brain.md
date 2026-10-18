@@ -39,7 +39,7 @@ when the user wants to see the result now.
 
 Other flags:
 
-- `--org <slug>` — target an entity in another org.
+- `--grid <slug>` — target an entity in another grid.
 - `--json` — machine-readable output.
 
 ## Reading the output

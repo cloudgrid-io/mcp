@@ -44,10 +44,10 @@ URL path; the claim token goes in the body:
 
 ```
 JWT=$(jq -r .jwt ~/.cloudgrid/credentials 2>/dev/null)
-ORG=$(grep -E '^\s*active_org_slug:' ~/.cloudgrid/config.yaml | awk '{print $2}')
+GRID=$(grep -E '^\s*active_org_slug:' ~/.cloudgrid/config.yaml | awk '{print $2}')
 # ENTITY_ID from the drop response; TOKEN from claim_url's ?token=...
 curl -sS -X POST "https://api.cloudgrid.io/api/v2/entities/$ENTITY_ID/pickup" \
-  -H "Authorization: Bearer $JWT" -H "X-CloudGrid-Org: $ORG" \
+  -H "Authorization: Bearer $JWT" -H "X-CloudGrid-Grid: $GRID" \
   -H "Content-Type: application/json" \
   -d "{\"claim_token\":\"$TOKEN\"}"
 ```

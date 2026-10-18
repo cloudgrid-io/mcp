@@ -93,7 +93,7 @@ injected as env vars at `grid dev` (local) and at runtime (after `grid plug`):
 
 The **AI Gateway needs no API key** — `needs: { ai: true }` injects
 `RUNTIME_GATEWAY_URL` and `@cloudgrid-io/runtime` routes through it. The `vault:` block only
-**maps** an org vault item key → an env var name; store the real value once with
+**maps** a grid vault item key → an env var name; store the real value once with
 `grid secrets set <vault-item-key> <value>`. Never commit a secret; never hardcode
 a connection string.
 

@@ -80,7 +80,7 @@ The web edition implements the MCP authorization spec — metadata discovery,
 dynamic client registration, and the PKCE authorization-code flow — as a bridge
 over CloudGrid's existing sign-in. A client that completes the connect sends a
 Bearer on its MCP requests, and that token becomes the session's identity (drops
-publish into the user's org; claims work). The in-tool `grid_login` remains
+publish into the user's grid; claims work). The in-tool `grid_login` remains
 as the fallback.
 
 - `MCP_PUBLIC_URL` — this server's public origin (default `https://mcp.cloudgrid.io`),

@@ -10,7 +10,7 @@ It ships in two editions from one codebase:
   wrappers) for web clients like claude.ai. See [REMOTE.md](REMOTE.md).
 
 The local edition wraps the `grid` CLI for authenticated operations (the CLI
-handles auth, org context, and error formatting) and calls the API directly for the
+handles auth, grid context, and error formatting) and calls the API directly for the
 plug, login, and visibility tools.
 
 ## CLI compatibility
@@ -231,7 +231,7 @@ block) and structured result data bypass the text scrubber.
 
 **No other data collection by this server.** The server does not track usage
 analytics or transmit data beyond the flows listed above and the authenticated
-CloudGrid API calls the individual tools make (e.g. `/orgs`, `/grids`,
+CloudGrid API calls the individual tools make (e.g. `/grids`,
 `/pickup`, `/deploys`, `/inspirations/{id}/source`). CLI-wrapping tools shell
 out to the CloudGrid `grid` CLI, which shares the same
 `~/.cloudgrid/credentials` file and does not send additional telemetry through
