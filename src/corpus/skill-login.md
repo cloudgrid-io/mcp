@@ -35,7 +35,8 @@ uses (`~/.cloudgrid/credentials`), so the two share one identity.
 
    ```
    CODE=$(uuidgen | tr 'A-Z' 'a-z')
-   echo "Open this and sign in with Google: https://api.cloudgrid.io/auth/login?code=$CODE&source=mcp"
+   LOGIN_URL="https://api.cloudgrid.io/auth/login?source=mcp&code=$CODE"
+   echo "Sign in with Google at: $LOGIN_URL"
    ```
 
    Show the user the URL. Wait for them to say they finished.

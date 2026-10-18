@@ -1,7 +1,7 @@
 # Contributing
 
 Contributions are welcome. By submitting a pull request you agree that your
-contribution is licensed under the Apache License 2.0 (see [LICENSE](LICENSE)).
+contribution is licensed under the MIT License (see [LICENSE](LICENSE)).
 
 ## Getting started
 

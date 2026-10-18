@@ -2,7 +2,7 @@
 
 [![release](https://img.shields.io/badge/release-v0.9.13-black)](https://github.com/cloudgrid-io/cli/releases)
 [![npm](https://img.shields.io/badge/npm-v0.9.13-cb3837)](https://www.npmjs.com/package/@cloudgrid-io/cli)
-[![license](https://img.shields.io/badge/license-Apache--2.0-green)](./LICENSE)
+[![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
 > Draft for the public `cloudgrid-io/cli` distribution repo. Structure mirrors
 > `higgsfield-ai/cli`, fit to CloudGrid. Source stays private in the monorepo; this
@@ -145,4 +145,4 @@ rm -rf ~/.cloudgrid                  # remove stored credentials + config
 
 ## License
 
-Apache-2.0. See [LICENSE](./LICENSE).
+MIT. See [LICENSE](./LICENSE).

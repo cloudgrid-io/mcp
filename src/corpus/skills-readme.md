@@ -101,4 +101,4 @@ Install it with `npx -y @cloudgrid-io/mcp`, or point a remote-capable client at
 
 ## License
 
-Apache 2.0. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
