@@ -34,6 +34,7 @@ import { createSessionLogger } from "./session-logger.js";
 import { createSink } from "./log-sink.js";
 import { INSTRUCTIONS_WEB } from "./playbook.js";
 import { createWebIdentity } from "./web-identity.js";
+import { createErrorHandler } from "./web-errors.js";
 import {
   logAuthChallenge,
   logNoSession,
@@ -342,6 +343,10 @@ async function handleSessionRequest(req, res) {
 
 app.get("/mcp", handleSessionRequest);
 app.delete("/mcp", handleSessionRequest);
+
+// Last middleware, after every route: any error a route did not answer itself
+// gets a generic response, never Express's default error page. See web-errors.js.
+app.use(createErrorHandler());
 
 app.listen(PORT, () => {
   // eslint-disable-next-line no-console

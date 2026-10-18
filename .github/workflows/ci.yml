@@ -243,6 +243,11 @@ jobs:
       # paths. Redaction guard: a full session with a known bearer, asserting the
       # token never reaches stderr — proven able to fail (deliberate leak → red).
       - run: npm run test:mcp-transport-observability
+      # Terminal error handler for the web edition: a route that throws (sync or
+      # async) or a malformed body returns a generic JSON-RPC error on /mcp and
+      # plain text elsewhere, with no message, stack or path, and NODE_ENV unset.
+      # Also spawns the real src/web.js to prove the handler is mounted there.
+      - run: npm run test:web-errors
       # Offline app-with-data test (0.9.0): the first runtime (DB-backed) build
       # path. Asserts the app-with-data workflow/template/example + persistent-apps
       # troubleshooting resolve via fetchCorpus and the real grid_fetch handler,
