@@ -1,35 +1,58 @@
-// Redrop smoke: drop → redrop (changed) → fresh, through the web edition
-// against the live API. Creates real ephemeral drops (7-day expiry).
-// Run from mcp-server: node test/smoke-redrop.mjs
+// Redrop smoke, through the web edition against the live API.
 //
-// Unified plug contract (0.7.0 / spec v2): a re-plug passes `target_entity_id`
-// (+ the anon `owner_token`) and UPDATES THE SAME entity — same slug, same URL,
-// new content ("Updated in place"). Omitting the target mints a NEW entity
-// (different URL).
+// Since v0.21.19 (#396) an anonymous drop can no longer be created: a
+// signed-out create returns needs_auth and publishes nothing. An anonymous drop
+// made before that still edits in place with its owner_token, no sign-in. So
+// this script no longer creates a drop. It needs an existing one:
 //
-// Anon-cap aware: a 429 means the shared daily anonymous cap is exhausted — a
-// platform rate limit, not a functional failure. Each step skips on 429.
+//   CLOUDGRID_SMOKE_REDROP_ENTITY_ID    the drop's entity_id
+//   CLOUDGRID_SMOKE_REDROP_OWNER_TOKEN  its owner_token
+//     or CLOUDGRID_SMOKE_REDROP_OWNER_TOKEN_FILE  a file holding it
+//
+// The owner_token is re-minted on every anonymous edit. When the token comes
+// from a file, the fresh one is written back to that file (mode 0600), so the
+// next run works. When it comes from the env var, store the new one yourself —
+// this script never prints it.
+//
+// Checks:
+//   1. Signed out — always runs. A fresh plug with `anon: true` (no target)
+//      returns needs_auth and publishes nothing. Refused before any publish
+//      request is sent.
+//   2. Edit in place — runs when the drop's id and owner_token are given.
+//      Same entity, same URL, new content, a fresh owner_token.
+//
+// Run: npm run smoke:redrop
 
 import { spawn } from "node:child_process";
+import { readFileSync, writeFileSync, chmodSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import {
+  assertSignedOutCreateRefused,
+  check,
+  env,
+  finish,
+  logOutput,
+  registerSecret,
+  textOf,
+} from "./smoke-live-env.mjs";
+
+const entityId = env("CLOUDGRID_SMOKE_REDROP_ENTITY_ID");
+const tokenFile = env("CLOUDGRID_SMOKE_REDROP_OWNER_TOKEN_FILE");
+let ownerToken = env("CLOUDGRID_SMOKE_REDROP_OWNER_TOKEN");
+if (!ownerToken && tokenFile) ownerToken = readFileSync(tokenFile, "utf8").trim() || null;
+registerSecret(ownerToken);
 
 const PORT = 8767;
+// The web edition takes identity only from a request's Bearer header; this
+// client sends none, so every call is signed out.
 const child = spawn("node", ["src/web.js"], {
   env: { ...process.env, PORT: String(PORT) },
   stdio: ["ignore", "ignore", "inherit"],
 });
 
-let failures = 0;
-function check(label, cond) {
-  console.log(`${cond ? "ok  " : "FAIL"} ${label}`);
-  if (!cond) failures++;
-}
-const textOf = (r) => r.content?.[0]?.text ?? "";
-const urlOf = (r) => textOf(r).match(/https:\/\/guest\.cloudgrid\.io\/\S+/)?.[0];
-const isRateLimited = (r) =>
-  /HTTP 429|daily anonymous-drop limit|reached the daily/i.test(textOf(r));
+const urlOf = (r) => textOf(r).match(/Updated in place:\s*(https:\/\/\S+)/)?.[1];
 
 let client;
 try {
@@ -44,52 +67,60 @@ try {
   client = new Client({ name: "redrop-smoke", version: "0.0.0" });
   await client.connect(new StreamableHTTPClientTransport(new URL(`http://localhost:${PORT}/mcp`)));
 
-  const d1 = await client.callTool({
+  // 1. Signed out, no target: refused, nothing published.
+  const fresh = await client.callTool({
     name: "grid_plug",
-    arguments: { html: "<h1>redrop smoke v1</h1>", anon: true, filename: "redropsmoke.html" },
+    arguments: { html: "<h1>redrop smoke fresh</h1>", anon: true, filename: "redropsmoke.html" },
   });
-  if (isRateLimited(d1)) {
-    console.log("skip redrop smoke — anon daily cap exhausted (429); nothing to assert");
-  } else {
-    const url1 = urlOf(d1);
-    const s1 = d1.structuredContent ?? {};
-    check("1. first drop returned a URL", !!url1 && d1.isError !== true);
-    check("1. drop returned the entity_id re-plug handle", typeof s1.entity_id === "string" && s1.entity_id.length > 0);
-    check("1. anon drop returned an owner_token", typeof s1.owner_token === "string" && s1.owner_token.length > 0);
+  logOutput("signed-out create (anon: true)", fresh);
+  assertSignedOutCreateRefused("1.", fresh);
 
-    const d2 = await client.callTool({
+  // 2. Edit an existing anonymous drop in place.
+  if (!entityId || !ownerToken) {
+    console.log(
+      "skip 2. edit in place — set CLOUDGRID_SMOKE_REDROP_ENTITY_ID and " +
+        "CLOUDGRID_SMOKE_REDROP_OWNER_TOKEN (or _OWNER_TOKEN_FILE) for an existing anonymous drop",
+    );
+  } else {
+    const stamp = new Date().toISOString();
+    const edit = await client.callTool({
       name: "grid_plug",
       arguments: {
-        html: "<h1>redrop smoke v2 CHANGED</h1>",
-        anon: true,
+        html: `<h1>redrop smoke CHANGED ${stamp}</h1>`,
         filename: "redropsmoke.html",
-        target_entity_id: s1.entity_id,
-        owner_token: s1.owner_token,
+        target_entity_id: entityId,
+        owner_token: ownerToken,
       },
     });
-    if (isRateLimited(d2)) {
-      console.log("skip in-place assertions — anon daily cap hit on the edit (429)");
-    } else {
-      const url2 = urlOf(d2);
-      const s2 = d2.structuredContent ?? {};
-      check("2. redrop succeeded", d2.isError !== true);
-      check("2. redrop UPDATED IN PLACE (same URL)", !!url2 && url2 === url1);
-      check("2. redrop reports 'Updated in place'", textOf(d2).includes("Updated in place"));
-      check("2. redrop kept the same entity_id", s2.entity_id === s1.entity_id);
-      check(
-        "2. owner_token was refreshed (present after edit)",
-        typeof s2.owner_token === "string" && s2.owner_token.length > 0,
-      );
+    const s = edit.structuredContent ?? {};
+    registerSecret(s.owner_token);
+    logOutput("edit in place", edit);
 
-      const d3 = await client.callTool({
-        name: "grid_plug",
-        arguments: { html: "<h1>redrop smoke fresh</h1>", anon: true, filename: "redropsmoke.html" },
-      });
-      if (isRateLimited(d3)) {
-        console.log("skip fresh assertion — anon daily cap hit (429)");
+    check("2. edit succeeded", edit.isError !== true);
+    check("2. edit did not ask for sign-in", s.needs_auth !== true);
+    check("2. edit reports 'Updated in place'", textOf(edit).includes("Updated in place"));
+    check("2. edit kept the same entity_id", s.entity_id === entityId);
+    check(
+      "2. owner_token was re-minted (present after edit)",
+      typeof s.owner_token === "string" && s.owner_token.length > 0,
+    );
+    const url = urlOf(edit);
+    check("2. edit returned the drop's URL", !!url);
+    if (url) {
+      const page = await fetch(url);
+      check(`2. drop URL serves (HTTP ${page.status})`, page.ok);
+    }
+
+    if (typeof s.owner_token === "string" && s.owner_token.length > 0 && s.owner_token !== ownerToken) {
+      if (tokenFile) {
+        writeFileSync(tokenFile, s.owner_token + "\n", { mode: 0o600 });
+        chmodSync(tokenFile, 0o600);
+        console.log("note: the fresh owner_token was written back to CLOUDGRID_SMOKE_REDROP_OWNER_TOKEN_FILE");
       } else {
-        const url3 = urlOf(d3);
-        check("3. a fresh plug (no target) minted a NEW entity (different URL)", !!url3 && url3 !== url1);
+        console.log(
+          "note: the owner_token was re-minted and is not printed. Use " +
+            "CLOUDGRID_SMOKE_REDROP_OWNER_TOKEN_FILE to keep the fresh one between runs.",
+        );
       }
     }
   }
@@ -104,8 +135,4 @@ try {
   child.kill("SIGKILL");
 }
 
-if (failures > 0) {
-  console.log(`\n${failures} check(s) failed.`);
-  process.exit(1);
-}
-console.log("\nRedrop smoke passed. (Drops auto-expire in 7 days.)");
+finish("Redrop smoke passed.");
