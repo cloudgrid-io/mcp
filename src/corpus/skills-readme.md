@@ -57,24 +57,24 @@ needs, build, plug it in, tail logs, share, read feedback. Everything here is fr
 
    Claude Desktop, claude.ai, ChatGPT, and every route in one place: [USAGE.md](USAGE.md).
 
-## Share something in one step, no login
+## Share something in one step
 
 ```
 /cloudgrid:plug index.html
 ```
 
 `cloudgrid:plug` publishes a single HTML page (or deploys a full app) and hands
-back a public URL. For a single page: no account, no CLI — the link lasts 7 days,
-and you can sign in later to keep it.
+back a public URL. For a single page no CLI is needed; publishing needs a CloudGrid
+account, so sign in first with `/cloudgrid:login`.
 
 ## Skills
 
 | Skill | Invoke | What it does |
 |---|---|---|
 | `login` | `/cloudgrid:login` | Sign in to CloudGrid, with or without the CLI. |
-| `claim` | `/cloudgrid:claim` | Claim an anonymous drop into your account after signing in. |
+| `claim` | `/cloudgrid:claim` | Claim an anonymous drop made earlier into your account after signing in. |
 | `init` | `/cloudgrid:init` | Scaffold a new app or agent. |
-| `plug` | `/cloudgrid:plug` | Share a single HTML page (login optional) or deploy a directory/URL. Get a public URL. |
+| `plug` | `/cloudgrid:plug` | Share a single HTML page or deploy a directory/URL (sign-in required). Get a public URL. |
 | `logs` | `/cloudgrid:logs` | Tail logs for an entity. |
 | `share` | `/cloudgrid:share` | Make an entity shareable and print its URL. |
 | `feedback` | `/cloudgrid:feedback` | Read the feedback feed. |

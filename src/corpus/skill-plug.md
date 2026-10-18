@@ -5,7 +5,7 @@ description: |
   Deploy or share a creation on CloudGrid and get a public URL. Use when the user
   wants to ship, deploy, publish, share, send a friend a link, or go live — a
   single HTML page or a full app. One self-contained HTML page publishes instantly
-  as an inspiration (any edition, no login needed); a multi-file app deploys from a
+  as an inspiration (any edition; sign-in required); a multi-file app deploys from a
   directory or URL. Wraps grid plug.
 argument-hint: "[path-or-url]"
 allowed-tools: Bash
@@ -20,7 +20,7 @@ Deploy or share a creation and get a public URL. This is the one deploy/share ve
 
 - **ONE self-contained HTML page** (a single file — CSS+JS inline, images/fonts as
   data: URIs; the normal hosted output) → an **inspiration**: instant, works on
-  **any edition**, no login required. See "Share a single HTML page" below.
+  **any edition**; publishing needs sign-in. See "Share a single HTML page" below.
 - **Anything more** — separate files/folders, a real `assets/` dir, separate
   `.css`/`.js`, multiple pages, a SPA build — **or** any data/server/LLM/cron need
   → a **runtime app**: `grid plug` on a linked folder, **local edition only**,
@@ -28,27 +28,11 @@ Deploy or share a creation and get a public URL. This is the one deploy/share ve
 
 ## Share a single HTML page (the fast path)
 
-No account and no CLI needed — that is the point: anyone can publish a page. Write
-the page to a single self-contained HTML file (a full document starting with
-`<!doctype html>` or `<html>`; wrap a fragment in a minimal document). HTML is
-capped at 2 MB for anonymous publishes. Then POST it to the unified plug endpoint:
-
-```
-curl -sS -X POST https://api.cloudgrid.io/api/v2/plug \
-  -F "artifact=@/path/to/index.html;type=text/html"
-```
-
-The response is JSON (HTTP 201 anonymous). Read these fields:
-
-- `url` — the live link, composed by the server. Use it verbatim; never compose a
-  URL from the slug yourself.
-- `entity_id` — the durable handle for updating this page later (see re-plug below).
-- `owner_token` — a JWT proving you made this page. It authorizes an anonymous
-  re-plug and doubles as the claim token; its lifetime matches the expiry (default
-  7 days). Persist it with `entity_id` and `url`.
-- `claim_url` / `claim_message` — the link + nudge to sign in and keep it past expiry.
-
-Signed in, publish into your own grid instead (owned, no claim needed):
+No CLI needed, but publishing needs a CloudGrid account so the page belongs to the
+user. If they are not signed in, run the `cloudgrid:login` skill first — there is no
+guest or sign-in-free publish. Write the page to a single self-contained HTML file
+(a full document starting with `<!doctype html>` or `<html>`; wrap a fragment in a
+minimal document). Then POST it to the unified plug endpoint with your credentials:
 
 ```
 JWT=$(jq -r .jwt ~/.cloudgrid/credentials 2>/dev/null)
@@ -58,16 +42,24 @@ curl -sS -X POST https://api.cloudgrid.io/api/v2/plug \
   -F "artifact=@/path/to/index.html;type=text/html"
 ```
 
+Read these fields from the JSON response:
+
+- `url` — the live link, composed by the server. Use it verbatim; never compose a
+  URL from the slug yourself.
+- `entity_id` — the durable handle for updating this page later (see re-plug below).
+
 The MCP `grid_plug` tool does all of this for you: pass the page as its inline
-`html` param (it materializes one `index.html` and handles anon/claim/re-plug).
+`html` param (it materializes one `index.html` and handles re-plug). Signed out, it
+returns `needs_auth` and publishes nothing — call `grid_login`, then re-call it.
 
 ### Re-plug: update the same URL in place
 
 `/api/v2/plug` is a unified create-or-update endpoint. The switch is the
 `target_entity_id` form field: absent → create (new URL); present → update the
-SAME entity (same slug, same URL, new content). Anonymously, prove ownership with
-the `owner_token`; signed in, use your normal auth headers. Every anonymous edit
-REFRESHES the `owner_token` (store the newest) and resets the expiry. Editing an
+SAME entity (same slug, same URL, new content). Signed in, use your normal auth
+headers. A page dropped anonymously before sign-in was required is edited with its
+`owner_token` instead; every such edit REFRESHES the `owner_token` (store the
+newest) and resets the expiry. Editing an
 archived/expired page returns **409 `EDIT_REJECTED`** — it never silently creates.
 
 Print the `url` on its own line so it can be copied in one go. A single page is an

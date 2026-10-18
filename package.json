@@ -32,6 +32,7 @@
     "test:zip-deploy": "node test/zip-deploy.test.mjs",
     "test:create-gates": "node test/create-gates.test.mjs",
     "test:login-required-create": "node test/login-required-create.test.mjs",
+    "test:no-guest-publish-copy": "node test/no-guest-publish-copy.test.mjs",
     "test:plug-create-grid-choice": "node test/plug-create-grid-choice.test.mjs",
     "test:hello": "node test/hello.test.mjs",
     "test:grid-provisioning": "node test/grid-provisioning.test.mjs",

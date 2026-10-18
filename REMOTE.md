@@ -27,7 +27,8 @@ PORT=8080 npm run start:web      # from a clone
 - `GET /mcp`, `DELETE /mcp` — SSE stream and session close.
 - `GET /healthz` — liveness for the host.
 
-Smoke test (spawns the server, connects an HTTP client, drops anonymously):
+Smoke test (spawns the server, connects an HTTP client, checks that a signed-out
+create is refused and publishes nothing):
 
 ```
 npm run smoke:web
@@ -59,7 +60,9 @@ through the server:
 2. The user completes Google sign-in.
 3. `grid_login_status` polls and holds the token in the session.
 
-Anonymous drop needs no sign-in and works immediately.
+Publishing needs sign-in: a signed-out `grid_plug` create returns `needs_auth` and
+publishes nothing. An anonymous drop made earlier can still be re-plugged with its
+`owner_token`, or claimed with `grid_pull` and its `claim_token` once signed in.
 
 ## Trusted-server credential (anonymous-drop cap)
 

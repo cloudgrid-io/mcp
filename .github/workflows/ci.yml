@@ -66,6 +66,9 @@ jobs:
       # refused path. Regression guards: an existing guest drop still re-plugs
       # with its owner_token, and claim_token still claims (both editions).
       - run: npm run test:login-required-create
+      # #395: agent-facing copy (server instructions, grid_plug description and
+      # schema, playbook, skills) must not offer a guest publish the server refuses.
+      - run: npm run test:no-guest-publish-copy
       # #327: a NEW plug must not silently pick a grid. A create resolves its
       # grid from the explicit `grid` param only (never the stale active grid),
       # and the picker gate asks on multi-grid; the edit path's #296/#301/#316
