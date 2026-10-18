@@ -98,7 +98,7 @@
   "devDependencies": {
     "esbuild": "^0.25.0"
   },
-  "license": "Apache-2.0",
+  "license": "MIT",
   "homepage": "https://github.com/cloudgrid-io/mcp",
   "repository": {
     "type": "git",
