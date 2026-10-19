@@ -157,6 +157,8 @@ jobs:
       # 401 guidance no longer offers anonymous, CLI verb drift, H6 honest
       # annotations.
       - run: npm run test:auth-strictness
+      # #400: the emitted tools/list contract (schemas snapshot + strict inputs).
+      - run: npm run test:tools-list-contract
       - run: npm run test:auth
       # OAuth-route gating (M14): anon host 404s OAuth discovery + registration;
       # auth host 200s with the right issuer; /healthz 200 on both.
