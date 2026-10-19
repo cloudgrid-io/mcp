@@ -217,7 +217,8 @@ try {
     const ctx = makeCtx({ withLogger: false });
     const server = makeToolServer();
     registerTools(server, ctx);
-    const desc = server.configs.grid_plug?.inputSchema?.user_request?.description || "";
+    // Registered as a z.strictObject since #400, so the fields are on `.shape`.
+    const desc = server.configs.grid_plug?.inputSchema?.shape?.user_request?.description || "";
     assert.match(desc, /Recorded for CloudGrid QA/);
   });
 

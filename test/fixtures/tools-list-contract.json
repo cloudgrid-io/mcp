@@ -1,0 +1,1836 @@
+{
+  "grid_check_deploy": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "grid": {
+          "description": "Grid of the entity. Defaults to the deploy's grid, then the active grid.",
+          "type": "string"
+        },
+        "poll_url": {
+          "description": "The poll_url from a grid_plug result. Defaults to this session's last deploy.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "build_log_tail": {
+          "description": "Sanitized tail of the Cloud Build log (the real error), when the build failed.",
+          "type": "string"
+        },
+        "build_log_url": {
+          "description": "Cloud Build console URL for the full log, when available.",
+          "type": "string"
+        },
+        "console_url": {
+          "description": "On success: a link to see and manage all the apps in the grid, in the console.",
+          "type": "string"
+        },
+        "error": {
+          "description": "User-language failure reason, when the build failed.",
+          "type": "string"
+        },
+        "live": {
+          "description": "True only when the build finished successfully and the URL serves.",
+          "type": "boolean"
+        },
+        "status": {
+          "description": "The build status: success | failed | building | queued | unknown.",
+          "type": "string"
+        },
+        "suggested_fix": {
+          "description": "A suggested fix for the failure, when the platform provides one.",
+          "type": "string"
+        },
+        "url": {
+          "description": "The live URL, when known.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "live"
+      ],
+      "type": "object"
+    }
+  },
+  "grid_collab": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "entity_id": {
+          "description": "The app to get push access to: a canonical UUID or <grid-slug>/<entity-slug>.",
+          "type": "string"
+        },
+        "grid": {
+          "description": "Grid to resolve a bare slug in. Required only when a bare slug is ambiguous across grids you belong to.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "entity_id"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "access_requested": {
+          "description": "True when the owner gates access and a request was sent on your behalf.",
+          "type": "boolean"
+        },
+        "can_edit": {
+          "description": "True once you have push access (owner or collaborator). False = still view-only.",
+          "type": "boolean"
+        },
+        "entity_id": {
+          "description": "The SAME entity you now collaborate on — pass it to grid_pull, then to grid_plug as target_entity_id. Never a new/forked entity.",
+          "type": "string"
+        },
+        "grid": {
+          "description": "Its grid.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "owner_is_you": {
+          "description": "True if you already own it (nothing to grant).",
+          "type": "boolean"
+        },
+        "request_pending": {
+          "description": "True when a request is awaiting the owner's decision — access is live as soon as they approve (no re-run needed).",
+          "type": "boolean"
+        },
+        "slug": {
+          "description": "Its slug.",
+          "type": "string"
+        },
+        "url": {
+          "description": "Its public URL.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "grid_create_grid": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Display name (defaults to the slug).",
+          "type": "string"
+        },
+        "slug": {
+          "description": "The grid slug: 3-40 lowercase letters, digits, or hyphens, starting with a letter. Permanent — confirm with the user before creating.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "created": {
+          "description": "True when the grid was created.",
+          "type": "boolean"
+        },
+        "error": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code"
+          ],
+          "type": "object"
+        },
+        "grid": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "description": "Its display name.",
+              "type": "string"
+            },
+            "slug": {
+              "description": "The new grid's slug — pass it to grid_plug as `grid`.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "slug"
+          ],
+          "type": "object"
+        },
+        "needs_auth": {
+          "description": "Sign-in required first (grid_login).",
+          "type": "boolean"
+        },
+        "provisioning": {
+          "description": "True when the grid is still finishing setup in the background. grid_plug waits for readiness before deploying, so call it right away — no manual polling needed.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "grid_create_project": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "cwd": {
+          "description": "Working directory. The CLI runs in this directory. Defaults to the MCP server's working directory.",
+          "type": "string"
+        },
+        "dir": {
+          "description": "Target directory. Defaults to the current folder.",
+          "type": "string"
+        },
+        "grid": {
+          "description": "Override the active grid this project will target.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Entity kind. 'agent' scaffolds an agent: block.",
+          "enum": [
+            "app",
+            "agent"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "description": "Slug: 3-40 lowercase alphanumerics and hyphens.",
+          "type": "string"
+        },
+        "needs": {
+          "description": "Pre-declare infrastructure needs in the scaffolded cloudgrid.yaml (e.g. [\"database\",\"ai\"]).",
+          "items": {
+            "enum": [
+              "database",
+              "cache",
+              "kv",
+              "queue",
+              "pubsub",
+              "vector",
+              "ai",
+              "disk"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "org": {
+          "description": "Alias of grid (legacy). Prefer grid.",
+          "type": "string"
+        },
+        "type": {
+          "description": "Seed a web service of this type.",
+          "enum": [
+            "node",
+            "nextjs",
+            "python",
+            "static"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "name"
+      ],
+      "type": "object"
+    },
+    "outputSchema": null
+  },
+  "grid_delete": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "confirm": {
+          "const": true,
+          "description": "Must be true to proceed.",
+          "type": "boolean"
+        },
+        "name": {
+          "description": "Entity slug to delete (required).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "confirm"
+      ],
+      "type": "object"
+    },
+    "outputSchema": null
+  },
+  "grid_describe_grid": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "grid": {
+          "description": "Grid slug to describe.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "grid"
+      ],
+      "type": "object"
+    },
+    "outputSchema": null
+  },
+  "grid_diagnose": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {},
+      "type": "object"
+    },
+    "outputSchema": null
+  },
+  "grid_edit_existing_app": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "cwd": {
+          "description": "Working directory the CLI runs in. The download lands here; pass an explicit, writable directory.",
+          "type": "string"
+        },
+        "force": {
+          "description": "Pull into a non-empty directory.",
+          "type": "boolean"
+        },
+        "grid": {
+          "description": "Grid to resolve the entity in. Defaults to the active grid.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Entity slug or id to pull.",
+          "type": "string"
+        },
+        "no_bind": {
+          "description": "Download source only — skip cloudgrid.yaml and the link.",
+          "type": "boolean"
+        },
+        "target_dir": {
+          "description": "Directory to pull into (relative to cwd). Defaults to the entity name.",
+          "type": "string"
+        },
+        "version": {
+          "description": "Pull an older version's source instead of HEAD.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "outputSchema": null
+  },
+  "grid_feedback": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "grid": {
+          "description": "Read another grid's feed where you have access.",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Number of events. Default 50, max 200.",
+          "exclusiveMinimum": 0,
+          "maximum": 200,
+          "type": "integer"
+        },
+        "org": {
+          "description": "Alias of grid (legacy). Prefer grid.",
+          "type": "string"
+        },
+        "since": {
+          "description": "Only events newer than this, e.g. 24h, 7d.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "outputSchema": null
+  },
+  "grid_get": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "archived": {
+          "description": "Include archived entities (entities only).",
+          "type": "boolean"
+        },
+        "grid": {
+          "description": "Grid slug (entities/spaces only). Omit for the active grid.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Filter by kind (entities only).",
+          "enum": [
+            "app",
+            "agent",
+            "inspiration"
+          ],
+          "type": "string"
+        },
+        "resource": {
+          "description": "What to list: grids, entities, or spaces.",
+          "enum": [
+            "grids",
+            "entities",
+            "spaces"
+          ],
+          "type": "string"
+        },
+        "space": {
+          "description": "Only entities scoped to this space slug (entities only).",
+          "type": "string"
+        },
+        "status": {
+          "description": "Filter by status (entities only).",
+          "enum": [
+            "charged",
+            "live",
+            "dark",
+            "archived"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "resource"
+      ],
+      "type": "object"
+    },
+    "outputSchema": null
+  },
+  "grid_get_app_source": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "entity_id": {
+          "description": "The drop's durable id. Defaults to this session's last drop.",
+          "type": "string"
+        },
+        "grid": {
+          "description": "Grid slug — used only to construct the URL when neither url nor session state is available.",
+          "type": "string"
+        },
+        "slug": {
+          "description": "Entity slug — used with grid to construct the URL when neither url nor session state is available.",
+          "type": "string"
+        },
+        "url": {
+          "description": "The public URL of the drop (e.g. https://<grid>.cloudgrid.io/<slug>). Defaults to this session's last drop URL.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "description": "Total size of the live document in bytes.",
+          "type": "number"
+        },
+        "capabilities": {
+          "additionalProperties": false,
+          "description": "Resolved via the pickup contract: what the caller may do with this entity.",
+          "properties": {
+            "fork": {
+              "description": "Whether the caller may fork it.",
+              "type": "boolean"
+            },
+            "reason": {
+              "description": "Why an action is unavailable, e.g. not_owner.",
+              "type": "string"
+            },
+            "replug": {
+              "description": "Whether the caller may re-plug (write) this entity in place.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "replug"
+          ],
+          "type": "object"
+        },
+        "entity_id": {
+          "description": "The drop's entity id (echoed from input/session, if known).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "html": {
+          "description": "The current deployed HTML (truncated to 1.5MB when oversized).",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Resolved via the pickup contract: inspiration | app | agent.",
+          "type": "string"
+        },
+        "replug_handle": {
+          "additionalProperties": false,
+          "description": "Resolved via the pickup contract: the durable re-plug handle.",
+          "properties": {
+            "grid": {
+              "description": "The entity's home grid slug.",
+              "type": "string"
+            },
+            "slug": {
+              "description": "The entity's grid-scoped slug.",
+              "type": "string"
+            },
+            "target_entity_id": {
+              "description": "Pass as grid_plug's target_entity_id to re-plug in place.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "single_html": {
+          "description": "Resolved via the pickup contract: true when this is a single editable HTML document (edit-in-place); false → multi-file.",
+          "type": "boolean"
+        },
+        "source_download_url": {
+          "description": "Resolved via the pickup contract: the source-download route (used for the multi-file fallback message).",
+          "type": "string"
+        },
+        "truncated": {
+          "description": "True if the body exceeded 1.5MB and was cut — the drop may be multi-file.",
+          "type": "boolean"
+        },
+        "url": {
+          "description": "The URL that was fetched.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "entity_id",
+        "bytes",
+        "truncated",
+        "html"
+      ],
+      "type": "object"
+    }
+  },
+  "grid_get_template": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "description": "What to fetch.",
+          "enum": [
+            "workflow",
+            "template",
+            "example",
+            "rule",
+            "troubleshooting",
+            "doc"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "description": "The entry name, e.g. 'presentation' or 'deck'.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "name"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "description": "The full content of the corpus entry.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "The requested kind.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The requested name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "content"
+      ],
+      "type": "object"
+    }
+  },
+  "grid_get_url": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Entity name. Omit for the entity linked to the current directory.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "outputSchema": null
+  },
+  "grid_hello": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "grid": {
+          "description": "Grid slug to plug into. Omit on the first call to be asked.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Who to greet. Defaults to 'world'.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "entity_id": {
+          "description": "Re-plug handle.",
+          "type": "string"
+        },
+        "error": {
+          "description": "True when the grid listing failed (network/auth error). The text carries a human-readable message. Do NOT treat this as needs_grid_create.",
+          "type": "boolean"
+        },
+        "needs_auth": {
+          "description": "True when the user must sign in first.",
+          "type": "boolean"
+        },
+        "needs_grid": {
+          "description": "True when the user must choose a grid.",
+          "type": "boolean"
+        },
+        "url": {
+          "description": "The live URL, once plugged.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "grid_info": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Entity name. Omit for the entity linked to the current directory.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "outputSchema": null
+  },
+  "grid_list_grids": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {},
+      "type": "object"
+    },
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "orgs": {
+          "description": "The user's grid memberships.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "is_active": {
+                "description": "True if this is the user's currently active grid.",
+                "type": "boolean"
+              },
+              "name": {
+                "description": "Human-readable grid name.",
+                "type": "string"
+              },
+              "render_ready": {
+                "description": "True if the grid's DNS and TLS are provisioned and pages will load. False means the grid is still being set up.",
+                "type": "boolean"
+              },
+              "role": {
+                "description": "User's role in the grid.",
+                "type": "string"
+              },
+              "slug": {
+                "description": "Org slug.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "slug",
+              "name",
+              "role",
+              "render_ready"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "orgs"
+      ],
+      "type": "object"
+    }
+  },
+  "grid_list_versions": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Entity name. Omit for the entity linked to the current directory.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "outputSchema": null
+  },
+  "grid_login": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {},
+      "type": "object"
+    },
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "login_url": {
+          "description": "URL to open in a browser to complete sign-in.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "login_url"
+      ],
+      "type": "object"
+    }
+  },
+  "grid_login_status": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "description": "The sign-in code. Defaults to the most recent grid_login.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "email": {
+          "description": "Signed-in email, when authenticated.",
+          "type": "string"
+        },
+        "status": {
+          "description": "Current sign-in state.",
+          "enum": [
+            "authenticated",
+            "pending"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "type": "object"
+    }
+  },
+  "grid_logout": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {},
+      "type": "object"
+    },
+    "outputSchema": null
+  },
+  "grid_note": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "summary": {
+          "description": "A short plain-language summary of what was built and why.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "summary"
+      ],
+      "type": "object"
+    },
+    "outputSchema": null
+  },
+  "grid_pickup": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "entity_id": {
+          "description": "The source app to copy: a canonical UUID or <grid-slug>/<entity-slug>.",
+          "type": "string"
+        },
+        "grid": {
+          "description": "Grid to create your copy in. Required only when you belong to more than one grid.",
+          "type": "string"
+        },
+        "id": {
+          "description": "Alias of entity_id (legacy). Prefer entity_id.",
+          "type": "string"
+        },
+        "into_org_slug": {
+          "description": "Alias of grid (legacy). Prefer grid.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Slug for your copy. Omit to derive one from the source.",
+          "type": "string"
+        },
+        "source_version_id": {
+          "description": "Copy an older version instead of HEAD, e.g. v_a1b2c3d.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "entity_id"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "current_version_id": {
+          "description": "Your copy's current version id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "entity_id": {
+          "description": "Your copy's entity id — pass as grid_plug's target_entity_id to update it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "forked_from": {
+          "description": "Source entity_id (lineage).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "forked_from_version_id": {
+          "description": "Source version, when a specific one was copied.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "grid_slug": {
+          "description": "The grid your copy landed in.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "description": "app | agent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "Your copy's slug.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "entity_id",
+        "name",
+        "kind",
+        "grid_slug",
+        "forked_from",
+        "forked_from_version_id",
+        "current_version_id"
+      ],
+      "type": "object"
+    }
+  },
+  "grid_plug": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "anon": {
+          "description": "Deprecated — does not publish. A new plug needs sign-in: without it grid_plug returns needs_auth and publishes nothing, even with anon: true; when signed in it is ignored. Do not pass it. To edit an existing anonymous drop, pass target_entity_id + owner_token instead.",
+          "type": "boolean"
+        },
+        "artifact_files": {
+          "description": "The source inline, one entry per file — for hosted/no-filesystem transports (a multi-file app). For a single HTML page prefer `html`. Prefer `path` on the local edition. Mutually exclusive with `html` and `path`.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "content": {
+                "description": "File content. Base64 when encoding is base64, otherwise UTF-8 text.",
+                "type": "string"
+              },
+              "encoding": {
+                "description": "Content encoding. Default utf8.",
+                "enum": [
+                  "utf8",
+                  "base64"
+                ],
+                "type": "string"
+              },
+              "path": {
+                "description": "Repo-relative path, e.g. index.html or services/web/index.js.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "cloudgrid_yaml": {
+          "description": "Inline cloudgrid.yaml (the entity manifest). Optional — server auto-detection applies when omitted. On re-plug, a name: change is a warning only; it never renames the entity or moves the URL.",
+          "type": "string"
+        },
+        "confirm_new_app": {
+          "description": "Set true to confirm plugging a source that already contains a cloudgrid.yaml as a NEW runtime app. On a create, if the source has a cloudgrid.yaml and this is not set, grid_plug returns needs_confirmation so you can ask the user first (or use target_entity_id to re-plug an existing entity).",
+          "type": "boolean"
+        },
+        "filename": {
+          "description": "Filename for the single-file `html` path. Defaults to index.html.",
+          "type": "string"
+        },
+        "grid": {
+          "description": "On create: the grid slug to plug into. The destination grid is the USER'S CHOICE — treat it like visibility: NEVER infer one silently, and never reuse a previous or active grid without the user. If the user has more than one grid, CONFIRM which grid before plugging (omit this and grid_plug returns needs_grid with the grid list to choose from); a single-grid user is not asked. State the destination in the user's own terms (\"plugging into <grid>\") BEFORE the entity is created — a new entity in the wrong grid gets the wrong URL, is exposed to the wrong grid's members, and inherits the wrong datastore tier and namespace, and that is expensive to catch after the fact. On re-plug the entity never moves grids, but pass its home grid here when it differs from your active grid (the API checks your membership in the entity's grid). An existing anonymous drop (re-plugged with its owner_token) stays in the Guest grid.",
+          "type": "string"
+        },
+        "hints": {
+          "additionalProperties": false,
+          "description": "Classification hints for the CREATE path (not entity targeting — that's target_entity_id).",
+          "properties": {
+            "kind": {
+              "description": "Force the detected kind; omit to let the server auto-detect.",
+              "enum": [
+                "inspiration",
+                "app",
+                "agent"
+              ],
+              "type": "string"
+            },
+            "yaml": {
+              "description": "An inline cloudgrid.yaml override used as a detection hint.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "html": {
+          "description": "A single self-contained HTML document to publish as an inspiration — the fast single-file path. Pass the COMPLETE raw HTML inline (CSS+JS inline, images/fonts as data: URIs); a small fragment is wrapped into a full document. Do NOT base64-encode it, and do NOT pass an `@`-prefixed path or a file path here. Mutually exclusive with `path` and `artifact_files`. Materialized as one index.html and published instantly on any edition, anonymously (claimable) or into your grid when signed in.",
+          "type": "string"
+        },
+        "owner_token": {
+          "description": "The owner token of an anonymously-created drop — authorizes an anonymous re-plug (with target_entity_id). Re-minted on every anonymous edit; always persist the newest one from the result.",
+          "type": "string"
+        },
+        "path": {
+          "description": "Local edition: path to the entity folder, a single file, or a .zip ARCHIVE to upload. A folder is read recursively, honoring .gitignore/.cloudgridignore (plus .git/node_modules always skipped). A .zip is extracted and plugged: with its own cloudgrid.yaml it plugs as that project; otherwise it becomes a static app (all files served). Use this for \"deploy this zip\" / \"gallery from these zipped images\" requests. Mutually exclusive with `html` and `artifact_files` — EXCEPT `html` + a .zip of assets: the html becomes index.html over the archive's files (generate the page, let the zip supply the images).",
+          "type": "string"
+        },
+        "session_note": {
+          "description": "One short paragraph on what you built and why. Recorded for CloudGrid QA alongside the plug.",
+          "type": "string"
+        },
+        "slug": {
+          "description": "Alternative RE-PLUG handle: paired with `grid`, resolves to an existing entity (the pickup contract's replug_handle) and updates it in place — for a client that holds only grid+slug, not the raw entity_id. target_entity_id takes precedence. A grid+slug that does NOT resolve to an existing entity is treated as a CREATE (never a false-positive re-plug).",
+          "type": "string"
+        },
+        "target_entity_id": {
+          "description": "Present → RE-PLUG: update this exact entity in place (same entity_id, slug, URL, plug history). Absent → CREATE a new entity. This is the durable handle a previous plug returned — persist it. Re-plugging an anonymously-created drop needs its owner_token instead of sign-in.",
+          "type": "string"
+        },
+        "url": {
+          "description": "Alternative RE-PLUG handle: the entity's public CloudGrid URL (e.g. https://<grid>.cloudgrid.io/<slug>) — use it to edit in place when you have the URL but no target_entity_id (the common \"change the color of this page\" flow after grid_get_app_source). The grid is read from the host and the entity is resolved via the pickup contract, so no `grid` param is needed. target_entity_id and grid+slug take precedence. A non-CloudGrid host is ignored (never redirects the write); a URL that does not resolve is treated as a CREATE.",
+          "type": "string"
+        },
+        "user_request": {
+          "description": "A brief version of the user's request that led to this deploy. Recorded for CloudGrid QA — include it by default; omit only if the user asked not to share it.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "claim_message": {
+          "description": "Anonymous drops only (no longer created): the claim nudge to relay.",
+          "type": "string"
+        },
+        "claim_url": {
+          "description": "Anonymous drops only (no longer created): sign-in link to claim ownership.",
+          "type": "string"
+        },
+        "console_url": {
+          "description": "Emitted on every non-building plug (both editions): a link to the grid in the console.",
+          "type": "string"
+        },
+        "current_visibility": {
+          "description": "Web authed inspiration create: the visibility set after publish (link).",
+          "type": "string"
+        },
+        "entity_id": {
+          "description": "Globally unique — pass back as target_entity_id to re-plug.",
+          "type": "string"
+        },
+        "error": {
+          "description": "True when the grid listing failed (network/auth error). The text carries a human-readable message. Do NOT treat this as needs_grid_create.",
+          "type": "boolean"
+        },
+        "grid": {
+          "description": "Home grid slug; null for an anonymous Guest-Grid drop.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "grids": {
+          "description": "Grid-picker ask: the grids to choose from.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "is_active": {
+                "type": "boolean"
+              },
+              "name": {
+                "type": "string"
+              },
+              "render_ready": {
+                "type": "boolean"
+              },
+              "role": {
+                "type": "string"
+              },
+              "slug": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "slug",
+              "name",
+              "role",
+              "render_ready",
+              "is_active"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "needs_auth": {
+          "description": "Auth gate: a NEW deploy was attempted while not signed in, and nothing was published. Call grid_login so the user signs in, then re-call grid_plug. There is no guest or anonymous publish option — do not offer one.",
+          "type": "boolean"
+        },
+        "needs_grid": {
+          "description": "Grid-picker ask: a signed-in user with >1 grid must choose one before this create proceeds. Pass the chosen slug back in `grid`.",
+          "type": "boolean"
+        },
+        "needs_grid_create": {
+          "description": "Zero-grid ask: the account has no grid yet — suggest a slug, confirm with the user, call grid_create_grid, then re-call grid_plug with grid: <slug>.",
+          "type": "boolean"
+        },
+        "needs_org": {
+          "description": "Alias of needs_grid (legacy picker alias).",
+          "type": "boolean"
+        },
+        "orgs": {
+          "description": "Alias of grids (legacy picker alias).",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "is_active": {
+                "type": "boolean"
+              },
+              "name": {
+                "type": "string"
+              },
+              "render_ready": {
+                "type": "boolean"
+              },
+              "role": {
+                "type": "string"
+              },
+              "slug": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "slug",
+              "name",
+              "role",
+              "render_ready",
+              "is_active"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "owner_token": {
+          "description": "Anonymous drops: the bearer owner token (re-plug + claim). Re-minted on every anonymous edit — persist the newest.",
+          "type": "string"
+        },
+        "poll_url": {
+          "description": "Deploy status path while building (runtimes only).",
+          "type": "string"
+        },
+        "slug": {
+          "description": "Grid-scoped slug.",
+          "type": "string"
+        },
+        "source": {
+          "description": "Transport used for this deploy: `path` (disk), `html`, or `artifact_files` (inline). Inline copies risk truncation on large files.",
+          "type": "string"
+        },
+        "status": {
+          "description": "live | building | created | updated …",
+          "type": "string"
+        },
+        "url": {
+          "description": "Canonical serving URL (stable across re-plugs; server-composed, flat-arch-aware).",
+          "type": "string"
+        },
+        "via": {
+          "description": "Recovery marker: 'cli-fallback' when a signed-in create was published through the bundled CloudGrid CLI.",
+          "type": "string"
+        },
+        "visibility_options": {
+          "description": "Web authed inspiration create: available visibility levels.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "label": {
+                "description": "Human-readable label.",
+                "type": "string"
+              },
+              "value": {
+                "description": "Visibility value to pass to grid_visibility.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "value",
+              "label"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "grid_pull": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "claim_token": {
+          "description": "Anonymous drop only: its owner token — claims that drop into your account (ownership transfer).",
+          "type": "string"
+        },
+        "claim_url": {
+          "description": "Alternative to claim_token for an anonymous drop — the claim_url; the token is read from it.",
+          "type": "string"
+        },
+        "entity_id": {
+          "description": "The entity id to pull. Defaults to this session's last anonymous drop.",
+          "type": "string"
+        },
+        "grid": {
+          "description": "Grid to resolve a bare slug in. Required only when you belong to more than one grid.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "access": {
+          "description": "Access level when can_edit is false (e.g. 'view_only').",
+          "type": "string"
+        },
+        "can_edit": {
+          "description": "True if you can plug/update it (owner or collaborator). False = view-only.",
+          "type": "boolean"
+        },
+        "entity_id": {
+          "description": "The entity you pulled.",
+          "type": "string"
+        },
+        "error": {
+          "additionalProperties": false,
+          "description": "Error envelope when the grid slug is wrong or inaccessible. code is the server error code (e.g. ORG_NOT_ACCESSIBLE).",
+          "properties": {
+            "code": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code"
+          ],
+          "type": "object"
+        },
+        "grid": {
+          "description": "Its grid.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "needs_grid_create": {
+          "description": "True when the account has no grid yet — route to grid_create_grid before retrying.",
+          "type": "boolean"
+        },
+        "owner_is_you": {
+          "description": "True if you own it.",
+          "type": "boolean"
+        },
+        "slug": {
+          "description": "Its slug.",
+          "type": "string"
+        },
+        "url": {
+          "description": "Its public URL.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "grid_rename": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Entity slug.",
+          "type": "string"
+        },
+        "new_name": {
+          "description": "New display name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "new_name"
+      ],
+      "type": "object"
+    },
+    "outputSchema": null
+  },
+  "grid_report": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "description": "Optional category, e.g. the failing tool name (\"deploy\"). Defaults to \"mcp\".",
+          "type": "string"
+        },
+        "context": {
+          "additionalProperties": false,
+          "description": "The failed-request context. Redaction is key-name-only (a value is dropped only when its KEY looks secret) client-side, and the server applies the same key-name filter — a secret embedded in a value is not redacted by either.",
+          "properties": {
+            "error_code": {
+              "description": "The server error code, e.g. INTERNAL_ERROR.",
+              "type": "string"
+            },
+            "error_detail": {
+              "description": "The error message / detail surfaced to the agent.",
+              "type": "string"
+            },
+            "grid": {
+              "description": "The grid/org slug involved, if any.",
+              "type": "string"
+            },
+            "inputs": {
+              "description": "The failing inputs (e.g. the HTML/args). Keep it minimal and do NOT include secrets — a secret embedded in a value here is not redacted."
+            },
+            "original_request": {
+              "description": "What the user asked for, in one line.",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The CloudGrid tool that failed, e.g. grid_plug.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "failed_step": {
+          "description": "The server-side pipeline step that failed, if known.",
+          "type": "string"
+        },
+        "http_status": {
+          "description": "The HTTP status of the final failed request, if applicable.",
+          "type": "number"
+        },
+        "include_conversation": {
+          "description": "Default false. Set true ONLY if the user explicitly agreed to include the full conversation.",
+          "type": "boolean"
+        },
+        "message": {
+          "description": "Short summary of what failed (required). Do not paste the whole conversation here.",
+          "type": "string"
+        },
+        "trace_id": {
+          "description": "The server's trace/deploy id from the failed response, if any (helps support pivot to the trace).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "description": "Outcome of the report.",
+          "enum": [
+            "recorded",
+            "rate_limited",
+            "unauthorized",
+            "error",
+            "skipped",
+            "disabled"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "type": "object"
+    }
+  },
+  "grid_rollback_deploy": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Entity slug.",
+          "type": "string"
+        },
+        "to": {
+          "description": "Target version tag or id. Omit to roll back one version.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "outputSchema": null
+  },
+  "grid_scaffold": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "cwd": {
+          "description": "Working directory. The CLI runs in this directory. Defaults to the MCP server's working directory.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "outputSchema": null
+  },
+  "grid_set_env": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "description": "get, set, or list.",
+          "enum": [
+            "get",
+            "set",
+            "list"
+          ],
+          "type": "string"
+        },
+        "cwd": {
+          "description": "Working directory. The CLI runs in this directory. Defaults to the MCP server's working directory.",
+          "type": "string"
+        },
+        "key": {
+          "description": "Variable name. Required for get and set.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Entity slug.",
+          "type": "string"
+        },
+        "value": {
+          "description": "Variable value. Required for set.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "name"
+      ],
+      "type": "object"
+    },
+    "outputSchema": null
+  },
+  "grid_set_secret": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "description": "set or list (names only).",
+          "enum": [
+            "set",
+            "list"
+          ],
+          "type": "string"
+        },
+        "cwd": {
+          "description": "Working directory. The CLI runs in this directory. Defaults to the MCP server's working directory.",
+          "type": "string"
+        },
+        "key": {
+          "description": "Secret name. Required for set.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Entity slug.",
+          "type": "string"
+        },
+        "value": {
+          "description": "Secret value. Required for set.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "name"
+      ],
+      "type": "object"
+    },
+    "outputSchema": null
+  },
+  "grid_share": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "description": "Visibility mode. Default link.",
+          "enum": [
+            "link",
+            "private",
+            "authenticated",
+            "grid"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "description": "Entity slug.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "outputSchema": null
+  },
+  "grid_start": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {},
+      "type": "object"
+    },
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "context": {
+          "additionalProperties": false,
+          "description": "Live context from the current session.",
+          "properties": {
+            "active_grid": {
+              "description": "The user's active grid/org slug, or null.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "email": {
+              "description": "The signed-in user's email — the CloudGrid account this session is authenticated as. Present whenever signed_in is true and the session token carries an email claim (the normal case). Absent only if signed_in is false, or on the rare token that lacks the claim; the identity line in this tool's text content states which case applies. Use this to answer 'which account/user am I?'.",
+              "type": "string"
+            },
+            "identity_changed": {
+              "description": "True when the session's identity changed via a different transport Bearer. Session state was reset.",
+              "type": "boolean"
+            },
+            "session_expired": {
+              "description": "True when credentials exist but the JWT has expired. Run grid_login to sign in again.",
+              "type": "boolean"
+            },
+            "signed_in": {
+              "description": "Whether the current session is signed in.",
+              "type": "boolean"
+            },
+            "update_available": {
+              "additionalProperties": false,
+              "description": "Present when this local MCP is behind the latest release — relay the reinstall note to the user.",
+              "properties": {
+                "current": {
+                  "description": "This MCP's version.",
+                  "type": "string"
+                },
+                "latest": {
+                  "description": "Latest published version.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "current",
+                "latest"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "active_grid",
+            "signed_in"
+          ],
+          "type": "object"
+        },
+        "playbook": {
+          "description": "The operating rules and golden path for building with CloudGrid.",
+          "type": "string"
+        },
+        "workflows": {
+          "description": "Available workflows.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "description": "Workflow name to pass to grid_get_template.",
+                "type": "string"
+              },
+              "summary": {
+                "description": "What the workflow does.",
+                "type": "string"
+              },
+              "when": {
+                "description": "When to use this workflow.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "when",
+              "summary"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "playbook",
+        "workflows"
+      ],
+      "type": "object"
+    }
+  },
+  "grid_status": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Entity name or trace id. Omit for the org dashboard.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "outputSchema": null
+  },
+  "grid_switch_grid": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "grid": {
+          "description": "Grid slug to switch to.",
+          "type": "string"
+        },
+        "org": {
+          "description": "Alias of grid (legacy). Prefer grid.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "outputSchema": null
+  },
+  "grid_take_offline": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "confirm": {
+          "const": true,
+          "description": "Must be true to proceed.",
+          "type": "boolean"
+        },
+        "name": {
+          "description": "Entity slug to take down (required).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "confirm"
+      ],
+      "type": "object"
+    },
+    "outputSchema": null
+  },
+  "grid_view_logs": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Entity name. Omit to use the entity linked to the current directory.",
+          "type": "string"
+        },
+        "since": {
+          "description": "Only logs newer than this, e.g. 5m, 1h, 2d.",
+          "type": "string"
+        },
+        "tail": {
+          "description": "Number of recent lines. Default 100.",
+          "exclusiveMinimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "outputSchema": null
+  },
+  "grid_visibility": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "entity_id": {
+          "description": "Entity id. Defaults to this session's last drop.",
+          "type": "string"
+        },
+        "grid": {
+          "description": "Grid of the entity. Defaults to the active grid.",
+          "type": "string"
+        },
+        "indexed": {
+          "description": "With visibility: link — make the page search-engine indexable.",
+          "type": "boolean"
+        },
+        "inside": {
+          "description": "Axis 1 — who in the grid can see it: private (only the user), spaces (selected spaces — pass `spaces`), or grid (everyone in the grid). Use together with `outside`, instead of `visibility`.",
+          "enum": [
+            "private",
+            "spaces",
+            "grid"
+          ],
+          "type": "string"
+        },
+        "kind": {
+          "description": "Entity kind. Omit to auto-detect from this session's last drop (falls back to trying the runtime surface, then the inspiration surface).",
+          "enum": [
+            "inspiration",
+            "app",
+            "agent"
+          ],
+          "type": "string"
+        },
+        "org": {
+          "description": "Alias of grid (legacy). Prefer grid.",
+          "type": "string"
+        },
+        "outside": {
+          "description": "Axis 2 — reach beyond the grid: none, link (anyone with the link; add require_signin: true for signed-in accounts only), or public (anyone, and findable by search engines).",
+          "enum": [
+            "none",
+            "link",
+            "public"
+          ],
+          "type": "string"
+        },
+        "require_signin": {
+          "description": "With outside: link (or visibility: link) — the link requires a signed-in CloudGrid account.",
+          "type": "boolean"
+        },
+        "spaces": {
+          "description": "Space slugs, for inside: spaces (or the legacy space/grid modes).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "target": {
+          "description": "Alias of entity_id (legacy). Prefer entity_id.",
+          "type": "string"
+        },
+        "visibility": {
+          "description": "Simple mode: private | grid | link ('public' is an alias of link — pass indexed: true for search-findable; 'authenticated' is the retired alias for a sign-in-required link; 'space' needs the `spaces` list). Pass either this OR the inside/outside axes.",
+          "enum": [
+            "private",
+            "grid",
+            "link",
+            "public",
+            "authenticated",
+            "space"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "external_access": {
+          "description": "Stored axis: reach beyond the grid (none | link | public).",
+          "type": "string"
+        },
+        "link_indexed": {
+          "description": "Whether the link is search-indexed.",
+          "type": "boolean"
+        },
+        "require_signin": {
+          "description": "Whether the link requires sign-in.",
+          "type": "boolean"
+        },
+        "share_scope": {
+          "description": "Stored axis: who in the grid (private | spaces | grid).",
+          "type": "string"
+        },
+        "url": {
+          "description": "URL of the entity, if returned.",
+          "type": "string"
+        },
+        "visibility": {
+          "description": "The legacy mode that was set, when a simple mode was used.",
+          "type": "string"
+        },
+        "visibility_spaces": {
+          "description": "The space slugs, when share_scope is spaces.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "grid_whoami": {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {},
+      "type": "object"
+    },
+    "outputSchema": null
+  }
+}

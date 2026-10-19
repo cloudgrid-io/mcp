@@ -84,6 +84,20 @@ const AUTH_ASK_SIGNED_OUT =
   "(assistant: call grid_login now; after they finish, retry grid_plug. Do not offer " +
   "any sign-in-free path. Stop and wait for the sign-in to complete.)";
 
+// ── Strict tool inputs (#400) ──────────────────────────────────────────────
+// Every tool's input is a z.strictObject, so `tools/list` advertises
+// `additionalProperties: false` under zod 3 AND zod 4. The SDK renders a tool
+// input in zod 4's "input" mode, where a plain z.object (which strips unknown
+// keys rather than rejecting them) gets no `additionalProperties` at all; only a
+// strict object keeps `false`. A raw shape is wrapped here; an empty shape is
+// left alone (the SDK advertises it as `{type: "object", properties: {}}`, as
+// before). Objects nested inside an input use z.strictObject at their own site.
+// test/tools-list-contract.test.mjs holds the emitted contract.
+export function strictInput(schema) {
+  if (!schema || typeof schema !== "object" || schema._def || schema._zod) return schema;
+  return Object.keys(schema).length > 0 ? z.strictObject(schema) : schema;
+}
+
 // ── Registration ───────────────────────────────────────────────────────────────
 // Registers the tools onto `server`. ctx.edition decides whether the CLI-wrapping
 // tools are included (they need a local machine).
@@ -122,11 +136,11 @@ export function registerTools(server, ctx) {
   // grid_copy_app, grid_claim_anonymous_deploy, grid_download_source,
   // grid_fetch, grid_logs) are gone rather than advertised as redirects.
   const reg = (name, config, handler) => {
-    server.registerTool(name, config, withCapture(name, handler));
+    server.registerTool(name, { ...config, inputSchema: strictInput(config.inputSchema) }, withCapture(name, handler));
   };
 
   const regTool = (name, title, description, schema, annotations, handler) => {
-    server.registerTool(name, { title, description, inputSchema: schema, annotations }, withCapture(name, handler));
+    server.registerTool(name, { title, description, inputSchema: strictInput(schema), annotations }, withCapture(name, handler));
   };
 
   // ── Widget resources (web edition, ChatGPT Apps SDK) ──────────────────────
@@ -384,7 +398,7 @@ export function registerTools(server, ctx) {
             "over the archive's files (generate the page, let the zip supply the images).",
           ),
         }),
-    artifact_files: z.array(z.object({
+    artifact_files: z.array(z.strictObject({
       path: z.string().describe("Repo-relative path, e.g. index.html or services/web/index.js."),
       content: z.string().describe("File content. Base64 when encoding is base64, otherwise UTF-8 text."),
       encoding: z.enum(["utf8", "base64"]).optional().describe("Content encoding. Default utf8."),
@@ -427,7 +441,7 @@ export function registerTools(server, ctx) {
       "the pickup contract, so no `grid` param is needed. target_entity_id and grid+slug take precedence. A " +
       "non-CloudGrid host is ignored (never redirects the write); a URL that does not resolve is treated as a CREATE.",
     ),
-    hints: z.object({
+    hints: z.strictObject({
       kind: z.enum(["inspiration", "app", "agent"]).optional().describe("Force the detected kind; omit to let the server auto-detect."),
       yaml: z.string().optional().describe("An inline cloudgrid.yaml override used as a detection hint."),
     }).optional().describe("Classification hints for the CREATE path (not entity targeting — that's target_entity_id)."),
@@ -1104,7 +1118,7 @@ export function registerTools(server, ctx) {
           .string()
           .describe("Short summary of what failed (required). Do not paste the whole conversation here."),
         context: z
-          .object({
+          .strictObject({
             tool: z.string().optional().describe("The CloudGrid tool that failed, e.g. grid_plug."),
             inputs: z.any().optional().describe("The failing inputs (e.g. the HTML/args). Keep it minimal and do NOT include secrets — a secret embedded in a value here is not redacted."),
             grid: z.string().optional().describe("The grid/org slug involved, if any."),
