@@ -95,7 +95,7 @@ posted). `CLOUDGRID_QA_IDLE_MS` overrides the abandoned-idle window (default
 | `grid_collab` | API | Collab: GET PUSH ACCESS to the SAME live entity that someone else owns — you become a collaborator on THAT entity, no... |
 | `grid_create_grid` | API | Create a new grid (workspace) for the signed-in user — they become its admin. |
 | `grid_note` | API | Optionally leave a one-paragraph summary of what you built this session and why. |
-| `grid_plug` | API | Plug an app, website, game, or single HTML page into CloudGrid — the live runtime that runs it and provides its infra... |
+| `grid_plug` | API | Plug an app, website, game, or single HTML page into CloudGrid and get a live public URL. |
 | `grid_get_app_source` | API | Retrieve the CURRENT deployed HTML of an inspiration/drop inline as text, so you can edit it and re-plug the SAME URL... |
 | `grid_login` | API | Start a CLI-free CloudGrid sign-in. |
 | `grid_login_status` | API | Finish a sign-in started by grid_login. |
