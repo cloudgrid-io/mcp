@@ -930,7 +930,7 @@
           "type": "boolean"
         },
         "artifact_files": {
-          "description": "The source inline, one entry per file — for hosted/no-filesystem transports (a multi-file app). For a single HTML page prefer `html`. Prefer `path` on the local edition. Mutually exclusive with `html` and `path`.",
+          "description": "The source inline, one entry per file — for hosted/no-filesystem transports (a multi-file app). For a single HTML page prefer `html`. Prefer `path` on the local edition. Sent INLINE (copied through this call), so large files (lockfiles, binaries) can truncate and silently fail the build; for a real framework, a lockfile, or binary assets, the disk-based CLI (`npx -y @cloudgrid-io/cli plug` where it is already signed in) is more reliable — if you can only deploy inline and would have to omit large files, tell the user rather than dropping them silently. Mutually exclusive with `html` and `path`.",
           "items": {
             "additionalProperties": false,
             "properties": {
