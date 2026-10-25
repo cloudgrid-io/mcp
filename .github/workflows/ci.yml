@@ -343,6 +343,10 @@ jobs:
       # X-CloudGrid-Grid header, falls back to active grid, and a 400
       # mentioning the header is rewritten to name the `grid` parameter.
       - run: npm run test:pull-grid
+      # grid_pull claim-token scope (#418): the session's anon claim token
+      # rides only to the entity it was minted for; any other entity's pull
+      # sends no claim_token; an explicit claim_token passes through.
+      - run: npm run test:pull-claim-scope
       # grid_pull output-schema validation: all four response modes
       # (pull result, ORG_NOT_ACCESSIBLE, needs_grid_create, view-only)
       # must pass additionalProperties:false validation.

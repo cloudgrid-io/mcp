@@ -760,6 +760,17 @@ export async function runReport(
   });
 }
 
+// The session's anonymous claim token (the anon owner token) is a capability
+// bound to the ONE entity it was minted for. Return it only when `entityId` is
+// that entity: the remembered `entity_id`, else the token's own `ent` claim
+// (decoded without verifying, only to compare ids; the server verifies on use).
+// Any other entity gets no token, so it never leaks to an unrelated route (#418).
+export function anonClaimTokenFor(claim, entityId) {
+  if (!claim?.token || !entityId) return null;
+  const boundId = claim.entity_id || decodeJwt(claim.token).ent || null;
+  return boundId === entityId ? claim.token : null;
+}
+
 // grid_pull — continue/edit an existing entity IN PLACE (POST /entities/:id/pickup).
 // Like `git clone` of the SAME entity: your next grid_plug (target_entity_id)
 // updates it. Needs push access — you must OWN it or be a COLLABORATOR. A
@@ -789,7 +800,6 @@ export async function runPull(ctx, { claim_token, claim_url, entity_id, grid } =
       claimToken = null;
     }
   }
-  if (!claimToken && ctx.state.lastAnonClaim) claimToken = ctx.state.lastAnonClaim.token;
 
   // Pickup needs the target entity id in the URL path. Prefer an explicit one,
   // else the entity remembered from this session's anonymous drop.
@@ -798,6 +808,9 @@ export async function runPull(ctx, { claim_token, claim_url, entity_id, grid } =
     ctx.state.lastAnonClaim?.entity_id ||
     // The last drop counts only when it is anon-owned (it holds an owner token).
     (ctx.state.lastDrop?.owner_token ? ctx.state.lastDrop.entity_id : null);
+  // The session's anon claim token rides along only for the entity it was
+  // minted for (#418). Pulling any other entity sends no claim_token.
+  if (!claimToken) claimToken = anonClaimTokenFor(ctx.state.lastAnonClaim, targetId);
   if (!claimToken && targetId && ctx.state.lastDrop?.entity_id === targetId) {
     claimToken = ctx.state.lastDrop.owner_token ?? null;
   }
@@ -1899,11 +1912,8 @@ export async function runPlug(ctx, input, deps = {}) {
     // session made anonymously.
     if (ctx.state.lastDrop?.entity_id === targetEntityId && ctx.state.lastDrop.owner_token) {
       ownerToken = ctx.state.lastDrop.owner_token;
-    } else if (
-      ctx.state.lastAnonClaim?.entity_id === targetEntityId &&
-      ctx.state.lastAnonClaim.token
-    ) {
-      ownerToken = ctx.state.lastAnonClaim.token;
+    } else {
+      ownerToken = anonClaimTokenFor(ctx.state.lastAnonClaim, targetEntityId);
     }
   }
   // An anon-minted (Guest-Grid) drop is edited via the owner-token wire even
