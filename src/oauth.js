@@ -117,10 +117,10 @@ function normalizeResource(uri) {
 //   3. Later, DROP the old key. client_ids minted under it stop verifying and
 //      those users re-add the connector ONCE — the deliberate-rotation cost,
 //      versus today's every-deploy breakage.
-// An attacker who obtains the secret can forge a client_id for an arbitrary
-// redirect set — but /oauth/register already mints one for any redirect set
-// unauthenticated, so the secret gates INTEGRITY, not registration; PKCE +
-// CloudGrid sign-in still gate getting a token.
+// Whoever holds the secret can forge a client_id for an arbitrary redirect set,
+// so /oauth/authorize re-applies the redirect URI rules to every client_id it
+// verifies rather than trusting the signed set alone; PKCE + CloudGrid sign-in
+// still gate getting a token.
 const CLIENT_ID_PREFIX = "cg1"; // versioned so the scheme can evolve
 
 // A client_id CARRIES its redirect set and travels in a query string, so the set
@@ -147,6 +147,58 @@ function canonicalRedirectUris(uris) {
   return JSON.stringify([...new Set(uris.map((u) => String(u)))].sort());
 }
 
+// The signed payload. Without a client_name it is the bare redirect array — the
+// original format, so every client_id minted before client_name was carried
+// still verifies unchanged. With one, it is { redirect_uris, client_name }.
+function signedPayload(canonical, clientName) {
+  if (!clientName) return canonical;
+  return JSON.stringify({ redirect_uris: JSON.parse(canonical), client_name: clientName });
+}
+
+// A registered client_name is shown on the consent step, so it is bounded and
+// stripped of control characters. It is self-asserted by the client: the consent
+// step shows the redirect HOST alongside it, and the host is what the user can
+// actually check.
+const MAX_CLIENT_NAME_LENGTH = 80;
+function cleanClientName(name) {
+  if (typeof name !== "string") return "";
+  return name.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, MAX_CLIENT_NAME_LENGTH);
+}
+
+// --- Redirect URI rules -------------------------------------------------------
+// A redirect URI must be `https:`, or `http:` on a loopback address (local
+// clients run a callback listener on 127.0.0.1 / [::1] / localhost). Anything
+// else — other schemes, http to a non-loopback host, a fragment (RFC 6749
+// §3.1.2), embedded credentials — is refused. Enforced at registration
+// (invalid_redirect_uri, RFC 7591 §3.2.2) and again at authorize, so a client_id
+// minted before these rules cannot be used with a URI that breaks them.
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "[::1]", "localhost"]);
+
+// Returns null when the URI is acceptable, else a reason for error_description.
+export function redirectUriProblem(uri) {
+  if (typeof uri !== "string" || uri === "") return "redirect_uri must be a non-empty string.";
+  let u;
+  try {
+    u = new URL(uri);
+  } catch {
+    return "redirect_uri must be an absolute URI.";
+  }
+  if (uri.includes("#")) return "redirect_uri must not contain a fragment.";
+  if (u.username || u.password) return "redirect_uri must not contain user credentials.";
+  if (u.protocol === "https:" && u.hostname) return null;
+  if (u.protocol === "http:" && LOOPBACK_HOSTS.has(u.hostname)) return null;
+  return "redirect_uri must use https, or http on a loopback address (127.0.0.1, [::1], localhost).";
+}
+
+function isHttpUrl(uri) {
+  try {
+    const { protocol } = new URL(String(uri));
+    return protocol === "https:" || protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
 function signClientId(canonical, secret) {
   const payload = b64url(Buffer.from(canonical, "utf8"));
   const signingInput = `${CLIENT_ID_PREFIX}.${payload}`;
@@ -154,7 +206,8 @@ function signClientId(canonical, secret) {
   return `${signingInput}.${sig}`;
 }
 
-// Verify a client_id against any accepted secret; returns { redirect_uris } or null.
+// Verify a client_id against any accepted secret; returns
+// { redirect_uris, client_name } or null.
 function verifyClientId(clientId, secrets) {
   const parts = String(clientId).split(".");
   if (parts.length !== 3 || parts[0] !== CLIENT_ID_PREFIX) return null;
@@ -172,8 +225,12 @@ function verifyClientId(clientId, secrets) {
   if (!ok) return null;
   try {
     const json = Buffer.from(payload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
-    const uris = JSON.parse(json);
-    return Array.isArray(uris) ? { redirect_uris: uris } : null;
+    const parsed = JSON.parse(json);
+    if (Array.isArray(parsed)) return { redirect_uris: parsed, client_name: "" };
+    if (parsed && Array.isArray(parsed.redirect_uris)) {
+      return { redirect_uris: parsed.redirect_uris, client_name: cleanClientName(parsed.client_name) };
+    }
+    return null;
   } catch {
     return null;
   }
@@ -185,39 +242,96 @@ function corsOk(res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, mcp-protocol-version");
 }
 
-// The §23-voice interstitial. Opens the CloudGrid sign-in in a new tab and polls
-// until it completes, then returns the browser to the client app.
-function interstitialHtml(sid, loginUrl) {
+// HTML-escape for text and attribute positions.
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// JSON for embedding inside an inline <script>: `<` and the JS line
+// separators are escaped so the value cannot close the script element.
+function scriptJson(value) {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
+
+// Every OAuth HTML response refuses to be framed, and does not leak its URL
+// (which carries client_id and state) as a referrer.
+function oauthPageHeaders(res) {
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
+  res.setHeader("Referrer-Policy", "no-referrer");
+}
+
+function sendOAuthError(res, message) {
+  oauthPageHeaders(res);
+  res.status(400).type("text/plain; charset=utf-8").send(message);
+}
+
+// The §23-voice interstitial. First a consent step naming the client and the
+// host the browser returns to; nothing starts until the user continues. Then it
+// opens the CloudGrid sign-in in a new tab and polls until it completes, and
+// returns the browser to the client app.
+function interstitialHtml({ sid, loginUrl, clientName, redirectHost }) {
+  const who = clientName
+    ? `<strong>${escapeHtml(clientName)}</strong> (<strong>${escapeHtml(redirectHost)}</strong>)`
+    : `An application at <strong>${escapeHtml(redirectHost)}</strong>`;
   return `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
 <title>Connect CloudGrid</title>
 <link rel="icon" type="image/png" href="/favicon.png">
 <style>
   body { margin:0; min-height:100vh; display:grid; place-items:center;
          font-family: Inter, system-ui, sans-serif; background:#0d0d0f; color:#fafafa; }
   main { max-width:420px; padding:2.5rem; text-align:center; }
+  p.host { margin-top:1rem; font-size:.95rem; }
   a.btn { display:inline-block; margin-top:1.25rem; padding:.75rem 1.5rem; border-radius:8px;
           background:#fafafa; color:#0d0d0f; text-decoration:none; font-weight:600; }
   p.status { margin-top:1.5rem; font-size:.9rem; opacity:.7; }
+  [hidden] { display:none !important; }
 </style></head>
 <body><main>
   <h1>Connect CloudGrid</h1>
-  <p>Sign in with your CloudGrid account. This page returns to the app when you finish.</p>
-  <a class="btn" href="${loginUrl}" target="_blank" rel="noopener">Sign in to CloudGrid</a>
-  <p class="status" id="st">Waiting for sign-in.</p>
+  <p id="consent">${who} wants to connect to your CloudGrid account.</p>
+  <p class="host">After sign-in you will be returned to <strong>${escapeHtml(redirectHost)}</strong>. If you did not start this, close this page.</p>
+  <a class="btn" id="go" href="${escapeHtml(loginUrl)}" target="_blank" rel="noopener noreferrer">Continue to sign in</a>
+  <p class="status" id="st" hidden>Waiting for sign-in.</p>
 </main>
 <script>
+  const POLL_URL = ${scriptJson(`/oauth/authorize/poll?sid=${sid}`)};
+  const st = document.getElementById("st");
+  let started = false;
   async function tick() {
     try {
-      const r = await fetch("/oauth/authorize/poll?sid=${sid}");
+      const r = await fetch(POLL_URL);
       const d = await r.json();
-      if (d.status === "ready") { location.href = d.redirect; return; }
-      if (d.status === "expired") { document.getElementById("st").textContent = "The sign-in window expired. Close this page and connect again."; return; }
+      if (d.status === "ready") {
+        let ok = false;
+        try { const u = new URL(d.redirect); ok = u.protocol === "https:" || u.protocol === "http:"; } catch {}
+        if (ok) { location.href = d.redirect; return; }
+        st.textContent = "This connection cannot be completed. Close this page and connect again.";
+        return;
+      }
+      if (d.status === "expired") { st.textContent = "The sign-in window expired. Close this page and connect again."; return; }
     } catch {}
     setTimeout(tick, 2000);
   }
-  tick();
+  document.getElementById("go").addEventListener("click", () => {
+    st.hidden = false;
+    if (started) return;
+    started = true;
+    tick();
+  });
 </script></body></html>`;
 }
 
@@ -325,6 +439,13 @@ export function mountOAuth(app, publicBase, opts = {}) {
       });
       return;
     }
+    for (const uri of redirectUris) {
+      const problem = redirectUriProblem(uri);
+      if (problem) {
+        res.status(400).json({ error: "invalid_redirect_uri", error_description: problem });
+        return;
+      }
+    }
     const canonical = canonicalRedirectUris(redirectUris);
     if (Buffer.byteLength(canonical, "utf8") > MAX_REDIRECT_URIS_BYTES) {
       res.status(400).json({
@@ -333,9 +454,11 @@ export function mountOAuth(app, publicBase, opts = {}) {
       });
       return;
     }
-    const clientId = signClientId(canonical, clientSecrets.secrets[0]);
+    const clientName = cleanClientName(req.body?.client_name);
+    const clientId = signClientId(signedPayload(canonical, clientName), clientSecrets.secrets[0]);
     res.status(201).json({
       client_id: clientId,
+      ...(clientName ? { client_name: clientName } : {}),
       token_endpoint_auth_method: "none",
       grant_types: ["authorization_code"],
       response_types: ["code"],
@@ -362,11 +485,19 @@ export function mountOAuth(app, publicBase, opts = {}) {
     );
     const client = verifyClientId(client_id, clientSecrets.secrets);
     if (!client || !client.redirect_uris.includes(String(redirect_uri))) {
-      res.status(400).send("Unknown client or redirect_uri. Re-add the connector and try again.");
+      sendOAuthError(res, "Unknown client or redirect_uri. Re-add the connector and try again.");
+      return;
+    }
+    // Re-checked here, not only at registration: a client_id signed before the
+    // redirect rules existed still carries its original set. Rendered, never
+    // redirected to.
+    if (redirectUriProblem(String(redirect_uri))) {
+      console.error(`[oauth] authorize refused: redirect_uri not allowed redirect_host=${hostOf(redirect_uri)}`);
+      sendOAuthError(res, "This redirect_uri is not allowed. Re-add the connector and try again.");
       return;
     }
     if (response_type !== "code" || code_challenge_method !== "S256" || !code_challenge) {
-      res.status(400).send("This server requires response_type=code with PKCE (S256).");
+      sendOAuthError(res, "This server requires response_type=code with PKCE (S256).");
       return;
     }
     // RFC 8707 (#329): if a `resource` is present it must be THIS server's
@@ -413,8 +544,16 @@ export function mountOAuth(app, publicBase, opts = {}) {
       resource: boundResource,
       created: Date.now(),
     });
+    oauthPageHeaders(res);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.send(interstitialHtml(sid, buildLoginUrl(cgCode)));
+    res.send(
+      interstitialHtml({
+        sid,
+        loginUrl: buildLoginUrl(cgCode),
+        clientName: client.client_name,
+        redirectHost: new URL(String(redirect_uri)).host,
+      }),
+    );
   });
 
   // The interstitial's poll — bridges to CloudGrid /auth/status.
@@ -433,6 +572,13 @@ export function mountOAuth(app, publicBase, opts = {}) {
       return;
     }
     if (upstream.status === "authenticated" && upstream.jwt) {
+      if (!isHttpUrl(sess.redirect_uri)) {
+        // Unreachable while authorize enforces the redirect rules; kept so a
+        // code is never handed to a non-http(s) target.
+        authSessions.delete(String(req.query.sid));
+        res.json({ status: "expired" });
+        return;
+      }
       const code = b64url(Buffer.from(randomUUID()));
       authCodes.set(code, {
         jwt: upstream.jwt,

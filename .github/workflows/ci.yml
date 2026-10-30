@@ -233,6 +233,12 @@ jobs:
       # metadata (`protected_resources`, RFC 9728 §4). The mismatch guard is proven
       # able to fail (forcing the compare always-true turns it red).
       - run: npm run test:oauth-resource-indicators
+      # OAuth redirect URI rules and the consent step: registration accepts only
+      # https or loopback http redirect URIs (invalid_redirect_uri otherwise, no
+      # fragments), authorize re-checks the rule for older client_ids, the
+      # interstitial names the client and redirect host before sign-in starts,
+      # OAuth HTML pages refuse framing, and a hostile client_name is escaped.
+      - run: npm run test:oauth-redirect-consent
       # Capability logging at initialize (#297): the hosted edge records the
       # client's advertised MCP capabilities once per session as a KEY SHAPE
       # (names + value types, never values), so we can see whether Claude web
