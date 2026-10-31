@@ -318,17 +318,6 @@ describe("web edition: rebuild only ids this edge issued", () => {
       await h.stop();
     }
   });
-
-  test("MCP_LEGACY_SESSION_IDS_UNTIL in the future lets a UUID-shaped id rebuild", async () => {
-    const until = new Date(Date.now() + 3600_000).toISOString();
-    const h = await startWeb({ MCP_SESSION_SECRET: "edge-test", MCP_LEGACY_SESSION_IDS_UNTIL: until });
-    try {
-      const r = await post(h, { body: TOOL_CALL, sessionId: "6f1c2a4e-0000-4000-8000-000000000000" });
-      assert.equal(r.status, 200, r.text);
-    } finally {
-      await h.stop();
-    }
-  });
 });
 
 describe("web edition: rate limits", () => {

@@ -92,16 +92,6 @@ const RATE_LIMITS = {
   initialize: envInt(process.env, "MCP_RATE_MCP_INITIALIZE", 600),
 };
 
-// Session ids issued before ids were signed are plain UUIDs. Until the time in
-// MCP_LEGACY_SESSION_IDS_UNTIL (ISO 8601; unset = never), such an id is still
-// rebuilt, so sessions open across the release that introduces signed ids keep
-// working. Still subject to the session cap.
-const LEGACY_SESSION_IDS_UNTIL = Date.parse(process.env.MCP_LEGACY_SESSION_IDS_UNTIL || "") || 0;
-const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-function isLegacySessionId(id) {
-  return Date.now() < LEGACY_SESSION_IDS_UNTIL && UUID_SHAPE.test(String(id));
-}
-
 const isOriginAllowed = createOriginMatcher({ publicBase: PUBLIC_BASE });
 const sessionIds = createSessionIds({ publicBase: PUBLIC_BASE });
 if (sessionIds.ephemeral) {
@@ -442,7 +432,7 @@ app.post("/mcp", async (req, res) => {
   // createSessionIds). Anything else is a session this server does not know, and
   // the transport spec's answer to that is 404, on which the client starts a new
   // session. A rebuild also counts against the session cap.
-  if (!sessionIds.verify(sessionId) && !isLegacySessionId(sessionId)) {
+  if (!sessionIds.verify(sessionId)) {
     logSessionUnknown(sessionId);
     res.status(404).json({
       jsonrpc: "2.0",
