@@ -89,6 +89,10 @@ function childEnv(h) {
     CLOUDGRID_PUBLIC_API_URL: "http://127.0.0.1:1",
     CLOUDGRID_QA_SLACK_WEBHOOK: "",
     MCP_TRUSTED_SERVER_SECRET: "",
+    // Session ids are signed; a stable key is what lets a restarted process
+    // recognise an id its predecessor issued. Production uses the trusted-server
+    // secret every hosted edge already carries; this test sets the override.
+    MCP_SESSION_SECRET: "restart-recovery-test-session-secret",
     HTTPS_PROXY: "", HTTP_PROXY: "", ALL_PROXY: "",
     https_proxy: "", http_proxy: "", all_proxy: "",
     NO_PROXY: "localhost,127.0.0.1", no_proxy: "localhost,127.0.0.1",

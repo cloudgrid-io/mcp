@@ -76,6 +76,7 @@
     "test:web-identity": "node --test test/web-identity.test.mjs",
     "test:web-auth-integration": "node --test test/web-auth-integration.test.mjs",
     "test:web-restart-recovery": "node --test test/web-restart-recovery.test.mjs",
+    "test:web-edge-limits": "node --test test/web-edge-limits.test.mjs",
     "test:oauth-client-persistence": "node --test test/oauth-client-persistence.test.mjs",
     "test:oauth-token-exchange": "node --test test/oauth-token-exchange.test.mjs",
     "test:oauth-resource-indicators": "node --test test/oauth-resource-indicators.test.mjs",

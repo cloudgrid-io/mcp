@@ -236,10 +236,27 @@ function verifyClientId(clientId, secrets) {
   }
 }
 
-function corsOk(res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+// CORS. The discovery documents are public metadata and stay readable from any
+// origin. The registration, token and poll endpoints answer a browser only when
+// its Origin is on the allow-list (web-guards.js); the connectors of Claude and
+// ChatGPT call them from their servers, where CORS does not apply.
+function corsHeaders(res) {
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, mcp-protocol-version");
+}
+
+function corsPublic(res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  corsHeaders(res);
+}
+
+function corsAllowListed(req, res, isOriginAllowed) {
+  res.setHeader("Vary", "Origin");
+  const origin = req.headers.origin;
+  if (typeof origin === "string" && isOriginAllowed(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    corsHeaders(res);
+  }
 }
 
 // HTML-escape for text and attribute positions.
@@ -344,6 +361,8 @@ function interstitialHtml({ sid, loginUrl, clientName, redirectHost }) {
 export function mountOAuth(app, publicBase, opts = {}) {
   if (!opts.requireAuth) return;
   const base = publicBase.replace(/\/+$/, "");
+  const isOriginAllowed = opts.isOriginAllowed ?? (() => false);
+  const corsOk = (req, res) => corsAllowListed(req, res, isOriginAllowed);
   // This server's resource identifier — the exact value the protected-resource
   // metadata returns and the canonical `resource` a client must send (#329).
   const resourceId = `${base}/mcp`;
@@ -396,18 +415,22 @@ export function mountOAuth(app, publicBase, opts = {}) {
     protected_resources: [resourceId],
   };
 
-  app.options(/^\/(\.well-known|oauth)\/.*/, (_req, res) => {
-    corsOk(res);
+  app.options(/^\/\.well-known\/.*/, (_req, res) => {
+    corsPublic(res);
+    res.status(204).end();
+  });
+  app.options(/^\/oauth\/.*/, (req, res) => {
+    corsOk(req, res);
     res.status(204).end();
   });
 
   // RFC 9728 — the resource points at its authorization server (us).
   app.get("/.well-known/oauth-protected-resource", (_req, res) => {
-    corsOk(res);
+    corsPublic(res);
     res.json({ resource: `${base}/mcp`, authorization_servers: [base], scopes_supported: ["cloudgrid"] });
   });
   app.get("/.well-known/oauth-protected-resource/mcp", (_req, res) => {
-    corsOk(res);
+    corsPublic(res);
     res.json({ resource: `${base}/mcp`, authorization_servers: [base], scopes_supported: ["cloudgrid"] });
   });
 
@@ -418,7 +441,7 @@ export function mountOAuth(app, publicBase, opts = {}) {
   // already served both forms; this one served only the root, and the asymmetry
   // was an oversight rather than a decision.
   const serveAsMetadata = (_req, res) => {
-    corsOk(res);
+    corsPublic(res);
     res.json(asMetadata);
   };
   app.get("/.well-known/oauth-authorization-server", serveAsMetadata);
@@ -426,7 +449,7 @@ export function mountOAuth(app, publicBase, opts = {}) {
 
   // RFC 7591 — dynamic client registration. Public clients, PKCE-only.
   app.post("/oauth/register", (req, res) => {
-    corsOk(res);
+    corsOk(req, res);
     const redirectUris = Array.isArray(req.body?.redirect_uris) ? req.body.redirect_uris : [];
     if (redirectUris.length === 0) {
       res.status(400).json({ error: "invalid_client_metadata", error_description: "redirect_uris is required." });
@@ -558,7 +581,7 @@ export function mountOAuth(app, publicBase, opts = {}) {
 
   // The interstitial's poll — bridges to CloudGrid /auth/status.
   app.get("/oauth/authorize/poll", async (req, res) => {
-    corsOk(res);
+    corsOk(req, res);
     const sess = authSessions.get(String(req.query.sid));
     if (!sess || Date.now() - sess.created > CODE_TTL_MS) {
       res.json({ status: "expired" });
@@ -646,7 +669,7 @@ export function mountOAuth(app, publicBase, opts = {}) {
   };
 
   app.post("/oauth/token", (req, res) => {
-    corsOk(res);
+    corsOk(req, res);
     sweep(authCodes);
     const { grant_type, code, code_verifier, redirect_uri, client_id, resource } = req.body ?? {};
     if (grant_type !== "authorization_code") {
