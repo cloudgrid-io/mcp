@@ -130,7 +130,7 @@ const check = (label, cond) => {
 
   check("pollStatusOnce: surfaces ECONNREFUSED", errMsg && errMsg.includes("ECONNREFUSED"));
   check("pollStatusOnce: mentions HTTPS_PROXY", errMsg && errMsg.includes("HTTPS_PROXY"));
-  check("pollStatusOnce: mentions hosted connector", errMsg && errMsg.includes("mcp-connected.cloudgrid.io"));
+  check("pollStatusOnce: mentions hosted connector", errMsg && errMsg.includes("https://mcp.cloudgrid.io/mcp"));
 
   globalThis.fetch = originalFetch;
 }

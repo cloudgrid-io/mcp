@@ -155,10 +155,17 @@ check(
     /app-with-data/.test(startText),
 );
 check(
-  "grid_start playbook contains the persistence rule",
-  /Persistence check/.test(startText) &&
-    /app-with-data/.test(startText) &&
-    /LOCAL edition/.test(startText),
+  "grid_start orientation routes a page that must save data to the app-with-data workflow",
+  /SAVE data/.test(startText) && /app-with-data/.test(startText),
+);
+const playbookDoc = (await server.handlers.grid_get_template({ kind: "doc", name: "playbook" }))?.content?.[0]?.text ?? "";
+check(
+  "playbook doc contains the persistence rule, and it works on every edition (hosted via artifact_files)",
+  /Persistence check/.test(playbookDoc) &&
+    /app-with-data/.test(playbookDoc) &&
+    /every edition/.test(playbookDoc) &&
+    /artifact_files/.test(playbookDoc) &&
+    !/requires the LOCAL edition/.test(playbookDoc),
 );
 
 // ── 6. grid_get_template handler returns the workflow/template/example content ──

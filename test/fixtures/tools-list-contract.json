@@ -926,7 +926,7 @@
       "additionalProperties": false,
       "properties": {
         "anon": {
-          "description": "Deprecated — does not publish. A new plug needs sign-in: without it grid_plug returns needs_auth and publishes nothing, even with anon: true; when signed in it is ignored. Do not pass it. To edit an existing anonymous drop, pass target_entity_id + owner_token instead.",
+          "description": "Deprecated — does not publish. A new plug needs sign-in: without it grid_plug returns needs_auth and publishes nothing, even with anon: true; when signed in it is ignored. Do not pass it. To edit a drop that was plugged outside a grid, pass target_entity_id + owner_token instead.",
           "type": "boolean"
         },
         "artifact_files": {
@@ -972,7 +972,7 @@
           "type": "string"
         },
         "grid": {
-          "description": "On create: the grid slug to plug into. The destination grid is the USER'S CHOICE — treat it like visibility: NEVER infer one silently, and never reuse a previous or active grid without the user. If the user has more than one grid, CONFIRM which grid before plugging (omit this and grid_plug returns needs_grid with the grid list to choose from); a single-grid user is not asked. State the destination in the user's own terms (\"plugging into <grid>\") BEFORE the entity is created — a new entity in the wrong grid gets the wrong URL, is exposed to the wrong grid's members, and inherits the wrong datastore tier and namespace, and that is expensive to catch after the fact. On re-plug the entity never moves grids, but pass its home grid here when it differs from your active grid (the API checks your membership in the entity's grid). An existing anonymous drop (re-plugged with its owner_token) stays in the Guest grid.",
+          "description": "On create: the grid slug to plug into. The destination grid is the USER'S CHOICE — treat it like visibility: NEVER infer one silently, and never reuse a previous or active grid without the user. If the user has more than one grid, CONFIRM which grid before plugging (omit this and grid_plug returns needs_grid with the grid list to choose from); a single-grid user is not asked. State the destination in the user's own terms (\"plugging into <grid>\") BEFORE the entity is created — a new entity in the wrong grid gets the wrong URL, is exposed to the wrong grid's members, and inherits the wrong datastore tier and namespace, and that is expensive to catch after the fact. On re-plug the entity never moves grids, but pass its home grid here when it differs from your active grid (the API checks your membership in the entity's grid). A drop plugged outside a grid stays outside until its owner claims it into one.",
           "type": "string"
         },
         "hints": {
@@ -996,11 +996,11 @@
           "type": "object"
         },
         "html": {
-          "description": "A single self-contained HTML document to publish as an inspiration — the fast single-file path. Pass the COMPLETE raw HTML inline (CSS+JS inline, images/fonts as data: URIs); a small fragment is wrapped into a full document. Do NOT base64-encode it, and do NOT pass an `@`-prefixed path or a file path here. Mutually exclusive with `path` and `artifact_files`. Materialized as one index.html and published instantly on any edition, anonymously (claimable) or into your grid when signed in.",
+          "description": "A single self-contained HTML document to publish as an inspiration — the fast single-file path, live at a public URL in seconds. Pass the COMPLETE raw HTML inline (CSS+JS inline, images/fonts as data: URIs); a small fragment is wrapped into a full document. Do NOT base64-encode it, and do NOT pass an `@`-prefixed path or a file path here. Mutually exclusive with `path` and `artifact_files`. Materialized as one index.html in the signed-in user's grid.",
           "type": "string"
         },
         "owner_token": {
-          "description": "The owner token of an anonymously-created drop — authorizes an anonymous re-plug (with target_entity_id). Re-minted on every anonymous edit; always persist the newest one from the result.",
+          "description": "The owner token of a drop plugged outside a grid — authorizes its re-plug (with target_entity_id). Re-minted on every such edit; always persist the newest one from the result.",
           "type": "string"
         },
         "path": {
@@ -1008,7 +1008,7 @@
           "type": "string"
         },
         "session_note": {
-          "description": "One short paragraph on what you built and why. Recorded for CloudGrid QA alongside the plug.",
+          "description": "Local edition: one short paragraph on what you built and why, for the optional QA session log.",
           "type": "string"
         },
         "slug": {
@@ -1016,7 +1016,7 @@
           "type": "string"
         },
         "target_entity_id": {
-          "description": "Present → RE-PLUG: update this exact entity in place (same entity_id, slug, URL, plug history). Absent → CREATE a new entity. This is the durable handle a previous plug returned — persist it. Re-plugging an anonymously-created drop needs its owner_token instead of sign-in.",
+          "description": "Present → RE-PLUG: update this exact entity in place (same entity_id, slug, URL, plug history). Absent → CREATE a new entity. This is the durable handle a previous plug returned — persist it. Re-plugging a drop that was plugged outside a grid also needs its owner_token.",
           "type": "string"
         },
         "url": {
@@ -1024,7 +1024,7 @@
           "type": "string"
         },
         "user_request": {
-          "description": "A brief version of the user's request that led to this deploy. Recorded for CloudGrid QA — include it by default; omit only if the user asked not to share it.",
+          "description": "Local edition: a brief version of the user's request that led to this deploy, for the optional QA session log (dark unless this machine's operator set CLOUDGRID_QA_SLACK_WEBHOOK). Omit if the user asked not to share it.",
           "type": "string"
         }
       },
@@ -1035,11 +1035,11 @@
       "additionalProperties": false,
       "properties": {
         "claim_message": {
-          "description": "Anonymous drops only (no longer created): the claim nudge to relay.",
+          "description": "Drops plugged outside a grid: the claim note to relay to the owner.",
           "type": "string"
         },
         "claim_url": {
-          "description": "Anonymous drops only (no longer created): sign-in link to claim ownership.",
+          "description": "Drops plugged outside a grid: the link the owner opens to claim it into a grid of their choosing.",
           "type": "string"
         },
         "console_url": {
@@ -1059,7 +1059,7 @@
           "type": "boolean"
         },
         "grid": {
-          "description": "Home grid slug; null for an anonymous Guest-Grid drop.",
+          "description": "Home grid slug; null for a drop plugged outside any grid.",
           "type": [
             "string",
             "null"
@@ -1146,7 +1146,7 @@
           "type": "array"
         },
         "owner_token": {
-          "description": "Anonymous drops: the bearer owner token (re-plug + claim). Re-minted on every anonymous edit — persist the newest.",
+          "description": "Drops plugged outside a grid: the bearer owner token (re-plug + claim). Re-minted on every such edit — persist the newest.",
           "type": "string"
         },
         "poll_url": {
@@ -1205,15 +1205,15 @@
       "additionalProperties": false,
       "properties": {
         "claim_token": {
-          "description": "Anonymous drop only: its owner token — claims that drop into your account (ownership transfer).",
+          "description": "Claiming a drop plugged outside a grid: its owner token — claims that drop into your grid. Only the drop's owner can claim it.",
           "type": "string"
         },
         "claim_url": {
-          "description": "Alternative to claim_token for an anonymous drop — the claim_url; the token is read from it.",
+          "description": "Alternative to claim_token — the claim_url from the plug result; the token is read from it.",
           "type": "string"
         },
         "entity_id": {
-          "description": "The entity id to pull. Defaults to this session's last anonymous drop.",
+          "description": "The entity id to pull. Defaults to the drop made outside a grid in this session, if any.",
           "type": "string"
         },
         "grid": {
@@ -1592,31 +1592,31 @@
           "type": "object"
         },
         "playbook": {
-          "description": "The operating rules and golden path for building with CloudGrid.",
+          "description": "The orientation: what CloudGrid does, how to choose the plug path, and where to load details.",
           "type": "string"
         },
         "workflows": {
-          "description": "Available workflows.",
+          "description": "The workflow index, compact. Load one with grid_get_template({kind:\"workflow\", name}); the capability-map doc matches a request to a workflow in detail.",
           "items": {
             "additionalProperties": false,
             "properties": {
+              "deploy": {
+                "description": "inspiration (one static page, instant) or runtime (an app with services, async build).",
+                "type": "string"
+              },
               "name": {
                 "description": "Workflow name to pass to grid_get_template.",
                 "type": "string"
               },
-              "summary": {
-                "description": "What the workflow does.",
-                "type": "string"
-              },
               "when": {
-                "description": "When to use this workflow.",
+                "description": "The requests this workflow serves, abridged; the workflow itself has the full list.",
                 "type": "string"
               }
             },
             "required": [
               "name",
-              "when",
-              "summary"
+              "deploy",
+              "when"
             ],
             "type": "object"
           },

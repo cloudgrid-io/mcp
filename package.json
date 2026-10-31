@@ -89,6 +89,8 @@
     "test:login-app": "node test/login-app.test.mjs",
     "test:login-poller": "node test/login-poller.test.mjs",
     "test:delete-hosted": "node test/delete-hosted.test.mjs",
+    "test:served-text-policy": "node test/served-text-policy.test.mjs",
+    "test:hosted-no-auto-log": "node test/hosted-no-auto-log.test.mjs",
     "build:login-widget": "node scripts/build-login-widget.mjs"
   },
   "dependencies": {

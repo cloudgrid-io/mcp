@@ -67,18 +67,20 @@ grid feedback list
 
 ## Share an artifact with no account
 
-The fastest chain has one step and no login. Drop an HTML file, get a public URL:
+The fastest chain has one step. Signed in, drop an HTML file and get a public URL:
 
 ```
 curl -sS -X POST https://api.cloudgrid.io/api/v2/plug \
+  -H "Authorization: Bearer $CLOUDGRID_JWT" \
   -F "artifact=@./index.html;type=text/html"
 ```
 
-The response includes `url` (the live link — use it verbatim), `entity_id`,
-`owner_token` (keep both to update the page later), and `claim_url` (sign in
-before it expires to keep it). This is what the `cloudgrid:plug` skill and the
-`grid_plug` MCP tool (inline `html` param) do for you. It is anonymous and serves
-inspirations only; a full app needs the signed-in `plug` flow above.
+The response includes `url` (the live link — use it verbatim) and `entity_id`
+(keep it to update the page later). A drop plugged outside a grid also returns
+`owner_token` and `claim_url`: only its owner can later claim it into a grid of
+their choosing. This is what the `cloudgrid:plug` skill and the `grid_plug` MCP
+tool (inline `html` param) do for you. It serves inspirations; a full app is the
+`plug` flow above.
 
 ## Update your drop in place
 
@@ -92,9 +94,9 @@ curl -sS -X POST https://api.cloudgrid.io/api/v2/plug \
   -F "artifact=@./index.html;type=text/html"
 ```
 
-Signed in, drop the `owner_token` field and send your auth headers instead. Each
-anonymous edit returns a refreshed `owner_token` (store the new one) and resets
-the drop's expiry. Editing an archived or expired drop returns 409
+In a grid, drop the `owner_token` field and send your auth headers instead. Each
+edit of a drop outside a grid returns a refreshed `owner_token` (store the new
+one) and resets the drop's expiry. Editing an archived or expired drop returns 409
 `EDIT_REJECTED`; omit `target_entity_id` when you actually want a fresh link.
 
 ## Shorter chains

@@ -337,7 +337,7 @@ if (HAS_CA_API) {
   check("pollStatusOnce cert error: throws", !!pollErr);
   check("pollStatusOnce cert error: certError flag", pollErr?.certError === true);
   check("pollStatusOnce cert error: mentions hosted connector",
-    pollErr?.message?.includes("mcp-connected.cloudgrid.io"));
+    pollErr?.message?.includes("https://mcp.cloudgrid.io/mcp"));
   check("pollStatusOnce cert error: mentions NODE_EXTRA_CA_CERTS",
     pollErr?.message?.includes("NODE_EXTRA_CA_CERTS"));
   check("pollStatusOnce cert error: does not say 'try again'",
@@ -353,7 +353,7 @@ if (HAS_CA_API) {
   check("checkApiConnectivity cert error: throws", !!connectErr);
   check("checkApiConnectivity cert error: certError flag", connectErr?.certError === true);
   check("checkApiConnectivity cert error: mentions hosted connector",
-    connectErr?.message?.includes("mcp-connected.cloudgrid.io"));
+    connectErr?.message?.includes("https://mcp.cloudgrid.io/mcp"));
 
   globalThis.fetch = originalFetch;
 }

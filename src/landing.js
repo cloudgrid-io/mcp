@@ -43,7 +43,7 @@ export function landingHtml({ base, requireAuth }) {
   // The two postures. Each says only what is true of the host serving it.
   const posture = requireAuth
     ? "This endpoint requires sign-in. Your client prompts you to connect the first time you add it."
-    : "This endpoint is anonymous-first. You can start without an account, and sign in when you want to keep what you build.";
+    : "Sign in with your CloudGrid account from the conversation when you first publish; a client that supports OAuth can also connect with sign-in when you add it.";
 
   return `<!doctype html>
 <html lang="en">

@@ -14,9 +14,9 @@ Which one you use depends on the client. Pick your client below.
 ## Prerequisites
 
 - **Node 18+** (for `npx`).
-- **No login needed to try it** — anonymous drop works out of the box. For owned
-  drops (into your org), run `grid login` once, or use the `login` skill / the
-  `grid_login` MCP tool.
+- **A CloudGrid account** — every plug is owned by a signed-in user. Run
+  `grid login` once, or use the `login` skill / the `grid_login` MCP tool from
+  the conversation; the hosted MCP asks you to sign in on the first plug.
 
 ---
 
@@ -95,16 +95,15 @@ cloudgrid-io/skills`; Cursor's in-app marketplace) and the MCP server — local
 These connect to **remote** MCP servers (by URL), not local ones. The hosted web
 edition is live — add it as a custom connector:
 
-Two endpoints, two postures:
+One endpoint:
 
 ```
-https://mcp.cloudgrid.io/mcp             anonymous-first: drop with no sign-in
-https://mcp-connected.cloudgrid.io/mcp   connected: native sign-in when you add it
+https://mcp.cloudgrid.io/mcp
 ```
 
-The connected endpoint runs the client's own OAuth connect at add-time (sign in
-with CloudGrid right in the flow); every drop is owned from the first one. The
-anonymous endpoint needs no account; sign in later from inside the conversation.
+A client that supports OAuth signs you in with CloudGrid when you add it;
+otherwise `grid_login` signs you in from inside the conversation on the first
+plug. Every plug is owned by your account from the first one.
 
 - **claude.ai web** — Settings → Connectors → add custom connector.
 - **ChatGPT** — add it as a custom connector (Developer Mode; availability depends
@@ -128,9 +127,9 @@ You can install both; they do not conflict.
 
 | Action | What it does |
 |---|---|
-| drop | Share an artifact, get a public URL. No login needed (anonymous, claimable) or owned if signed in. Re-drop with the entity id to update the same URL. |
+| drop | Share an artifact, get a public URL. Owned by your account; re-drop with the entity id to update the same URL. |
 | login | Sign in to CloudGrid, with or without the CLI. |
-| claim | Claim an anonymous drop into your account; the URL stays the same. |
+| claim | Claim a drop you plugged outside a grid into a grid of your choosing; the URL stays the same. |
 | init | Scaffold a new app or agent. |
 | plug | Deploy a directory or URL. |
 | logs | Tail an entity's logs. |

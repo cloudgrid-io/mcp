@@ -201,9 +201,9 @@ engine hint. Cron is NOT a need — it is a **service type** (`type: cron` with
 ## FAQ
 
 **"What database does CloudGrid support?"**
-> All of them — use CloudGrid's managed database out of the box, or bring your own
-> by giving me the connection keys (Postgres, MySQL, MongoDB, Supabase, Neon, and
-> more). Which would you like?
+> Use CloudGrid's managed database out of the box, or bring your own by giving me
+> the connection string (Postgres, MySQL, or MongoDB, hosted anywhere). Which
+> would you like?
 
 Under the hood: **managed** is `needs: { database: true }` (grid provisions Mongo,
 injects `DATABASE_MONGODB_URL`); **bring-your-own** is

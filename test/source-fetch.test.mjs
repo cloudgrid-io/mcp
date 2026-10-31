@@ -434,11 +434,17 @@ try {
   const errRes = await server.handlers.grid_get_app_source({ url: "https://evil.example.com/x" });
   check("handler returns isError result on SSRF (does not throw)", errRes?.isError === true);
 
-  // playbook rule (served by grid_start).
+  // The source-first rule: one line in grid_start's orientation, the full
+  // branches in the playbook doc (grid_get_template kind:doc name:playbook).
   const start = await server.handlers.grid_start({});
-  const startText = start?.content?.[0]?.text ?? "";
+  const orientation = start?.content?.[0]?.text ?? "";
   check(
-    "grid_start playbook contains the source-first rule",
+    "grid_start orientation carries the source-first rule",
+    /grid_get_app_source first/.test(orientation) && /target_entity_id/.test(orientation),
+  );
+  const startText = (await server.handlers.grid_get_template({ kind: "doc", name: "playbook" }))?.content?.[0]?.text ?? "";
+  check(
+    "playbook doc contains the source-first rule",
     startText.includes("call grid_get_app_source to fetch the current HTML") ||
       /grid_get_app_source[\s\S]*target_entity_id[\s\S]*Do not ask the user to paste/.test(startText),
   );

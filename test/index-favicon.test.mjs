@@ -71,10 +71,10 @@ try {
   // ── The auth line is posture-driven ──────────────────────────────────────────
   const anonHtml = await (await fetch(`${ANON_BASE}/`)).text();
   const authHtml = await (await fetch(`${AUTH_BASE}/`)).text();
-  check("anon / says anonymous-first", anonHtml.includes("anonymous-first"));
+  check("anon / says sign-in happens from the conversation", anonHtml.includes("Sign in with your CloudGrid account from the conversation"));
   check("anon / does not claim sign-in is required", !anonHtml.includes("requires sign-in"));
   check("auth / says sign-in is required", authHtml.includes("requires sign-in"));
-  check("auth / does not claim anonymous-first", !authHtml.includes("anonymous-first"));
+  check("auth / does not carry the in-conversation sign-in line", !authHtml.includes("from the conversation when you first publish"));
 
   // ── The favicon, both postures ───────────────────────────────────────────────
   const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47]);

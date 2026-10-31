@@ -9,11 +9,11 @@ identity context.
 | Transport | stdio | MCP Streamable HTTP |
 | Runs | as a subprocess on the user's machine | hosted (e.g. GKE) |
 | Reaches | Claude Code, Cursor, Claude Desktop | claude.ai web, any HTTP MCP client |
-| Tools | full set (36), incl. CLI-wrapping | 14 shared direct-API tools (see README) |
+| Tools | full set (38), incl. CLI-wrapping | 17 direct-API tools (see README) |
 | Identity | `~/.cloudgrid/credentials` | per-session token in memory |
 
-The web edition registers the 14 direct-API tools that call the platform without
-the CLI, including `grid_plug` (the deploy/publish verb). It omits the 22
+The web edition registers the 17 direct-API tools that call the platform without
+the CLI, including `grid_plug` (the deploy/publish verb). It omits the 21
 CLI-wrapping tools — those need a local machine. The full tool list is generated
 from the registry in [README.md](README.md).
 
@@ -61,17 +61,28 @@ through the server:
 3. `grid_login_status` polls and holds the token in the session.
 
 Publishing needs sign-in: a signed-out `grid_plug` create returns `needs_auth` and
-publishes nothing. An anonymous drop made earlier can still be re-plugged with its
-`owner_token`, or claimed with `grid_pull` and its `claim_token` once signed in.
+publishes nothing. A signed-in user may plug an entity outside their grid; later,
+only its owner can claim it into a grid of their choosing (`grid_pull` with its
+`claim_token`), and it can be re-plugged in place with its `owner_token`.
 
-## Trusted-server credential (anonymous-drop cap)
+## What leaves the server
 
-Anonymous drops are capped per IP. A shared host sends them all from one cluster
+Nothing from the conversation is sent anywhere unless the user asks for it:
+`grid_note` sends a build summary (plus the signed-in account and the names and
+outcomes of the session's `grid_*` calls) and `grid_report` sends a failure
+report. There is no automatic session-log post on the hosted edition — not on a
+plug, not on idle, not on close — and the hosted `grid_plug` schema carries no
+`user_request` or `session_note` fields. The local (stdio) edition keeps its
+opt-in QA log (README, "QA session log").
+
+## Trusted-server credential (per-user cap)
+
+Drops plugged outside a grid are capped per IP. A shared host sends them all from one cluster
 egress IP, so the cap is hit quickly. Provision this host as a trusted server and
 the platform keys the cap on the per-user id instead:
 
 - Set `MCP_TRUSTED_SERVER_SECRET` in the deployment env (the same cluster Secret the
-  API validates against). When set, the web edition sends, on anonymous drops:
+  API validates against). When set, the web edition sends, on such drops:
   - `X-CloudGrid-Trusted-Server-Auth: <MCP_TRUSTED_SERVER_SECRET>`
   - `X-CloudGrid-Trusted-Server-End-User: <MCP session id>` (stable, opaque per session)
 - A missing or wrong secret falls back to the per-IP cap server-side (never an error),
@@ -90,7 +101,8 @@ as the fallback.
   used in the OAuth metadata.
 - `MCP_REQUIRE_AUTH=1` — make the connect mandatory: unauthenticated `/mcp` requests
   get a 401 challenge, which is what triggers a client's native connect flow.
-  Default off: anonymous-first, auth honored when presented.
+  Default off: the session starts without a credential and signs in from the
+  conversation (`grid_login`); a Bearer is honored when presented.
 
 Endpoints: `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`,
 `/oauth/register`, `/oauth/authorize` (the sign-in interstitial), `/oauth/token`.
