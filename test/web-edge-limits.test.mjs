@@ -211,6 +211,16 @@ async function startWeb(extra = {}, port = null) {
   };
 }
 
+// The child's log reaches us asynchronously, after the response. Wait for the
+// line rather than reading the buffer once.
+async function waitForLog(h, re, deadlineMs = 2000) {
+  const end = Date.now() + deadlineMs;
+  while (!re.test(h.stderr())) {
+    if (Date.now() > end) assert.match(h.stderr(), re);
+    await sleep(20);
+  }
+}
+
 async function post(h, { body = INITIALIZE_BODY, sessionId, origin, xff } = {}) {
   const headers = { "Content-Type": "application/json", Accept: "application/json, text/event-stream", "Mcp-Protocol-Version": PROTOCOL_VERSION };
   if (sessionId) headers["Mcp-Session-Id"] = sessionId;
@@ -229,7 +239,7 @@ describe("web edition: Origin check on /mcp", () => {
     const r = await post(h, { origin: "https://evil.example" });
     assert.equal(r.status, 403, r.text);
     assert.equal(r.sessionId, null);
-    assert.match(h.stderr(), /\/mcp 403 origin-refused origin=https:\/\/evil\.example/);
+    await waitForLog(h, /\/mcp 403 origin-refused origin=https:\/\/evil\.example/);
   });
 
   test("GET and DELETE /mcp are covered too", async () => {
@@ -264,6 +274,7 @@ describe("web edition: session cap and idle sweep", () => {
     assert.equal(c.retryAfter, "30");
     assert.match(JSON.parse(c.text).error.message, /session limit/);
     assert.equal(c.sessionId, null);
+    await waitForLog(h, /\/mcp 503 session-cap sessions=2/);
 
     await sleep(900); // both sessions go idle past the TTL and are swept
     const d = await post(h);
@@ -287,7 +298,7 @@ describe("web edition: rebuild only ids this edge issued", () => {
       assert.match(JSON.parse(forged.text).error.message, /initialize/);
       const uuid = await post(h, { body: TOOL_CALL, sessionId: "6f1c2a4e-0000-4000-8000-000000000000" });
       assert.equal(uuid.status, 404, "an unsigned UUID is refused by default");
-      assert.match(h.stderr(), /\/mcp 404 session-unknown/);
+      await waitForLog(h, /\/mcp 404 session-unknown/);
 
       const issued = (await post(h)).sessionId;
       assert.ok(issued);

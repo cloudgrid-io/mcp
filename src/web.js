@@ -167,34 +167,30 @@ app.post("/oauth/token", rateLimitMiddleware(limiters.token, { hops: PROXY_HOPS,
 mountOAuth(app, PUBLIC_BASE, { requireAuth: REQUIRE_AUTH, isOriginAllowed });
 
 // One transport per MCP session, keyed by the session id.
-const transports = Object.create(null);
-const sessionContexts = Object.create(null);
-let sessionCount = 0; // number of keys in sessionContexts
+// Maps, not plain objects: the keys are client-supplied session ids.
+const transports = new Map();
+const sessionContexts = new Map();
 
 function setSessionContext(sid, ctx) {
-  if (!sessionContexts[sid]) sessionCount++;
-  sessionContexts[sid] = ctx;
+  sessionContexts.set(sid, ctx);
 }
 
 function dropSession(sid) {
-  delete transports[sid];
-  if (sessionContexts[sid]) {
-    delete sessionContexts[sid];
-    sessionCount--;
-  }
+  transports.delete(sid);
+  sessionContexts.delete(sid);
 }
 
 function touchSession(sid) {
-  const ctx = sessionContexts[sid];
+  const ctx = sessionContexts.get(sid);
   if (ctx) ctx.lastSeen = Date.now();
 }
 
 function atSessionCap() {
-  return MAX_SESSIONS > 0 && sessionCount >= MAX_SESSIONS;
+  return MAX_SESSIONS > 0 && sessionContexts.size >= MAX_SESSIONS;
 }
 
 function sendSessionCap(res) {
-  logSessionCap(sessionCount);
+  logSessionCap(sessionContexts.size);
   res.setHeader("Retry-After", "30");
   res.status(503).json({
     jsonrpc: "2.0",
@@ -208,10 +204,9 @@ function sendSessionCap(res) {
 // session log (and leaves alone an entry rebuilt on the same id meanwhile).
 function sweepIdleSessions(now = Date.now()) {
   if (SESSION_IDLE_TTL_MS <= 0) return;
-  for (const sid of Object.keys(sessionContexts)) {
-    const ctx = sessionContexts[sid];
-    if (!ctx || now - (ctx.lastSeen ?? 0) < SESSION_IDLE_TTL_MS) continue;
-    const transport = transports[sid];
+  for (const [sid, ctx] of [...sessionContexts]) {
+    if (now - (ctx.lastSeen ?? 0) < SESSION_IDLE_TTL_MS) continue;
+    const transport = transports.get(sid);
     dropSession(sid);
     if (transport) transport.close().catch(() => {});
   }
@@ -239,7 +234,7 @@ function sendAuthChallenge(res) {
 
 function captureRequestIdentity(sessionId, jwt) {
   if (!jwt) return;
-  const ctx = sessionContexts[sessionId];
+  const ctx = sessionContexts.get(sessionId);
   if (!ctx) return;
   const { identityChanged } = ctx.identity.captureTransportToken(jwt);
   if (identityChanged) {
@@ -259,14 +254,14 @@ async function buildSession(sessionId, jwt, protocolVersion) {
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: () => sessionId,
     onsessioninitialized: (sid) => {
-      transports[sid] = transport;
+      transports.set(sid, transport);
     },
   });
   transport.onclose = () => {
     // Flush the QA log when the host closes the session (abandoned / build-only).
     // Fire-and-forget; never blocks the close path.
     try { webCtx.logger?.flush("abandoned").catch(() => {}); } catch { /* never */ }
-    if (transport.sessionId && transports[transport.sessionId] === transport) {
+    if (transport.sessionId && transports.get(transport.sessionId) === transport) {
       dropSession(transport.sessionId);
     }
   };
@@ -347,7 +342,7 @@ async function primeSession(transport, req) {
 
 app.post("/mcp", async (req, res) => {
   const sessionId = req.headers["mcp-session-id"];
-  let transport = sessionId ? transports[sessionId] : undefined;
+  let transport = sessionId ? transports.get(sessionId) : undefined;
   const jwt = bearerOf(req);
 
   if (REQUIRE_AUTH && !jwt) {
@@ -470,7 +465,7 @@ app.post("/mcp", async (req, res) => {
 // SSE stream (GET) and session close (DELETE) reuse the same transport.
 async function handleSessionRequest(req, res) {
   const sessionId = req.headers["mcp-session-id"];
-  const transport = sessionId ? transports[sessionId] : undefined;
+  const transport = sessionId ? transports.get(sessionId) : undefined;
   if (!transport) {
     res.status(400).send("Invalid or missing session id");
     return;
