@@ -13,7 +13,6 @@ import { setTimeout as sleep } from "node:timers/promises";
 import {
   createOriginMatcher,
   createSessionIds,
-  createRateLimiter,
   clientIp,
 } from "../src/web-guards.js";
 
@@ -116,33 +115,6 @@ describe("session ids", () => {
 
 // --- Unit: rate limiter and client IP ---------------------------------------------
 
-describe("rate limiter", () => {
-  test("allows a burst of perMinute, then refuses with a Retry-After, then refills", () => {
-    let t = 0;
-    const rl = createRateLimiter({ perMinute: 3, now: () => t });
-    assert.equal(rl.take("a").ok, true);
-    assert.equal(rl.take("a").ok, true);
-    assert.equal(rl.take("a").ok, true);
-    const refused = rl.take("a");
-    assert.equal(refused.ok, false);
-    assert.equal(refused.retryAfterSec, 20, "one token per 20s at 3/min");
-    assert.equal(rl.take("b").ok, true, "keys are independent");
-    t += 20_000;
-    assert.equal(rl.take("a").ok, true, "a token is back after the refill interval");
-  });
-
-  test("0 disables; the sweep drops refilled buckets; the key map is bounded", () => {
-    assert.equal(createRateLimiter({ perMinute: 0 }).take("x").ok, true);
-    let t = 0;
-    const rl = createRateLimiter({ perMinute: 60, maxKeys: 3, now: () => t });
-    for (const k of ["a", "b", "c", "d"]) rl.take(k);
-    assert.equal(rl.size, 3);
-    t += 60_000;
-    rl.sweep();
-    assert.equal(rl.size, 0);
-  });
-});
-
 describe("client ip", () => {
   const req = (xff, peer = "10.0.0.9") => ({ headers: xff === undefined ? {} : { "x-forwarded-for": xff }, socket: { remoteAddress: peer } });
 
@@ -155,6 +127,11 @@ describe("client ip", () => {
   test("no header, or hops=0, falls back to the socket peer", () => {
     assert.equal(clientIp(req(undefined, "::ffff:10.0.0.5"), 1), "10.0.0.5");
     assert.equal(clientIp(req("203.0.113.7"), 0), "10.0.0.9");
+  });
+
+  test("an IPv6 zone id is dropped and the value is bounded", () => {
+    assert.equal(clientIp(req(`fe80::1%${"x".repeat(5000)}`), 1), "fe80::1");
+    assert.ok(clientIp(req("a".repeat(5000)), 1).length <= 45);
   });
 });
 
@@ -343,8 +320,10 @@ describe("web edition: rate limits", () => {
       MCP_RATE_OAUTH_TOKEN: "2",
       MCP_RATE_MCP_INITIALIZE: "2",
     });
+    h2 = await startWeb({ MCP_SESSION_SECRET: "edge-test", MCP_RATE_MCP: "3", MCP_RATE_MCP_INITIALIZE: "0" });
   });
-  after(async () => { await h.stop(); });
+  let h2;
+  after(async () => { await h.stop(); await h2.stop(); });
 
   const register = (xff) =>
     fetch(`${h.base}/oauth/register`, {
@@ -411,5 +390,18 @@ describe("web edition: rate limits", () => {
     assert.equal((await pre("https://evil.example")).headers.get("access-control-allow-origin"), null);
     assert.equal((await pre("https://claude.ai")).headers.get("access-control-allow-origin"), "https://claude.ai");
     assert.equal((await pre("http://localhost:6274")).headers.get("access-control-allow-origin"), "http://localhost:6274");
+  });
+
+  test("every POST /mcp counts against MCP_RATE_MCP; 0 turns the initialize budget off", async () => {
+    const ip = "198.51.100.6";
+    const first = await post(h2, { xff: ip });
+    assert.equal(first.status, 200, first.text);
+    assert.equal((await post(h2, { xff: ip, body: TOOL_CALL, sessionId: first.sessionId })).status, 200);
+    assert.equal((await post(h2, { xff: ip })).status, 200, "initialize unlimited on its own budget");
+    const r = await post(h2, { xff: ip, body: TOOL_CALL, sessionId: first.sessionId });
+    assert.equal(r.status, 429, r.text);
+    assert.ok(Number(r.retryAfter) >= 1);
+    assert.equal(JSON.parse(r.text).jsonrpc, "2.0");
+    assert.equal((await post(h2, { xff: "198.51.100.7" })).status, 200, "another client has its own budget");
   });
 });

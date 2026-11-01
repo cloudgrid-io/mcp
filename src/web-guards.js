@@ -1,5 +1,6 @@
 // Request guards for the hosted web edition: Origin validation, verifiable
-// session ids, client-IP resolution and a small in-memory rate limiter.
+// session ids and client-IP resolution (the rate limits themselves use
+// express-rate-limit, wired in web.js).
 //
 // Everything here is in-process and dependency-free. The hosted edition keeps
 // its sessions in memory (see web.js), so these limits are per process too.
@@ -144,7 +145,7 @@ export function createSessionIds({ env = process.env, publicBase = "" } = {}) {
 // front of the hosted edge sets X-Forwarded-For to the client address it resolved,
 // so the default is 1. 0 ignores the header and uses the socket peer.
 export function clientIp(req, hops = 1) {
-  const peer = String(req.socket?.remoteAddress || "unknown").replace(/^::ffff:/, "");
+  const peer = boundIp(req.socket?.remoteAddress || "unknown");
   if (hops <= 0) return peer;
   const raw = req.headers["x-forwarded-for"];
   const header = Array.isArray(raw) ? raw.join(",") : raw;
@@ -152,58 +153,13 @@ export function clientIp(req, hops = 1) {
   const parts = header.split(",").map((p) => p.trim()).filter(Boolean);
   if (parts.length === 0) return peer;
   const pick = parts[Math.max(0, parts.length - hops)];
-  return pick.replace(/^::ffff:/, "");
+  return boundIp(pick);
 }
 
-// --- Rate limiting -------------------------------------------------------------------
-// A token bucket per key: `perMinute` tokens of burst, refilled continuously at
-// perMinute/60 per second. In memory and per process, so it bounds what one
-// process accepts; it is not a global quota. The key map is bounded: buckets that
-// have refilled are dropped by the sweep, and past `maxKeys` the oldest entries
-// go first.
-export function createRateLimiter({ perMinute, maxKeys = 50_000, now = Date.now } = {}) {
-  const capacity = Number(perMinute);
-  const enabled = Number.isFinite(capacity) && capacity > 0;
-  const ratePerMs = capacity / 60_000;
-  const buckets = new Map(); // key -> { tokens, at }
-
-  function refill(b, t) {
-    b.tokens = Math.min(capacity, b.tokens + (t - b.at) * ratePerMs);
-    b.at = t;
-  }
-
-  return {
-    enabled,
-    /** Take one token. Returns { ok: true } or { ok: false, retryAfterSec }. */
-    take(key) {
-      if (!enabled) return { ok: true };
-      const t = now();
-      let b = buckets.get(key);
-      if (b) {
-        refill(b, t);
-        buckets.delete(key); // re-insert: Map order doubles as recency
-      } else {
-        b = { tokens: capacity, at: t };
-        if (buckets.size >= maxKeys) buckets.delete(buckets.keys().next().value);
-      }
-      buckets.set(key, b);
-      if (b.tokens >= 1) {
-        b.tokens -= 1;
-        return { ok: true };
-      }
-      return { ok: false, retryAfterSec: Math.max(1, Math.ceil((1 - b.tokens) / ratePerMs / 1000)) };
-    },
-    sweep() {
-      const t = now();
-      for (const [k, b] of buckets) {
-        refill(b, t);
-        if (b.tokens >= capacity) buckets.delete(k);
-      }
-    },
-    get size() {
-      return buckets.size;
-    },
-  };
+// An address is at most 45 characters. Drop an IPv6 zone id and bound the
+// length, so a header value cannot make the key long or costly to parse.
+function boundIp(value) {
+  return String(value).replace(/^::ffff:/, "").replace(/%.*$/, "").slice(0, 45);
 }
 
 /** Write the 429. JSON-RPC shaped on /mcp, OAuth-error shaped elsewhere. */
@@ -221,18 +177,6 @@ export function sendRateLimited(res, retryAfterSec, { jsonRpc = false } = {}) {
     error: "rate_limited",
     error_description: `Too many requests. Retry after ${retryAfterSec} seconds.`,
   });
-}
-
-/** Express middleware over a limiter, keyed by client IP. */
-export function rateLimitMiddleware(limiter, { hops = 1, name = "" } = {}) {
-  return (req, res, next) => {
-    const r = limiter.take(`${name}|${clientIp(req, hops)}`);
-    if (r.ok) {
-      next();
-      return;
-    }
-    sendRateLimited(res, r.retryAfterSec);
-  };
 }
 
 /** A non-negative integer from env, else the default. */

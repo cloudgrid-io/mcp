@@ -19,6 +19,7 @@ installProxy();
 
 import { readFileSync } from "node:fs";
 import express from "express";
+import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
@@ -47,8 +48,6 @@ import {
   createOriginMatcher,
   originGuard,
   createSessionIds,
-  createRateLimiter,
-  rateLimitMiddleware,
   sendRateLimited,
   clientIp,
   envInt,
@@ -83,12 +82,13 @@ const SESSION_SWEEP_MS = envInt(process.env, "MCP_SESSION_SWEEP_MS", 60 * 1000);
 // Proxies in front of this process that append to X-Forwarded-For (the ingress).
 const PROXY_HOPS = envInt(process.env, "MCP_TRUSTED_PROXY_HOPS", 1);
 // Per-client-IP request budgets, per minute (0 turns one off). The OAuth
-// register and token calls come from the connector's servers, so one address
-// can carry many users: those budgets are sized for that.
+// register and token calls, and /mcp traffic, come from the connectors'
+// servers, so one address can carry many users: those budgets are sized for that.
 const RATE_LIMITS = {
   register: envInt(process.env, "MCP_RATE_OAUTH_REGISTER", 60),
   authorize: envInt(process.env, "MCP_RATE_OAUTH_AUTHORIZE", 30),
   token: envInt(process.env, "MCP_RATE_OAUTH_TOKEN", 120),
+  mcp: envInt(process.env, "MCP_RATE_MCP", 1200),
   initialize: envInt(process.env, "MCP_RATE_MCP_INITIALIZE", 600),
 };
 
@@ -100,9 +100,30 @@ if (sessionIds.ephemeral) {
       "per-process key, so sessions are not rebuilt after a restart (clients are asked to initialize again).",
   );
 }
-const limiters = Object.fromEntries(
-  Object.entries(RATE_LIMITS).map(([name, perMinute]) => [name, createRateLimiter({ perMinute })]),
-);
+// A fixed one-minute window per client IP, in this process's memory. The key is
+// the rightmost X-Forwarded-For entry (clientIp), so Express's own `trust proxy`
+// is not used; IPv6 addresses are grouped by /56 (ipKeyGenerator). Over the
+// budget: 429 with Retry-After, JSON-RPC shaped on /mcp.
+function perIpLimit(perMinute, { jsonRpc = false, skip } = {}) {
+  return rateLimit({
+    windowMs: 60_000,
+    limit: Math.max(1, perMinute),
+    skip: perMinute > 0 ? skip : () => true,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    keyGenerator: (req) => ipKeyGenerator(clientIp(req, PROXY_HOPS)),
+    handler: (_req, res) => sendRateLimited(res, Number(res.getHeader("Retry-After")) || 60, { jsonRpc }),
+    // The client address comes from keyGenerator, not req.ip.
+    validate: { xForwardedForHeader: false, trustProxy: false },
+  });
+}
+const limit = {
+  register: perIpLimit(RATE_LIMITS.register),
+  authorize: perIpLimit(RATE_LIMITS.authorize),
+  token: perIpLimit(RATE_LIMITS.token),
+  mcp: perIpLimit(RATE_LIMITS.mcp, { jsonRpc: true }),
+  initialize: perIpLimit(RATE_LIMITS.initialize, { jsonRpc: true, skip: (req) => !isInitializeRequest(req.body) }),
+};
 
 function bearerOf(req) {
   const h = req.headers.authorization;
@@ -160,9 +181,9 @@ mountLanding(app, PUBLIC_BASE, { requireAuth: REQUIRE_AUTH });
 
 // Rate limits run before the OAuth handlers. Exact paths: the interstitial's
 // /oauth/authorize/poll is not limited here (it polls every two seconds).
-app.post("/oauth/register", rateLimitMiddleware(limiters.register, { hops: PROXY_HOPS, name: "register" }));
-app.get("/oauth/authorize", rateLimitMiddleware(limiters.authorize, { hops: PROXY_HOPS, name: "authorize" }));
-app.post("/oauth/token", rateLimitMiddleware(limiters.token, { hops: PROXY_HOPS, name: "token" }));
+app.post("/oauth/register", limit.register);
+app.get("/oauth/authorize", limit.authorize);
+app.post("/oauth/token", limit.token);
 
 mountOAuth(app, PUBLIC_BASE, { requireAuth: REQUIRE_AUTH, isOriginAllowed });
 
@@ -215,7 +236,6 @@ function sweepIdleSessions(now = Date.now()) {
 if (SESSION_SWEEP_MS > 0) {
   setInterval(() => {
     sweepIdleSessions();
-    for (const limiter of Object.values(limiters)) limiter.sweep();
   }, SESSION_SWEEP_MS).unref();
 }
 
@@ -340,7 +360,9 @@ async function primeSession(transport, req) {
   try { await initRes.text(); } catch { /* the init result is discarded either way */ }
 }
 
-app.post("/mcp", async (req, res) => {
+// Every POST /mcp counts against the per-IP budget; initialize also against
+// its own, smaller one.
+app.post("/mcp", limit.mcp, limit.initialize, async (req, res) => {
   const sessionId = req.headers["mcp-session-id"];
   let transport = sessionId ? transports.get(sessionId) : undefined;
   const jwt = bearerOf(req);
@@ -392,11 +414,6 @@ app.post("/mcp", async (req, res) => {
     // expired-Bearer transport 401 is reverted (see the transport-present block
     // above), so an expired-but-present Bearer proceeds to the tool layer where
     // the in-band needs_auth ask lives, rather than being challenged.
-    const limited = limiters.initialize.take(`initialize|${clientIp(req, PROXY_HOPS)}`);
-    if (!limited.ok) {
-      sendRateLimited(res, limited.retryAfterSec, { jsonRpc: true });
-      return;
-    }
     if (atSessionCap()) {
       sendSessionCap(res);
       return;
