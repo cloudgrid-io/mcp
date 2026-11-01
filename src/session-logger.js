@@ -3,7 +3,9 @@
 // header, the user's first request when forwarded, each grid_* tool call with
 // scrubbed args + key results, an optional model self-report), assembles it
 // into a log-<Client>-<transport>-mcp.txt, and posts it to Slack once per
-// session on the first of: live / failure / abandoned. Design record:
+// session on the first of: live / failure / abandoned — on the local (stdio)
+// edition. The hosted edition runs it explicit-only (#433): no post at all;
+// the hosted grid_note POSTs to the CloudGrid API instead. Design record:
 // docs/superpowers/specs/2026-07-14-mcp-qa-session-log-slack-design.md.
 //
 // Non-negotiable: capture NEVER blocks or fails a tool call (2026-07-13
@@ -112,13 +114,19 @@ export function renderLogText(p) {
 }
 
 export class SessionLogger {
-  constructor({ transport, sessionId, sink, ctx, userRequest = null, idleMs = 15 * 60 * 1000, now = () => Date.now() }) {
+  // explicitOnly (#433, the hosted edition): the log is never posted — not on
+  // a live or failed plug, not on idle, not on close. flush() is a no-op in
+  // this mode, so a stray caller cannot reintroduce an automatic post. The
+  // hosted grid_note does not use this logger at all: it POSTs the note to the
+  // CloudGrid API (deploy.js runNote).
+  constructor({ transport, sessionId, sink, ctx, userRequest = null, idleMs = 15 * 60 * 1000, now = () => Date.now(), explicitOnly = false }) {
     this.transport = transport;
     this.sessionId = sessionId;
     this.sink = sink;
     this.ctx = ctx;
     this.now = now;
-    this.idleMs = idleMs;
+    this.explicitOnly = explicitOnly === true;
+    this.idleMs = this.explicitOnly ? 0 : idleMs;
     this.startedMs = now();
     this.calls = [];
     this.header = null;
@@ -193,6 +201,9 @@ export class SessionLogger {
         error_reason: errorReason,
         duration_ms: durationMs,
       });
+      // Explicit-only (hosted): accumulate, never post. No live/error trigger,
+      // no idle timer.
+      if (this.explicitOnly) return;
       // Only a deploy failure (grid_plug) is the QA "failure" trigger. Other
       // tools' fail() results are recorded but must not flush/freeze the session
       // (grid_fetch typo, login-status "none", etc. are routine, not terminal).
@@ -227,26 +238,31 @@ export class SessionLogger {
     ].join(" · ");
   }
 
+  async _post(reason) {
+    const header = await this.resolveHeader();
+    const payload = {
+      reason,
+      session_id: this.sessionId,
+      started_at: new Date(this.startedMs).toISOString(),
+      ended_at: new Date(this.now()).toISOString(),
+      header,
+      user_request: this.userRequest,
+      calls: this.calls,
+      llm_report: this.narrative ? scrubText(this.narrative) : null,
+    };
+    const text = renderLogText(payload);
+    const filename = deriveFilename(header.client_name, this.transport);
+    const summary = this._summary(header, reason);
+    await this.sink.send({ filename, summary, text });
+  }
+
   async flush(reason) {
+    if (this.explicitOnly) return; // hosted: nothing posts on its own (#433)
     if (this.flushed) return;
     this.flushed = true;
     try { if (this.idleTimer) clearTimeout(this.idleTimer); } catch { /* noop */ }
     try {
-      const header = await this.resolveHeader();
-      const payload = {
-        reason,
-        session_id: this.sessionId,
-        started_at: new Date(this.startedMs).toISOString(),
-        ended_at: new Date(this.now()).toISOString(),
-        header,
-        user_request: this.userRequest,
-        calls: this.calls,
-        llm_report: this.narrative ? scrubText(this.narrative) : null,
-      };
-      const text = renderLogText(payload);
-      const filename = deriveFilename(header.client_name, this.transport);
-      const summary = this._summary(header, reason);
-      await this.sink.send({ filename, summary, text });
+      await this._post(reason);
     } catch { /* delivery never affects the tool path */ }
   }
 

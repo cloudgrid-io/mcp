@@ -3,8 +3,8 @@ name: docs-app
 when: multi-page documentation SITE, developer docs portal, knowledge base, help center you'll keep editing — docs with a sidebar, full-text search, and agent-readable llms.txt, built with Astro/Starlight. SEPARATE content files, not one page. For a quick single-page doc baked into one HTML file (instant, works on the hosted MCP), use docs-site instead. For an interactive REST API endpoint reference, use api-docs.
 needs: none
 deploy: static build
-editions: local
-capabilities_note: a built, multi-page static documentation site (Astro Starlight) — sidebar nav, client-side search, and llms.txt / llms-full.txt generated on every build. No infrastructure (no needs:). Because it BUILDS from multiple files, it deploys async and needs the local edition; the hosted MCP cannot build it. Served at the entity root via grid_plug.
+editions: all
+capabilities_note: a built, multi-page static documentation site (Astro Starlight) — sidebar nav, client-side search, and llms.txt / llms-full.txt generated on every build. No infrastructure (no needs:). Because it BUILDS from multiple files, it deploys async; hosted plugs the files inline as artifact_files (the CLI is the more reliable route for a build with a lockfile), local plugs the folder. Served at the entity root via grid_plug.
 summary: Scaffold an Astro Starlight docs site from the docs-app template, fill in the content, build it, deploy the folder with grid_plug (async → poll to a live URL), then ask the user what visibility they want. llms.txt / llms-full.txt are generated automatically.
 ---
 
@@ -15,28 +15,28 @@ a docs portal / knowledge base with a sidebar, search, and agent-readable
 `llms.txt`. That is a **built static site** (Astro Starlight), not a single page.
 
 Choose the right archetype first:
-- **Quick, single-page doc**, or you're on the **hosted MCP** (Claude Web) → use
+- **Quick, single-page doc** → use
   `docs-site` (one self-contained HTML file, instant inspiration, any edition).
 - **Interactive REST API endpoint reference** → use `api-docs`.
 - **Multi-page site you'll maintain (sidebar + search + llms.txt)** → `docs-app`,
   this workflow.
 
 Be honest that a `docs-app` deploy is a build (async, not instant like a single
-HTML drop) and that it needs the local edition.
+HTML drop) and that it needs a cloudgrid.yaml and an async build.
 
-## 1. Edition check FIRST (hard gate)
+## 1. Edition check FIRST (pick the plug path)
 
-A docs-app is built (`npm run build`) from multiple files, so it requires the
-**local edition** (Claude Desktop / Claude Code) or the CLI — the grid folder-plugs
-and builds your project.
+A docs-app is built (`npm run build`) from multiple files: an async build, not
+an instant single-HTML drop. It works on every edition; what differs is how the
+files reach the grid.
 
-- **Hosted edition (Claude Web / hosted MCP):** you CANNOT build a multi-file
-  site. Tell the user plainly: "A multi-page docs site needs the local edition
-  (Claude Desktop/Code) or the CloudGrid CLI; the hosted edition can only publish
-  a single page — I can make you a one-page `docs-site` instead." Offer the
-  `docs-site` fallback; do not try to build here.
-- **Local edition:** continue.
-
+- **Hosted edition (Claude Web / hosted MCP):** a quick single-page doc is the
+  `docs-site` workflow (one HTML file, instant). The full Starlight site can go
+  inline as `grid_plug`'s `artifact_files`, but it has a lockfile and many
+  files, so the CLI route (`npx -y @cloudgrid-io/cli@latest plug`) is more
+  reliable — say so, and never drop files silently.
+- **Local edition:** continue — scaffold, write the folder, and plug it with
+  `path`.
 ## 2. Auth + grid
 
 1. Ensure signed in: `grid_login_status`; if not, `grid_login`.
@@ -117,4 +117,4 @@ build` for you and serves the `dist/` output — you do NOT need to build first.
 To iterate, edit the content and re-plug the SAME entity (`target_entity_id`) so
 it updates the same URL.
 
-Keep it honest: multi-file build, async deploy, local-edition only.
+Keep it honest: multi-file build, async deploy, any edition (inline on hosted, a folder on local).

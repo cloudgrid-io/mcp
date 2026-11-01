@@ -136,15 +136,15 @@ npx -y @cloudgrid-io/mcp
 ```
 
 It wraps the same `grid` CLI and uses the same credentials, so no extra login
-is needed. Remote-capable clients can point at one of two hosted endpoints:
+is needed. Remote-capable clients point at the hosted endpoint:
 
-- `https://mcp.cloudgrid.io/mcp` — anonymous-first; no account needed to try it.
-- `https://mcp-connected.cloudgrid.io/mcp` — connected; native OAuth sign-in
-  when you add it (for claude.ai org connectors and clients that support OAuth).
+- `https://mcp.cloudgrid.io/mcp` — a client that supports OAuth signs you in when
+  you add it; otherwise `grid_login` signs you in from the conversation on the
+  first plug.
 
 **One CloudGrid server per client.** Run either the local (stdio) server — on
 its own or via the Claude Code plugin, which bundles it — or a hosted connector
-in a given client. Never both: the 14 shared `grid_*` tool names appear twice,
+in a given client. Never both: the shared `grid_*` tool names appear twice,
 and the two servers hold separate sign-in state (the local edition uses the
 CLI's `~/.cloudgrid/credentials`; the connector holds an OAuth session) — they
 can disagree about whether you are signed in. How to tell: duplicate `grid_*`

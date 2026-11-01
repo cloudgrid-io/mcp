@@ -1,12 +1,12 @@
 ---
 name: restaurant-reservations
-when: "restaurant website with reservations, table booking, restaurant site — a public Next.js site with menu content and a persistent reservations/table-booking collection backed by Mongo. Runtime app → local edition. This is a BLUEPRINT: read AGENTS.md for the structure, then build the app."
+when: "restaurant website with reservations, table booking, restaurant site — a public Next.js site with menu content and a persistent reservations/table-booking collection backed by Mongo. Runtime app. This is a BLUEPRINT: read AGENTS.md for the structure, then build the app."
 needs: database
 deploy: runtime
-editions: local
+editions: all
 kind: blueprint
-capabilities_note: "persistent — needs a database (Mongo). Runtime app, async build, local edition only. Declare the canonical `needs: { database: true }`; the deployer injects DATABASE_MONGODB_URL (+legacy MONGODB_URL). Third-party secrets (Stripe deposit, email) go through the `vault:` block. A confirmation-reminder cron service is DESIGNED but NOT deployable yet (platform issue #1543)."
-summary: "BLUEPRINT for a restaurant website with online reservations — a public Next.js + Mongo site (menu content + a reservations / table-booking collection) on the grid. It is structure + cloudgrid.yaml, not runnable code: fetch the template, READ AGENTS.md for the file tree, the menu/reservations/tables collections, and the CloudGrid wiring (DATABASE_MONGODB_URL injection, vault: for Stripe/email secrets, optional auth, deploy/poll), then build the app under services/web/ following it. needs:{database:true} (not requires:). Async runtime deploy, local edition only. Cron reminders are designed but PENDING #1543."
+capabilities_note: "persistent — needs a database (Mongo). Runtime app, async build, any edition (hosted: artifact_files inline; local: a folder). Declare the canonical `needs: { database: true }`; the deployer injects DATABASE_MONGODB_URL (+legacy MONGODB_URL). Third-party secrets (Stripe deposit, email) go through the `vault:` block. A confirmation-reminder cron service is DESIGNED but NOT deployable yet (platform issue #1543)."
+summary: "BLUEPRINT for a restaurant website with online reservations — a public Next.js + Mongo site (menu content + a reservations / table-booking collection) on the grid. It is structure + cloudgrid.yaml, not runnable code: fetch the template, READ AGENTS.md for the file tree, the menu/reservations/tables collections, and the CloudGrid wiring (DATABASE_MONGODB_URL injection, vault: for Stripe/email secrets, optional auth, deploy/poll), then build the app under services/web/ following it. needs:{database:true} (not requires:). Async runtime deploy, any edition. Cron reminders are designed but PENDING #1543."
 ---
 
 # Workflow: restaurant-reservations
@@ -22,19 +22,25 @@ backed by the grid's shared Mongo, not a static page.
 structure (the proven `app-with-data` shape, with a `reservations` domain).
 
 Be honest that a runtime deploy is async (not instant like a static drop), that
-it needs the local edition, and that the confirmation-reminder **cron** service
+it needs a cloudgrid.yaml, and that the confirmation-reminder **cron** service
 is designed but **not yet deployable** (platform issue #1543).
 
-## 1. Edition check FIRST (hard gate)
+## 1. Edition check FIRST (pick the plug path)
 
-A persistent app is a built + deployed container. It requires the **local
-edition** (Claude Desktop / Claude Code) or the CLI.
+A persistent app is a built + deployed container: an async build, not an
+instant static drop. It works on every edition; what differs is how the files
+reach the grid.
 
-- **Hosted edition (Claude Web / hosted MCP):** you CANNOT build a runtime app —
-  hosted is inline-only and can only publish static pages. Tell the user plainly,
-  offer a **static menu page** (no bookings) instead, and STOP the runtime path.
-- **Local edition:** continue.
-
+- **Hosted edition (Claude Web / hosted MCP):** write the files in the
+  conversation and pass them inline to `grid_plug` as `artifact_files` (one
+  entry per file, with the manifest as `cloudgrid_yaml`), then poll
+  `grid_check_deploy`. A few text files plug fine; a framework build with a
+  lockfile or binary assets is more reliable from the CLI
+  (`npx -y @cloudgrid-io/cli@latest plug`), so say so rather than dropping
+  files silently. Where this recipe says "scaffold with `grid new`" or "deploy
+  the folder", do the same work inline: write the same files and plug them.
+- **Local edition:** continue — scaffold, write the folder, and plug it with
+  `path`.
 ## 2. Auth + grid
 
 1. Ensure signed in: `grid_login_status`; if not, `grid_login`.
@@ -121,4 +127,4 @@ workaround.
 
 Give the user the live app URL — that is the deliverable. To iterate, re-plug the
 SAME entity so it updates the same URL. Keep it honest: blueprint you built out,
-async build, local-edition only, DB + secrets injected by the grid, cron pending.
+async build, any edition, DB + secrets injected by the grid, cron pending.

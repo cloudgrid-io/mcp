@@ -1,10 +1,10 @@
 ---
 name: product-catalog
-when: product catalog, product listings, catalog site, browse products (no checkout) — a persistent app that stores products and lets visitors browse them by category. Needs a database → runtime → local edition.
+when: product catalog, product listings, catalog site, browse products (no checkout) — a persistent app that stores products and lets visitors browse them by category. Needs a database → runtime app.
 needs: database
 deploy: runtime
-editions: local
-capabilities_note: persistent — needs a database (Mongo). Runtime app, async build, local edition only. Declare the canonical `needs: { database: true }`; the deployer injects DATABASE_MONGODB_URL (+legacy MONGODB_URL). No checkout / payments.
+editions: all
+capabilities_note: persistent — needs a database (Mongo). Runtime app, async build, any edition (hosted: artifact_files inline; local: a folder). Declare the canonical `needs: { database: true }`; the deployer injects DATABASE_MONGODB_URL (+legacy MONGODB_URL). No checkout / payments.
 summary: Build a persistent Next.js + Mongo product catalog on the grid — a `products` collection (name, price, category, description, inStock) with a grid view, category filter, and admin add / delete. Edition-gate first, scaffold, put the app under services/web/, wire process.env.DATABASE_MONGODB_URL (legacy MONGODB_URL fallback) lazily, declare needs:{database:true} (not requires:), deploy async, poll to a live URL.
 ---
 
@@ -21,18 +21,24 @@ This is browse-only — **no checkout, no cart, no payments**. If the user wants
 sell (cart, checkout, Stripe), that is a different, larger build; say so.
 
 Follow this recipe. Be honest that a runtime deploy is async (not instant like a
-static drop) and that it needs the local edition.
+static drop) and that it needs a cloudgrid.yaml and an async build.
 
-## 1. Edition check FIRST (hard gate)
+## 1. Edition check FIRST (pick the plug path)
 
-A persistent app is a built + deployed container. It requires the **local
-edition** (Claude Desktop / Claude Code) or the CLI.
+A persistent app is a built + deployed container: an async build, not an
+instant static drop. It works on every edition; what differs is how the files
+reach the grid.
 
-- **Hosted edition (Claude Web / hosted MCP):** you CANNOT build a runtime app —
-  hosted is inline-only and can only publish static pages. Tell the user
-  plainly, offer a **static version** instead, and STOP the runtime path here.
-- **Local edition:** continue.
-
+- **Hosted edition (Claude Web / hosted MCP):** write the files in the
+  conversation and pass them inline to `grid_plug` as `artifact_files` (one
+  entry per file, with the manifest as `cloudgrid_yaml`), then poll
+  `grid_check_deploy`. A few text files plug fine; a framework build with a
+  lockfile or binary assets is more reliable from the CLI
+  (`npx -y @cloudgrid-io/cli@latest plug`), so say so rather than dropping
+  files silently. Where this recipe says "scaffold with `grid new`" or "deploy
+  the folder", do the same work inline: write the same files and plug them.
+- **Local edition:** continue — scaffold, write the folder, and plug it with
+  `path`.
 ## 2. Auth + grid
 
 1. Ensure signed in: `grid_login_status`; if not, `grid_login`.
@@ -103,4 +109,4 @@ response is `status: "building"`, NOT a live URL yet.
 
 Give the user the live catalog URL — that is the deliverable. To iterate, re-plug
 the SAME entity so it updates the same URL. Keep it honest: async build,
-local-edition only, credentials injected by the grid, browse-only (no checkout).
+any edition, credentials injected by the grid, browse-only (no checkout).

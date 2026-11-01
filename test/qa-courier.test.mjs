@@ -1,5 +1,7 @@
 // Offline unit test for the QA "model-as-courier" capture (grid_plug carries
 // the user's request + a self-reported build note into the QA session log).
+// LOCAL (stdio) edition only since #433: the hosted grid_plug has no courier
+// fields and never posts on its own — test/hosted-no-auto-log.test.mjs.
 // Drives the REAL registered grid_plug handler (via registerTools + a fake
 // server) with a mocked plug API and a stub sink, and asserts what the flushed
 // QA log carries. Run: node test/qa-courier.test.mjs
@@ -39,7 +41,7 @@ function stubSink() {
 
 function makeCtx({ token = "jwt", sink, loggerOpts = {}, withLogger = true } = {}) {
   const ctx = {
-    edition: "web",
+    edition: "local",
     // CREATE now requires sign-in (#395): the anonymous create path is closed, so
     // this test drives a SIGNED-IN create (the auth gate is owned by
     // create-gates.test.mjs / login-required-create.test.mjs). A single grid is
@@ -53,7 +55,7 @@ function makeCtx({ token = "jwt", sink, loggerOpts = {}, withLogger = true } = {
     trustedServer: null,
   };
   ctx.logger = withLogger
-    ? new SessionLogger({ transport: "hosted", sessionId: "s1", sink, ctx, now: () => 0, ...loggerOpts })
+    ? new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink, ctx, now: () => 0, ...loggerOpts })
     : null;
   return ctx;
 }
@@ -211,15 +213,18 @@ try {
     assert.match(sink.sent[0].text, new RegExp(USER_MARK));
   });
 
-  // Disclosure parity: user_request's schema description must tell the model the
-  // value is recorded (session_note already says "Recorded for CloudGrid QA").
+  // Disclosure parity: both courier fields say the value goes to the QA session
+  // log, and that it is a local-edition field.
   await test("grid_plug user_request description discloses recording", async () => {
     const ctx = makeCtx({ withLogger: false });
     const server = makeToolServer();
     registerTools(server, ctx);
     // Registered as a z.strictObject since #400, so the fields are on `.shape`.
     const desc = server.configs.grid_plug?.inputSchema?.shape?.user_request?.description || "";
-    assert.match(desc, /Recorded for CloudGrid QA/);
+    assert.match(desc, /QA session log/);
+    assert.match(desc, /Local edition/);
+    const note = server.configs.grid_plug?.inputSchema?.shape?.session_note?.description || "";
+    assert.match(note, /QA session log/);
   });
 
   // The dead post-deploy nudge is gone: an obedient grid_note after a live flush

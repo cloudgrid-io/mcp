@@ -60,12 +60,12 @@ check("fetchCorpus template app-with-data resolves", typeof template === "string
 check("fetchCorpus example app-with-data resolves", typeof example === "string" && example.length > 100);
 check("fetchCorpus troubleshooting persistent-apps resolves", typeof troubleshooting === "string" && troubleshooting.length > 100);
 
-// ── 2. Workflow content: fires on persistence intent + gates hosted ─────────
+// ── 2. Workflow content: fires on persistence intent + gives both plug paths ─
 check("workflow when: mentions SAVES/PERSISTS intent", /SAVES or PERSISTS/.test(workflow));
 check("workflow mentions to-do list intent", /to-do list/.test(workflow));
 check(
-  "workflow gates hosted edition (edition check first)",
-  /hosted/i.test(workflow) && /local edition/i.test(workflow) && /static/i.test(workflow),
+  "workflow edition check gives the hosted path (artifact_files) and the local path (path)",
+  /hosted/i.test(workflow) && /artifact_files/.test(workflow) && /local edition/i.test(workflow) && /`path`/.test(workflow),
 );
 check("workflow says runtime deploy is async / poll", /async/i.test(workflow) && /poll/i.test(workflow));
 check("workflow tells the DB to be read from process.env.DATABASE_MONGODB_URL", /process\.env\.DATABASE_MONGODB_URL/.test(workflow));
@@ -155,10 +155,17 @@ check(
     /app-with-data/.test(startText),
 );
 check(
-  "grid_start playbook contains the persistence rule",
-  /Persistence check/.test(startText) &&
-    /app-with-data/.test(startText) &&
-    /LOCAL edition/.test(startText),
+  "grid_start orientation routes a page that must save data to the app-with-data workflow",
+  /SAVE data/.test(startText) && /app-with-data/.test(startText),
+);
+const playbookDoc = (await server.handlers.grid_get_template({ kind: "doc", name: "playbook" }))?.content?.[0]?.text ?? "";
+check(
+  "playbook doc contains the persistence rule, and it works on every edition (hosted via artifact_files)",
+  /Persistence check/.test(playbookDoc) &&
+    /app-with-data/.test(playbookDoc) &&
+    /every edition/.test(playbookDoc) &&
+    /artifact_files/.test(playbookDoc) &&
+    !/requires the LOCAL edition/.test(playbookDoc),
 );
 
 // ── 6. grid_get_template handler returns the workflow/template/example content ──

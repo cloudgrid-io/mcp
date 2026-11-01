@@ -112,11 +112,11 @@ jobs:
       # gated, and a corrupt-archive BUILD failure that slips past is rewritten to
       # the same handoff. Drives the real runPlug/runCheckDeploy against a mock API.
       - run: npm run test:inline-multifile-guard
-      # Offline QA courier test (0.20.5): grid_plug's user_request + session_note
-      # args reach the flushed QA session log, stay [omitted] in the per-call trail
-      # (default-deny allowlist), respect stdio env precedence, and a successful
-      # deploy nudges grid_note only when a QA logger is active. Drives the real
-      # tool handlers with a mocked plug API + stub sink.
+      # Offline QA courier test (0.20.5; local edition only since #433): grid_plug's
+      # user_request + session_note args reach the flushed QA session log, stay
+      # [omitted] in the per-call trail (default-deny allowlist), respect stdio env
+      # precedence, and a successful deploy nudges grid_note only when a QA logger
+      # is active. Drives the real tool handlers with a mocked plug API + stub sink.
       - run: npm run test:qa-courier
       # Offline consent-gated error-reporting test (0.8.1): grid_report posts
       # {app:"mcp", message, context, node_version, platform} to
@@ -271,8 +271,8 @@ jobs:
       # Offline app-with-data test (0.9.0): the first runtime (DB-backed) build
       # path. Asserts the app-with-data workflow/template/example + persistent-apps
       # troubleshooting resolve via fetchCorpus and the real grid_fetch handler,
-      # the intent shows in the grid_start menu, the PLAYBOOK carries the
-      # persistence rule, the workflow gates the hosted edition, and the template is
+      # the intent shows in the grid_start menu, the playbook doc carries the
+      # persistence rule (every edition), the workflow gates the hosted edition, and the template is
       # internally consistent (active needs: {database: true}, reads
       # process.env.DATABASE_MONGODB_URL, no hardcoded connection string/secret).
       - run: npm run test:app-with-data
@@ -373,6 +373,20 @@ jobs:
       # grid_delete hosted path (#343): confirm gate, entity lookup,
       # DELETE call, and error handling for the hosted edition.
       - run: npm run test:delete-hosted
+      # Served-text policy (#432): every string a model reads — both editions'
+      # server instructions (and their 4,096-character cap), every tool title,
+      # description and parameter describe() at any depth, grid_start's text and
+      # the corpus docs it routes to — names no other hosting product and carries
+      # no preference, priority or call-first wording. The guard is self-tested
+      # against the old copy so a green run proves it can fail. Also pins the
+      # honest annotations: grid_visibility destructive, corpus lookups closed-world.
+      - run: npm run test:served-text-policy
+      # Hosted edition sends no conversation text on its own (#433): the hosted
+      # grid_plug schema has no user_request / session_note (and refuses them), a
+      # live or failed plug, an idle period and a close post NOTHING to the log
+      # sink; grid_note and grid_report still send, as explicit user actions, and
+      # their descriptions say what. The local edition's opt-in log is unchanged.
+      - run: npm run test:hosted-no-auto-log
 
   readme-tool-table:
     runs-on: ubuntu-latest

@@ -278,9 +278,8 @@ async function buildSession(sessionId, jwt, protocolVersion) {
     },
   });
   transport.onclose = () => {
-    // Flush the QA log when the host closes the session (abandoned / build-only).
-    // Fire-and-forget; never blocks the close path.
-    try { webCtx.logger?.flush("abandoned").catch(() => {}); } catch { /* never */ }
+    // No session-log post on close (#433): the hosted edition sends nothing
+    // unless the user asks for it through grid_note or grid_report.
     if (transport.sessionId && transports.get(transport.sessionId) === transport) {
       dropSession(transport.sessionId);
     }
@@ -289,17 +288,18 @@ async function buildSession(sessionId, jwt, protocolVersion) {
   const webCtx = makeWebContext(sessionId, identity);
   webCtx.lastSeen = Date.now();
   setSessionContext(sessionId, webCtx);
-  // QA session log for this MCP session (dark by default). Keyed by the session
-  // id — the host connection boundary. No seed user_request here: current hosts
-  // don't forward the first message. The model-as-courier path fills it instead —
-  // grid_plug's user_request arg lifts the ask into the log (setUserRequest);
-  // absent that, the log records the explicit not-provided line.
+  // Session logger for this MCP session (dark by default, and the hosted
+  // servers carry no webhook). Explicit-only (#433): it never posts — not on a
+  // plug, on idle, or on close. The hosted grid_note POSTs to the CloudGrid API
+  // instead (runNote). No user_request seed and no courier args — the hosted
+  // grid_plug schema has none.
   webCtx.sessionId = sessionId;
   webCtx.logger = createSessionLogger({
     transport: "hosted",
     sessionId,
     sink: createSink(process.env),
     ctx: webCtx,
+    explicitOnly: true,
   });
   registerTools(server, webCtx);
   // Capture the calling agent's clientInfo (name+version) for this session once

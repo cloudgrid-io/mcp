@@ -227,13 +227,17 @@ function makeJwt(claims) {
 // ═══════════════════════════════════════════════════════════════════════════════
 {
   const regSrc = readFileSync(new URL("../src/tools/register.js", import.meta.url), "utf8");
-  // Find the grid_note registration section
-  const noteIdx = regSrc.indexOf('"grid_note"');
-  const noteSection = regSrc.slice(noteIdx, noteIdx + 600);
-  check("9a. grid_note: readOnlyHint is false", noteSection.includes("readOnlyHint: false"));
-  check("9b. grid_note: openWorldHint is true", noteSection.includes("openWorldHint: true"));
-  check("9c. grid_note: no 'No side effects'", !noteSection.includes("No side effects"));
-  check("9d. grid_note: mentions CloudGrid team", noteSection.includes("CloudGrid team"));
+  // grid_note is registered once per edition (#433: hosted POSTs to the API,
+  // local writes the QA-log narrative); check both registrations.
+  const sections = [];
+  for (let i = regSrc.indexOf('"grid_note"'); i !== -1; i = regSrc.indexOf('"grid_note"', i + 1)) {
+    sections.push(regSrc.slice(i, i + 1600));
+  }
+  check("9. grid_note is registered for both editions", sections.length === 2);
+  check("9a. grid_note: readOnlyHint is false", sections.every((s) => s.includes("readOnlyHint: false")));
+  check("9b. grid_note: openWorldHint is true", sections.every((s) => s.includes("openWorldHint: true")));
+  check("9c. grid_note: no 'No side effects'", sections.every((s) => !s.includes("No side effects")));
+  check("9d. grid_note: mentions CloudGrid team", sections.every((s) => s.includes("CloudGrid team")));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -25,12 +25,12 @@ const PUBLIC_API_BASE = (
   process.env.CLOUDGRID_PUBLIC_API_URL || "https://api.cloudgrid.io"
 ).replace(/\/+$/, "");
 
-// The public URL of the connected (OAuth) MCP host, used in error guidance that
-// suggests the hosted connector as an alternative. Derived from MCP_PUBLIC_URL
-// (set on the deployment) with a fallback.
+// The public URL of the hosted MCP, used in error guidance that suggests the
+// hosted connector as an alternative. Derived from MCP_PUBLIC_URL (set on the
+// deployment) with a fallback.
 const CONNECTED_MCP_HOST =
   process.env.MCP_PUBLIC_URL?.replace(/\/+$/, "") ||
-  "https://mcp-connected.cloudgrid.io";
+  "https://mcp.cloudgrid.io";
 
 export function cloudgridHome() {
   return process.env.CLOUDGRID_HOME || join(homedir(), ".cloudgrid");

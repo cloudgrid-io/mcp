@@ -1,10 +1,10 @@
 ---
 name: ai-app
-when: chatbot, AI assistant, Q&A bot, conversational app, support bot, ask-me-anything, an app that talks to an LLM / generates text with AI. Needs AI + a database → runtime → local edition.
+when: chatbot, AI assistant, Q&A bot, conversational app, support bot, ask-me-anything, an app that talks to an LLM / generates text with AI. Needs AI + a database → runtime app.
 needs: ai, database
 deploy: runtime
-editions: local
-capabilities_note: AI chatbot — needs ai (the grid AI gateway) + a database (Mongo) for chat history. Next.js App Router app. Uses @cloudgrid-io/runtime runtime.ai.chat({ model, messages }) — zero-config in-grid identity (the SDK reads RUNTIME_GATEWAY_URL automatically; chat needs a model; no API key). Runtime app, async build, local edition only. Declare `needs: { ai: true, database: true }`. (RAG over your own docs needs `needs: { vector: pgvector }` — now available, #1545 shipped (verified live 2026-07-16); this template ships the plain chatbot without it.)
+editions: all
+capabilities_note: AI chatbot — needs ai (the grid AI gateway) + a database (Mongo) for chat history. Next.js App Router app. Uses @cloudgrid-io/runtime runtime.ai.chat({ model, messages }) — zero-config in-grid identity (the SDK reads RUNTIME_GATEWAY_URL automatically; chat needs a model; no API key). Runtime app, async build, any edition (hosted: artifact_files inline; local: a folder). Declare `needs: { ai: true, database: true }`. (RAG over your own docs needs `needs: { vector: pgvector }` — now available, #1545 shipped (verified live 2026-07-16); this template ships the plain chatbot without it.)
 summary: Build an AI chatbot on the grid — a Next.js app that calls @cloudgrid-io/runtime runtime.ai.chat({ model, messages }) (zero-config in-grid auth, reads RUNTIME_GATEWAY_URL, no key) and persists the conversation to grid-shared Mongo. Edition-gate first, scaffold, put the app under services/web/, declare needs:{ai:true,database:true}, read DATABASE_MONGODB_URL lazily, deploy async, poll to a live URL.
 ---
 
@@ -16,22 +16,24 @@ replies and **remembers the conversation** in the grid-shared Mongo. So it needs
 two capabilities: `ai` (the gateway) and `database` (chat history). That makes it
 a **runtime app**, not a static page.
 
-Follow this recipe. Be honest that a runtime deploy is async and needs the local
-edition.
+Follow this recipe. Be honest that a runtime deploy is async and needs a cloudgrid.yaml and an async build.
 
-## 1. Edition check FIRST (hard gate)
+## 1. Edition check FIRST (pick the plug path)
 
-An AI chatbot is a built + deployed container. It requires the **local edition**
-(Claude Desktop / Claude Code) or the CLI, because the grid must run the CLI and
-folder-plug your project.
+A persistent app is a built + deployed container: an async build, not an
+instant static drop. It works on every edition; what differs is how the files
+reach the grid.
 
-- **Hosted edition (Claude Web / hosted MCP):** you CANNOT build a runtime app —
-  hosted is inline-only and can only publish static pages. Tell the user plainly:
-  "An AI chatbot needs the local edition (Claude Desktop/Code) or the CloudGrid
-  CLI; the hosted edition can only publish static pages." STOP the runtime path
-  here.
-- **Local edition:** continue.
-
+- **Hosted edition (Claude Web / hosted MCP):** write the files in the
+  conversation and pass them inline to `grid_plug` as `artifact_files` (one
+  entry per file, with the manifest as `cloudgrid_yaml`), then poll
+  `grid_check_deploy`. A few text files plug fine; a framework build with a
+  lockfile or binary assets is more reliable from the CLI
+  (`npx -y @cloudgrid-io/cli@latest plug`), so say so rather than dropping
+  files silently. Where this recipe says "scaffold with `grid new`" or "deploy
+  the folder", do the same work inline: write the same files and plug them.
+- **Local edition:** continue — scaffold, write the folder, and plug it with
+  `path`.
 ## 2. Auth + grid
 
 Persistent apps are owned entities.
@@ -145,5 +147,5 @@ That path is **now available** — #1545 shipped. The template itself is a plain
 chatbot; declaring `vector: pgvector` injects `VECTOR_PGVECTOR_URL`, and you
 build the retrieval code on top of it.
 
-Keep it honest: async build, local-edition only, AI auth and DB credentials
+Keep it honest: async build, any edition, AI auth and DB credentials
 provided by the grid.

@@ -3,6 +3,21 @@
 
 import { strict as assert } from "node:assert";
 
+// Does the message name the hosted connector? Parse each URL it carries and
+// compare the host and path (not a substring match, which would also accept
+// an unrelated host that merely contains the text).
+function namesHostedConnector(message) {
+  const urls = String(message || "").match(/https?:\/\/[^\s)"']+/g) || [];
+  return urls.some((raw) => {
+    try {
+      const u = new URL(raw.replace(/[.,;]+$/, ""));
+      return u.host === "mcp.cloudgrid.io" && u.pathname.replace(/\/+$/, "") === "/mcp";
+    } catch {
+      return false;
+    }
+  });
+}
+
 let failures = 0;
 const check = (label, cond) => {
   console.log(`${cond ? "ok  " : "FAIL"} ${label}`);
@@ -130,7 +145,7 @@ const check = (label, cond) => {
 
   check("pollStatusOnce: surfaces ECONNREFUSED", errMsg && errMsg.includes("ECONNREFUSED"));
   check("pollStatusOnce: mentions HTTPS_PROXY", errMsg && errMsg.includes("HTTPS_PROXY"));
-  check("pollStatusOnce: mentions hosted connector", errMsg && errMsg.includes("mcp-connected.cloudgrid.io"));
+  check("pollStatusOnce: mentions hosted connector", namesHostedConnector(errMsg));
 
   globalThis.fetch = originalFetch;
 }

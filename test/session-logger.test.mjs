@@ -456,13 +456,16 @@ test("grid_start and grid_get_template route through the capture shim (FIX 4)", 
   assert.ok(recorded.includes("grid_get_template"), "grid_get_template was captured");
 });
 
+// Local edition: the note is the QA log's narrative. (Hosted grid_note POSTs
+// to the CloudGrid API instead and never touches the logger — #433, covered by
+// test/hosted-no-auto-log.test.mjs.)
 test("grid_note records a self-report narrative and never errors", async () => {
   const server = makeToolServer();
   const ctx = {
-    edition: "web", state: { client: null }, canOpenBrowser: false,
+    edition: "local", state: { client: null }, canOpenBrowser: false,
     getToken: async () => null, getActiveGrid: async () => null,
   };
-  ctx.logger = new SessionLogger({ transport: "hosted", sessionId: "s1", sink: stubSink(), ctx, now: () => 0 });
+  ctx.logger = new SessionLogger({ transport: "stdio", sessionId: "cli-1", sink: stubSink(), ctx, now: () => 0 });
   registerTools(server, ctx);
   assert.ok(typeof server.handlers.grid_note === "function");
   const res = await server.handlers.grid_note({ summary: "Built a scheduler with a dashboard." });

@@ -760,6 +760,77 @@ export async function runReport(
   });
 }
 
+// grid_note on the hosted edition (#433): a build note the user asks to send,
+// POSTed to the CloudGrid API's feedback endpoint under the user's own bearer —
+// the same route as the CLI's feedback, so the team sees it where it reads
+// reports. Sends ONLY the note text plus { surface, client, grid }: no email
+// (the API knows the user from the bearer), no tool-call trail, no other
+// conversation text. Signed-out → needs_auth, nothing posted (never anonymous).
+// A non-2xx answer is reported as a failure, never as "Noted". Never throws.
+export async function runNote(ctx, { summary } = {}) {
+  const note = typeof summary === "string" ? summary.trim() : "";
+  if (!note) {
+    return okResult({
+      text: "Nothing to send — pass a short `summary` of what was built and why.",
+      structured: { status: "skipped" },
+    });
+  }
+  let token = null;
+  try { token = await ctx.getToken(); } catch { token = null; }
+  if (!token) {
+    return okResult({
+      text: "Sending a note to the CloudGrid team needs an account, so it is filed under the user. Call grid_login to sign in, then re-call grid_note.",
+      structured: { status: "unauthorized", needs_auth: true },
+    });
+  }
+  let grid = null;
+  try { grid = (await ctx.getActiveGrid()) ?? null; } catch { grid = null; }
+  const client = ctx.state?.client?.name ? String(ctx.state.client.name) : "unknown";
+  const body = {
+    app: "mcp",
+    message: scrubSecretValues(note).slice(0, 4000),
+    context: { surface: "mcp", client, ...(grid ? { grid } : {}) },
+    cli_version: null,
+    node_version: process.version,
+    platform: "mcp-hosted",
+  };
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/api/v2/feedback`, {
+      method: "POST",
+      headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    return okResult({
+      text: `Couldn't send the note: the CloudGrid API is unreachable (${err.message}). Nothing was sent — try again later.`,
+      structured: { status: "error" },
+    });
+  }
+  if (res.ok) {
+    return okResult({
+      text: "Sent the note to the CloudGrid team.",
+      structured: { status: "recorded" },
+    });
+  }
+  if (res.status === 429) {
+    return okResult({
+      text: "Couldn't send the note: too many notes in a short time. Try again in a minute.",
+      structured: { status: "rate_limited" },
+    });
+  }
+  if (res.status === 401) {
+    return okResult({
+      text: "Couldn't send the note: the sign-in didn't authorize it. Sign in again (grid_login) and retry.",
+      structured: { status: "unauthorized", needs_auth: true },
+    });
+  }
+  return okResult({
+    text: `Couldn't send the note: the CloudGrid API answered ${res.status}. Nothing was sent — try again later.`,
+    structured: { status: "error" },
+  });
+}
+
 // The session's anonymous claim token (the anon owner token) is a capability
 // bound to the ONE entity it was minted for. Return it only when `entityId` is
 // that entity: the remembered `entity_id`, else the token's own `ent` claim

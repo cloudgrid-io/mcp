@@ -11,7 +11,8 @@ template's `needs:`, then deploy:
 - **single self-contained HTML page → inspiration** (instant, any client / any
   edition) via `grid_plug` with the inline `html` param.
 - **separate files/folders/assets, or anything needing `needs:` → runtime app**
-  (async build, **local edition** only) via `grid_plug` on a linked folder.
+  (async build, any edition) via `grid_plug` — `artifact_files` inline on hosted, a
+  folder `path` on local.
 
 Fetch this doc any time with `grid_get_template("doc", "capability-map")`. For the full
 cloudgrid.yaml schema (every field, the `needs:` injection table, the
@@ -111,7 +112,7 @@ A **blueprint** is a heavier archetype that ships **structure + a correct
 template, **read its `AGENTS.md`** for the file tree / collections / CloudGrid
 wiring (DB injection, `vault:` secrets for auth + Stripe, deploy), then BUILD the
 app under `services/web/` following it. All are persistent Next.js + Mongo →
-runtime, async build, **local edition only**. Auth/payment secrets map through a
+runtime, async build, any edition. Auth/payment secrets map through a
 `vault:` block → env vars (never `requires:`).
 
 | Intent (match on `when:`) | Template | `needs:` | Deploy | Edition |
@@ -191,7 +192,8 @@ engine hint. Cron is NOT a need — it is a **service type** (`type: cron` with
 3. One self-contained HTML page (`needs: none`, assets inlined) → publish as an
    inspiration with `grid_plug` and the inline `html` param (instant, any
    edition). Separate files/folders/assets, or anything with a `needs:` →
-   runtime, local edition, `grid_plug` a linked folder, then poll to a live URL.
+   runtime, `grid_plug` the files (inline on hosted, a folder on local), then poll
+   to a live URL.
 4. More than one service when the user describes parts that run separately — a
    frontend with a backend API, a worker, a scheduled job, or two different
    languages. One service is the default; do not split without a reason. Use the
@@ -201,9 +203,9 @@ engine hint. Cron is NOT a need — it is a **service type** (`type: cron` with
 ## FAQ
 
 **"What database does CloudGrid support?"**
-> All of them — use CloudGrid's managed database out of the box, or bring your own
-> by giving me the connection keys (Postgres, MySQL, MongoDB, Supabase, Neon, and
-> more). Which would you like?
+> Use CloudGrid's managed database out of the box, or bring your own by giving me
+> the connection string (Postgres, MySQL, or MongoDB, hosted anywhere). Which
+> would you like?
 
 Under the hood: **managed** is `needs: { database: true }` (grid provisions Mongo,
 injects `DATABASE_MONGODB_URL`); **bring-your-own** is

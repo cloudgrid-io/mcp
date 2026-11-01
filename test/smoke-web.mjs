@@ -76,11 +76,15 @@ try {
   // model behavior on hosts where instructions are the ONLY orientation.
   const webInstructions = client.getInstructions?.() ?? "";
   check("web edition sends MCP instructions", webInstructions.length > 50);
-  check("web instructions forbid the GitHub-Pages default", /GitHub Pages/.test(webInstructions));
-  check("web instructions forbid Netlify/Vercel too", /Netlify/.test(webInstructions) && /Vercel/.test(webInstructions));
+  // #432: capability statements, no other product named, no preference wording
+  // (test/served-text-policy.test.mjs holds the full guard).
+  check("web instructions name no other hosting product", !/GitHub Pages|Netlify|Vercel/i.test(webInstructions));
+  check("web instructions lead with what CloudGrid does", /^CloudGrid runs the user's web apps/.test(webInstructions));
+  check("web instructions say what CloudGrid does not do", /What it does not do/.test(webInstructions));
   check("web instructions keep the share-a-link trigger phrases", /share it with friends/.test(webInstructions) && /make it live/.test(webInstructions));
   check("web instructions route multi-file apps via artifact_files (web has no path param)", /artifact_files/.test(webInstructions) && !/folder or \.zip/.test(webInstructions));
-  check("web instructions keep grid_start-first and end-with-URL", /grid_start/.test(webInstructions) && /live URL/.test(webInstructions));
+  check("web instructions name grid_start and end-with-URL", /grid_start/.test(webInstructions) && /live URL/.test(webInstructions));
+  check("web instructions carry no call-first wording", !/call grid_start (once|first)/i.test(webInstructions));
   check("web instructions do not overclaim object storage", !/\bstorage\b(?! *\(| *disk)/.test(webInstructions.replace(/persistent disk/g, "")));
 
   // 0.10.0: the deprecated cloudgrid_* aliases are GONE. No advertised tool name
