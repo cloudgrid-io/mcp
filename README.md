@@ -77,8 +77,9 @@ Set `CLOUDGRID_QA_SLACK_WEBHOOK` to an **internal / private** Slack incoming-web
 URL to receive a per-session QA log (`log-<Client>-<transport>-mcp.txt`) when a
 local (stdio) session goes live, fails, or is abandoned. The log carries the
 user's first message (when the host forwards it) and identity details, so the
-target channel MUST be internal. The hosted edition never posts on its own: with
-the webhook set, the only post is the note a user sends with `grid_note`. Unset → the feature is fully dark (nothing captured, nothing
+target channel MUST be internal. The hosted edition never posts a session log
+at all (its servers carry no webhook); a hosted `grid_note` is filed with the
+CloudGrid API instead — see "Privacy Policy" below. Unset → the feature is fully dark (nothing captured, nothing
 posted). `CLOUDGRID_QA_IDLE_MS` overrides the abandoned-idle window (default
 900000 = 15 min).
 
@@ -95,7 +96,7 @@ posted). `CLOUDGRID_QA_IDLE_MS` overrides the abandoned-idle window (default
 | `grid_pull` | API | Pull an app to continue/edit it IN PLACE — like `git clone` of the SAME entity: your next grid_plug (with its target_... |
 | `grid_collab` | API | Collab: GET PUSH ACCESS to the SAME live entity that someone else owns — you become a collaborator on THAT entity, no... |
 | `grid_create_grid` | API | Create a new grid (workspace) for the signed-in user — they become its admin. |
-| `grid_note` | API | Leave a one-paragraph summary of what you built this session and why, for the local edition's optional QA session log. |
+| `grid_note` | API | Leave a one-paragraph summary of what you built this session and why, for the local edition's optional QA session log... |
 | `grid_plug` | API | Plug an app, website, game, or single HTML page into CloudGrid and get a live public URL in seconds. |
 | `grid_get_app_source` | API | Retrieve the CURRENT deployed HTML of an inspiration/drop inline as text, so you can edit it and re-plug the SAME URL... |
 | `grid_login` | API | Start a CLI-free CloudGrid sign-in. |
@@ -242,10 +243,14 @@ captured from the `CLOUDGRID_USER_REQUEST` environment variable (forwarded by
 Claude Code) or `grid_plug`'s `user_request` argument (local edition only).
 **The hosted edition sends nothing on its own**: its `grid_plug` has no
 `user_request` or `session_note`, and there is no post on a plug, on idle, or on
-close. The one hosted post is `grid_note`, which the user asks for; it carries
-the summary, the session metadata above, and the per-tool-call trail. `grid_report`
-(both editions) sends a failure report to the CloudGrid API only after the user
-agrees, and includes the conversation only when they explicitly agree to that. Free-text values
+close. The one hosted post is `grid_note`, which the user asks for: it POSTs the
+note to the CloudGrid API (`/api/v2/feedback`) under the user's own sign-in,
+with the grid slug and the client name — no email address, no tool-call trail,
+nothing else from the conversation; signed out, it returns `needs_auth` and
+sends nothing. `grid_report` (both editions) sends a failure report to the
+CloudGrid API only after the user agrees: the message and context the model
+passes plus the client name and platform, and the conversation only when they
+explicitly agree to that. Free-text values
 (the first message, the narrative, tool arguments, and error messages) pass
 through a scrubber that redacts JWTs, PEM keys, Bearer tokens, and known
 provider API-key formats. Identity fields (`_keyResult` values and the header

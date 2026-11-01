@@ -3,9 +3,9 @@ name: online-store
 when: online store, e-commerce store, shop with checkout, sell products online
 needs: database
 deploy: runtime
-editions: local
+editions: all
 kind: blueprint
-capabilities_note: persistent + payments — needs a database (Mongo) and Stripe. Runtime app, async build, local edition only. This is a BLUEPRINT — read the template's AGENTS.md for the structure, then build the app. Declare the canonical `needs: { database: true }`; the deployer injects DATABASE_MONGODB_URL (+legacy MONGODB_URL). The Stripe key comes from the vault: block → STRIPE_KEY.
+capabilities_note: persistent + payments — needs a database (Mongo) and Stripe. Runtime app, async build, any edition (hosted: artifact_files inline; local: a folder). This is a BLUEPRINT — read the template's AGENTS.md for the structure, then build the app. Declare the canonical `needs: { database: true }`; the deployer injects DATABASE_MONGODB_URL (+legacy MONGODB_URL). The Stripe key comes from the vault: block → STRIPE_KEY.
 summary: Build a persistent Next.js + Mongo + Stripe online store on the grid — storefront, cart, /api/checkout Stripe session, signature-verified Stripe webhook, orders in Mongo. This is a BLUEPRINT: edition-gate first, scaffold, fetch the template and read AGENTS.md for the file tree + wiring, put the app under services/web/, wire process.env.DATABASE_MONGODB_URL lazily and STRIPE_KEY from the vault, declare needs:{database:true} (not requires:), deploy async, poll to a live URL, register the webhook in Stripe.
 ---
 
@@ -20,18 +20,24 @@ and records the order. Not a static page — it must remember products and order
 **This is a BLUEPRINT.** The template ships the structure + `cloudgrid.yaml`, not
 finished app code. The build shape is proven `app-with-data` (Next.js App Router,
 lazy Mongo, app under `services/web/`) plus a second collection and Stripe wiring.
-Be honest that a runtime deploy is async (not instant) and needs the local edition.
+Be honest that a runtime deploy is async (not instant) and needs a cloudgrid.yaml and an async build.
 
-## 1. Edition check FIRST (hard gate)
+## 1. Edition check FIRST (pick the plug path)
 
-A persistent store is a built + deployed container. It requires the **local
-edition** (Claude Desktop / Claude Code) or the CLI.
+A persistent app is a built + deployed container: an async build, not an
+instant static drop. It works on every edition; what differs is how the files
+reach the grid.
 
-- **Hosted edition (Claude Web / hosted MCP):** you CANNOT build a runtime app —
-  hosted is inline-only and can only publish static pages. Say so plainly, offer
-  a **static storefront preview** instead, and STOP the runtime path here.
-- **Local edition:** continue.
-
+- **Hosted edition (Claude Web / hosted MCP):** write the files in the
+  conversation and pass them inline to `grid_plug` as `artifact_files` (one
+  entry per file, with the manifest as `cloudgrid_yaml`), then poll
+  `grid_check_deploy`. A few text files plug fine; a framework build with a
+  lockfile or binary assets is more reliable from the CLI
+  (`npx -y @cloudgrid-io/cli@latest plug`), so say so rather than dropping
+  files silently. Where this recipe says "scaffold with `grid new`" or "deploy
+  the folder", do the same work inline: write the same files and plug them.
+- **Local edition:** continue — scaffold, write the folder, and plug it with
+  `path`.
 ## 2. Auth + grid
 
 1. Ensure signed in: `grid_login_status`; if not, `grid_login`.
@@ -110,5 +116,5 @@ response is `status: "building"`, NOT a live URL yet.
 2. Give the user the live store URL — that is the deliverable. To iterate, re-plug
    the SAME entity so it updates the same URL.
 
-Keep it honest: blueprint (build from AGENTS.md), async build, local-edition only,
+Keep it honest: blueprint (build from AGENTS.md), async build, any edition,
 Mongo + Stripe credentials injected by the grid / vault.

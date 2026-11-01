@@ -3,11 +3,10 @@ name: forum
 when: "forum, discussion board, community forum, threaded discussions"
 needs: database
 deploy: runtime
-editions: local
+editions: all
 kind: blueprint
 capabilities_note: >-
-  persistent — needs a database (Mongo). Runtime app, async build, local edition
-  only. Sign-in-to-post auth via a hosted provider (Clerk/Auth0) with keys from
+  persistent — needs a database (Mongo). Runtime app, async build, any edition (hosted: artifact_files inline; local: a folder). Sign-in-to-post auth via a hosted provider (Clerk/Auth0) with keys from
   the grid vault (vault block maps items to env vars). Declare the canonical needs
   database=true; the deployer injects DATABASE_MONGODB_URL (+legacy MONGODB_URL).
   BLUEPRINT — ships structure + cloudgrid.yaml, not app code.
@@ -38,18 +37,24 @@ CloudGrid injects the DB + vault secrets, how to wire auth + moderation, deploy
 steps) — then build the app under `services/web/` following it.
 
 Be honest that a runtime deploy is async (not instant like a static drop) and
-that it needs the local edition.
+that it needs a cloudgrid.yaml and an async build.
 
-## 1. Edition check FIRST (hard gate)
+## 1. Edition check FIRST (pick the plug path)
 
-A persistent app is a built + deployed container. It requires the **local
-edition** (Claude Desktop / Claude Code) or the CLI.
+A persistent app is a built + deployed container: an async build, not an
+instant static drop. It works on every edition; what differs is how the files
+reach the grid.
 
-- **Hosted edition (Claude Web / hosted MCP):** you CANNOT build a runtime app —
-  hosted is inline-only and can only publish static pages. Tell the user
-  plainly, offer a **static read-only mock** instead, and STOP the runtime path.
-- **Local edition:** continue.
-
+- **Hosted edition (Claude Web / hosted MCP):** write the files in the
+  conversation and pass them inline to `grid_plug` as `artifact_files` (one
+  entry per file, with the manifest as `cloudgrid_yaml`), then poll
+  `grid_check_deploy`. A few text files plug fine; a framework build with a
+  lockfile or binary assets is more reliable from the CLI
+  (`npx -y @cloudgrid-io/cli@latest plug`), so say so rather than dropping
+  files silently. Where this recipe says "scaffold with `grid new`" or "deploy
+  the folder", do the same work inline: write the same files and plug them.
+- **Local edition:** continue — scaffold, write the folder, and plug it with
+  `path`.
 ## 2. Auth + grid
 
 1. Ensure signed in: `grid_login_status`; if not, `grid_login`.
@@ -126,4 +131,4 @@ response is `status: "building"`, NOT a live URL yet.
 
 Give the user the live forum URL — that is the deliverable. To iterate, re-plug
 the SAME entity so it updates the same URL. Keep it honest: this is a blueprint you
-built out, async build, local-edition only, credentials injected by the grid.
+built out, async build, any edition, credentials injected by the grid.

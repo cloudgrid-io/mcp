@@ -106,7 +106,7 @@ async function fetchResolves(kind, name) {
 
   const workflow = fetchCorpus("workflow", name);
   check(`${name} workflow fires on REST/API intent`, /REST API/.test(workflow) && /webhook receiver/.test(workflow));
-  check(`${name} workflow gates hosted / local edition`, /hosted/i.test(workflow) && /local edition/i.test(workflow));
+  check(`${name} workflow gives the hosted (artifact_files) and local (path) plug paths`, /hosted/i.test(workflow) && /artifact_files/.test(workflow) && /local edition/i.test(workflow));
   check(`${name} workflow says runtime deploy is async / poll`, /async/i.test(workflow) && /poll/i.test(workflow));
 
   // Template layout: service code under services/api/, not the root.
@@ -157,7 +157,7 @@ async function fetchResolves(kind, name) {
 
   const workflow = fetchCorpus("workflow", name);
   check(`${name} workflow fires on chatbot / LLM intent`, /chatbot/.test(workflow) && /talks to an LLM/.test(workflow));
-  check(`${name} workflow gates hosted / local edition`, /hosted/i.test(workflow) && /local edition/i.test(workflow));
+  check(`${name} workflow gives the hosted (artifact_files) and local (path) plug paths`, /hosted/i.test(workflow) && /artifact_files/.test(workflow) && /local edition/i.test(workflow));
   check(`${name} workflow says runtime deploy is async / poll`, /async/i.test(workflow) && /poll/i.test(workflow));
 
   // Template layout: app code under services/web/, not the root.

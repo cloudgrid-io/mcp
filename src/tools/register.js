@@ -23,6 +23,7 @@ import {
   resolveGridOrAsk,
   detectSourceManifest,
   runReport,
+  runNote,
   runPull,
   runCollab,
   runDelete,
@@ -348,42 +349,58 @@ export function registerTools(server, ctx) {
   );
 
   // grid_note — a build note the user asks to send to the CloudGrid team.
-  // Hosted (#433): the ONLY way session text leaves the hosted server, and it
-  // posts right away — there is no automatic session-log post on hosted, so a
-  // note that merely waited for a plug to carry it would never be sent. Local
-  // (stdio): unchanged — the note rides the optional QA session log, which the
-  // machine's operator switches on with a webhook and which flushes on its own
-  // triggers. Absent a logger it is a harmless acknowledgement.
-  const noteDescription = ctx.edition === "web"
-    ? "Send a short build note to the CloudGrid team, when the user asks for one. What is sent: the summary passed here, the signed-in account and grid, and the names and outcomes of this session's grid_* tool calls (no other conversation text, no file contents, no secrets). Nothing is sent from a hosted session unless this tool or grid_report is called."
-    : "Leave a one-paragraph summary of what you built this session and why, for the local edition's optional QA session log. Call it BEFORE a plug, or in a session that ends without one — a successful plug posts the log on that same call, so pass grid_plug's session_note instead. The log is dark unless the operator of this machine has set CLOUDGRID_QA_SLACK_WEBHOOK.";
-  regTool(
-    "grid_note",
-    "Send a session build note",
-    noteDescription,
-    { summary: z.string().describe("A short plain-language summary of what was built and why.") },
-    { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
-    async (input) => {
-      try { ctx.logger?.setNarrative(input?.summary); } catch { /* never */ }
-      if (ctx.edition === "web") {
-        let sent = false;
-        try { sent = (await ctx.logger?.postNote()) === true; } catch { /* never */ }
-        return okResult({
-          text: sent
-            ? "Sent the note to the CloudGrid team."
-            : "Noted. Build notes are not collected on this server, so nothing was sent.",
-        });
-      }
-      // Honesty after flush: a successful deploy posts the QA log on that same
-      // call, so a note arriving now records nothing. Say so rather than lie.
-      if (ctx.logger?.flushed === true) {
-        return okResult({
-          text: "This session's QA log has already posted. Pass session_note on your next grid_plug instead.",
-        });
-      }
-      return okResult({ text: "Noted." });
-    },
-  );
+  // Hosted (#433): the ONLY way session text leaves the hosted server. It POSTs
+  // the note to the CloudGrid API's feedback endpoint under the user's bearer
+  // (runNote) — there is no session-log post on hosted and no Slack sink in
+  // play. Signed-out → needs_auth; a failed POST is reported as a failure.
+  // Local (stdio): unchanged — the note rides the optional QA session log, which
+  // the machine's operator switches on with a webhook and which flushes on its
+  // own triggers. Absent a logger it is a harmless acknowledgement.
+  if (ctx.edition === "web") {
+    reg(
+      "grid_note",
+      {
+        title: "Send a build note to the CloudGrid team",
+        description:
+          "Send a short build note to the CloudGrid team, when the user asks for one. It is filed with the CloudGrid API under the signed-in account. What is sent: the note text, the grid slug, and the client name — nothing else from the conversation, no tool-call trail, no file contents, no email (the account is known from the sign-in). Requires sign-in: when signed out it returns needs_auth and sends nothing. Nothing leaves a hosted session unless this tool or grid_report is called.",
+        inputSchema: { summary: z.string().describe("A short plain-language note on what was built and why. This text is sent.") },
+        outputSchema: {
+          status: z.enum(["recorded", "rate_limited", "unauthorized", "error", "skipped"]).describe("recorded = the team received it; anything else = nothing was sent, and the text says why."),
+          needs_auth: z.boolean().optional().describe("Sign-in required first (grid_login), then re-call grid_note."),
+        },
+        annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+      },
+      async (input) => {
+        try {
+          return await runNote(ctx, { summary: input?.summary });
+        } catch (err) {
+          return okResult({
+            text: `Couldn't send the note: ${err.message}. Nothing was sent.`,
+            structured: { status: "error" },
+          });
+        }
+      },
+    );
+  } else {
+    regTool(
+      "grid_note",
+      "Leave a session build note",
+      "Leave a one-paragraph summary of what you built this session and why, for the local edition's optional QA session log, which the CloudGrid team reads. Call it BEFORE a plug, or in a session that ends without one — a successful plug posts the log on that same call, so pass grid_plug's session_note instead. The log is dark unless the operator of this machine has set CLOUDGRID_QA_SLACK_WEBHOOK.",
+      { summary: z.string().describe("A short plain-language summary of what was built and why.") },
+      { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+      async (input) => {
+        try { ctx.logger?.setNarrative(input?.summary); } catch { /* never */ }
+        // Honesty after flush: a successful deploy posts the QA log on that same
+        // call, so a note arriving now records nothing. Say so rather than lie.
+        if (ctx.logger?.flushed === true) {
+          return okResult({
+            text: "This session's QA log has already posted. Pass session_note on your next grid_plug instead.",
+          });
+        }
+        return okResult({ text: "Noted." });
+      },
+    );
+  }
 
   // ── grid_plug — the unified create/re-plug verb (spec v2 §3) ────────────
   // Direct-API on BOTH editions (POST /api/v2/plug). The former CLI-wrapping

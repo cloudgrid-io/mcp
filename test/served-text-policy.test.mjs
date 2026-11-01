@@ -193,6 +193,54 @@ for (const f of readdirSync(wfDir).filter((n) => n.endsWith(".md")).sort()) {
   clean(`workflow ${f}`, readFileSync(new URL(f, wfDir), "utf-8"));
 }
 
+// ── 3b. Descriptions match behaviour: hosted runtime apps work ──────────────
+// grid_plug's artifact_files builds a runtime app on the hosted edition (create
+// and re-plug). Corpus text that says the hosted edition is static-only, or that
+// a runtime app needs the local edition, contradicts the tool it describes.
+export const HOSTED_CONTRADICTIONS = [
+  /\bcannot build a (runtime|multi-file|persistent)/i,
+  /hosted (edition )?is inline-only/i,
+  /can only publish (static pages|a single page)/i,
+  /hosted (edition|mcp|server) cannot (build|rebuild|run)/i,
+  /\blocal[- ]edition only\b/i,
+  /\bneeds the local\s+edition\b/i,
+  /requires the \*\*local\s+edition\*\*/i,
+  /(persistence|vector|a database) isn'?t available (there|on hosted)/i,
+  /→ local edition/,
+  /editions: local\b/,
+];
+export function contradictionHits(text) {
+  return HOSTED_CONTRADICTIONS.filter((re) => re.test(String(text || ""))).map(String);
+}
+{
+  // Self-test against the old copy.
+  const old = "- **Hosted edition (Claude Web / hosted MCP):** you CANNOT build a runtime app — hosted is inline-only and can only publish static pages.";
+  check("hosted-contradiction guard self-test flags the old block", contradictionHits(old).length > 0);
+  check("hosted-contradiction guard passes the corrected block",
+    contradictionHits("**Hosted edition:** pass the files inline to grid_plug as artifact_files, then poll grid_check_deploy. **Local edition:** plug the folder with path.").length === 0);
+}
+const consistent = (label, text) => {
+  const hits = contradictionHits(text);
+  check(`${label} does not say the hosted edition is static-only`, hits.length === 0, hits.join("; "));
+};
+for (const f of readdirSync(wfDir).filter((n) => n.endsWith(".md")).sort()) {
+  consistent(`workflow ${f}`, readFileSync(new URL(f, wfDir), "utf-8"));
+}
+for (const doc of ["playbook", "capability-map"]) consistent(`corpus doc ${doc}`, fetchCorpus("doc", doc) || "");
+consistent("ORIENTATION", ORIENTATION);
+consistent("INSTRUCTIONS_WEB", INSTRUCTIONS_WEB);
+// And the positive half: every runtime workflow names the hosted path.
+for (const f of readdirSync(wfDir).filter((n) => n.endsWith(".md")).sort()) {
+  const body = readFileSync(new URL(f, wfDir), "utf-8");
+  if (!/^deploy: (runtime|static build)/m.test(body)) continue;
+  // The hosted bullet itself must name artifact_files (not just some other
+  // line of the body), and the local bullet must name path.
+  const hostedBullet = body.match(/\*\*Hosted edition[^\n]*\n(?:[^\n]*\n){0,8}/)?.[0] || "";
+  const localBullet = body.match(/\*\*Local edition:\*\*[^\n]*\n(?:[^\n]*\n){0,2}/)?.[0] || "";
+  check(`runtime workflow ${f} gives the hosted path (artifact_files) and the local path (path)`,
+    /artifact_files/.test(hostedBullet) && /`path`/.test(localBullet) && /editions: all/.test(body));
+}
+
 // ── 4. grid_start's live text, both editions ────────────────────────────────
 for (const edition of ["web", "local"]) {
   const res = await captured[edition].handlers.grid_start({});

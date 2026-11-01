@@ -1,10 +1,10 @@
 ---
 name: app-with-data
-when: to-do, task list, notes app, guestbook, CRUD app, form that SAVES/STORES submissions, anything that SAVES or PERSISTS data or shares state across users/sessions, sign-in/accounts, a backend/API/database — e.g. a to-do list, a CRUD dashboard, a form that stores entries, a guestbook. Needs a database → runtime → local edition.
+when: to-do, task list, notes app, guestbook, CRUD app, form that SAVES/STORES submissions, anything that SAVES or PERSISTS data or shares state across users/sessions, sign-in/accounts, a backend/API/database — e.g. a to-do list, a CRUD dashboard, a form that stores entries, a guestbook. Needs a database → runtime app.
 needs: database
 deploy: runtime
-editions: local
-capabilities_note: persistent — needs a database (Mongo). Runtime app, async build, local edition only. Declare the canonical `needs: { database: true }`; the deployer injects DATABASE_MONGODB_URL (+legacy MONGODB_URL).
+editions: all
+capabilities_note: persistent — needs a database (Mongo). Runtime app, async build, any edition (hosted: artifact_files inline; local: a folder). Declare the canonical `needs: { database: true }`; the deployer injects DATABASE_MONGODB_URL (+legacy MONGODB_URL).
 summary: Build a real persistent Next.js + Mongo runtime app on the grid — edition-gate first, scaffold, put the app under services/web/, wire process.env.DATABASE_MONGODB_URL (legacy MONGODB_URL fallback) lazily, declare needs:{database:true} (not requires:), deploy async, poll to a live URL.
 ---
 
@@ -17,22 +17,24 @@ a **runtime app** backed by the grid's shared Mongo (and optionally Redis). A
 static template keeps state only in memory and loses it on refresh.
 
 Follow this recipe. Be honest that a runtime deploy is async (not instant like a
-static drop) and that it needs the local edition.
+static drop) and that it needs a cloudgrid.yaml and an async build.
 
-## 1. Edition check FIRST (hard gate)
+## 1. Edition check FIRST (pick the plug path)
 
-A persistent app is a built + deployed container. It requires the **local
-edition** (Claude Desktop / Claude Code) or the CLI, because the grid must run
-the CLI and folder-plug your project.
+A persistent app is a built + deployed container: an async build, not an
+instant static drop. It works on every edition; what differs is how the files
+reach the grid.
 
-- **Hosted edition (Claude Web / hosted MCP):** you CANNOT build a runtime app —
-  hosted is inline-only and can only publish static pages. Tell the user
-  plainly: "A persistent app needs the local edition (Claude Desktop/Code) or
-  the CloudGrid CLI; the hosted edition can only publish static pages." Then
-  offer to build a **static version** instead (an in-memory / localStorage
-  to-do page via the `web-app` workflow) and STOP the runtime path here.
-- **Local edition:** continue.
-
+- **Hosted edition (Claude Web / hosted MCP):** write the files in the
+  conversation and pass them inline to `grid_plug` as `artifact_files` (one
+  entry per file, with the manifest as `cloudgrid_yaml`), then poll
+  `grid_check_deploy`. A few text files plug fine; a framework build with a
+  lockfile or binary assets is more reliable from the CLI
+  (`npx -y @cloudgrid-io/cli@latest plug`), so say so rather than dropping
+  files silently. Where this recipe says "scaffold with `grid new`" or "deploy
+  the folder", do the same work inline: write the same files and plug them.
+- **Local edition:** continue — scaffold, write the folder, and plug it with
+  `path`.
 ## 2. Auth + grid
 
 Persistent apps are owned entities.
@@ -118,5 +120,5 @@ the SAME entity (`target_entity_id`) so it updates the same URL. Runtime re-plug
 uses the CLI path (`grid plug` in the linked folder), per the plug
 description.
 
-Keep it honest: async build, local-edition only, credentials injected by the
+Keep it honest: async build, any edition, credentials injected by the
 grid.

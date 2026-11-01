@@ -3,10 +3,10 @@ name: ai-knowledge-base
 when: "RAG, ask my docs, knowledge base chatbot, retrieval-augmented search over documents"
 needs: ai+database
 deploy: runtime
-editions: local
+editions: all
 kind: blueprint
-capabilities_note: "persistent RAG — needs ai + database. Runtime app, async build, local edition only. Declare needs:{ai:true, database:true}; the deployer injects RUNTIME_GATEWAY_URL (AI Gateway via @cloudgrid-io/runtime — works today) and DATABASE_MONGODB_URL (+legacy MONGODB_URL). The ideal embedding store needs:{vector:pgvector} (VECTOR_PGVECTOR_URL) is now AVAILABLE — #1545 shipped (verified live 2026-07-16) — but this blueprint still stores embeddings in a Mongo `chunks` collection and cosine-ranks in-app; declare vector:pgvector only if you also build the retrieval on pgvector."
-summary: "A BLUEPRINT for a retrieval-augmented 'ask my docs' knowledge base — ingest documents, chunk + embed them, retrieve the nearest chunks per question, and answer grounded with citations, on persistent Next.js + Mongo + the CloudGrid AI Gateway. This is not fill-in-the-blanks app code; it ships structure + cloudgrid.yaml. Fetch the template, read AGENTS.md for the file tree / collections / RAG loop / CloudGrid wiring (needs ai+database, the pgvector note — #1545 shipped), then BUILD the app under services/web/ following it, and deploy async to a live URL (local edition only)."
+capabilities_note: "persistent RAG — needs ai + database. Runtime app, async build, any edition (hosted: artifact_files inline; local: a folder). Declare needs:{ai:true, database:true}; the deployer injects RUNTIME_GATEWAY_URL (AI Gateway via @cloudgrid-io/runtime — works today) and DATABASE_MONGODB_URL (+legacy MONGODB_URL). The ideal embedding store needs:{vector:pgvector} (VECTOR_PGVECTOR_URL) is now AVAILABLE — #1545 shipped (verified live 2026-07-16) — but this blueprint still stores embeddings in a Mongo `chunks` collection and cosine-ranks in-app; declare vector:pgvector only if you also build the retrieval on pgvector."
+summary: "A BLUEPRINT for a retrieval-augmented 'ask my docs' knowledge base — ingest documents, chunk + embed them, retrieve the nearest chunks per question, and answer grounded with citations, on persistent Next.js + Mongo + the CloudGrid AI Gateway. This is not fill-in-the-blanks app code; it ships structure + cloudgrid.yaml. Fetch the template, read AGENTS.md for the file tree / collections / RAG loop / CloudGrid wiring (needs ai+database, the pgvector note — #1545 shipped), then BUILD the app under services/web/ following it, and deploy async to a live URL (any edition)."
 ---
 
 # Workflow: ai-knowledge-base
@@ -23,7 +23,7 @@ CloudGrid's **AI Gateway** (`@cloudgrid-io/runtime`).
 **This is a BLUEPRINT.** Unlike a fill-in-the-blanks template, it ships
 *structure* — a `cloudgrid.yaml` and an `AGENTS.md` structure guide — not finished
 app code. The recipe is: fetch it, **read `AGENTS.md`**, then **build** the app
-following it. Be honest that a runtime deploy is async and needs the local edition.
+following it. Be honest that a runtime deploy is async and needs a cloudgrid.yaml and an async build.
 
 > **Vector-store status:** the ideal embedding store is `needs: { vector: pgvector }`
 > (injects `VECTOR_PGVECTOR_URL`), and it is **now available** — #1545 shipped. The
@@ -32,17 +32,22 @@ following it. Be honest that a runtime deploy is async and needs the local editi
 > keeps `vector: pgvector` commented. Uncomment it only if you also build the
 > retrieval on pgvector.
 
-## 1. Edition check FIRST (hard gate)
+## 1. Edition check FIRST (pick the plug path)
 
-A RAG knowledge base is a built + deployed container (Next.js + Mongo + AI
-Gateway). It requires the **local edition** (Claude Desktop / Claude Code) or the
-CLI.
+A persistent app is a built + deployed container: an async build, not an
+instant static drop. It works on every edition; what differs is how the files
+reach the grid.
 
-- **Hosted edition (Claude Web / hosted MCP):** you CANNOT build a runtime app —
-  hosted is inline-only and can only publish static pages. Tell the user plainly,
-  offer a **static explainer page** instead, and STOP the runtime path here.
-- **Local edition:** continue.
-
+- **Hosted edition (Claude Web / hosted MCP):** write the files in the
+  conversation and pass them inline to `grid_plug` as `artifact_files` (one
+  entry per file, with the manifest as `cloudgrid_yaml`), then poll
+  `grid_check_deploy`. A few text files plug fine; a framework build with a
+  lockfile or binary assets is more reliable from the CLI
+  (`npx -y @cloudgrid-io/cli@latest plug`), so say so rather than dropping
+  files silently. Where this recipe says "scaffold with `grid new`" or "deploy
+  the folder", do the same work inline: write the same files and plug them.
+- **Local edition:** continue — scaffold, write the folder, and plug it with
+  `path`.
 ## 2. Auth + grid
 
 1. Ensure signed in: `grid_login_status`; if not, `grid_login`.
@@ -139,7 +144,7 @@ response is `status: "building"`, NOT a live URL yet.
 
 Give the user the live app URL — the deliverable. To iterate, re-plug the SAME
 entity so it updates the same URL. Keep it honest: this is a blueprint you built
-from, the build is async, it is local-edition only, credentials are injected by the
+from, the build is async, it runs on any edition, credentials are injected by the
 grid (AI Gateway + Mongo via `needs`), and the blueprint stores embeddings in
 Mongo (the pgvector store is available — #1545 shipped — but the shipped code
 does not use it). To swap to pgvector, follow `AGENTS.md` §7.

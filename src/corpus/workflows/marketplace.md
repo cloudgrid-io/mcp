@@ -3,10 +3,10 @@ name: marketplace
 when: "marketplace, multi-vendor platform, two-sided marketplace"
 needs: database
 deploy: runtime
-editions: local
+editions: all
 kind: blueprint
-capabilities_note: "persistent — needs a database (Mongo) and payment/auth secrets. Runtime app, async build, local edition only. Declare the canonical needs:{database:true}; the deployer injects DATABASE_MONGODB_URL (+legacy MONGODB_URL). Map Stripe + auth secrets with a vault: block (STRIPE_KEY / STRIPE_WEBHOOK_SECRET / AUTH_PROVIDER_KEY) and grid secrets set the values."
-summary: "A BLUEPRINT for a two-sided / multi-vendor marketplace — vendors, listings, orders, seller auth with roles, Stripe Connect payouts, and commission logic on persistent Next.js + Mongo. This is not fill-in-the-blanks app code; it ships structure + cloudgrid.yaml. Fetch the template, read AGENTS.md for the file tree / collections / CloudGrid wiring (needs + vault), then BUILD the app under services/web/ following it, and deploy async to a live URL (local edition only)."
+capabilities_note: "persistent — needs a database (Mongo) and payment/auth secrets. Runtime app, async build, any edition (hosted: artifact_files inline; local: a folder). Declare the canonical needs:{database:true}; the deployer injects DATABASE_MONGODB_URL (+legacy MONGODB_URL). Map Stripe + auth secrets with a vault: block (STRIPE_KEY / STRIPE_WEBHOOK_SECRET / AUTH_PROVIDER_KEY) and grid secrets set the values."
+summary: "A BLUEPRINT for a two-sided / multi-vendor marketplace — vendors, listings, orders, seller auth with roles, Stripe Connect payouts, and commission logic on persistent Next.js + Mongo. This is not fill-in-the-blanks app code; it ships structure + cloudgrid.yaml. Fetch the template, read AGENTS.md for the file tree / collections / CloudGrid wiring (needs + vault), then BUILD the app under services/web/ following it, and deploy async to a live URL (any edition)."
 ---
 
 # Workflow: marketplace
@@ -20,18 +20,24 @@ and **commission logic**. It is the `app-with-data` shape plus auth + payments.
 **This is a BLUEPRINT.** Unlike a fill-in-the-blanks template, it ships
 *structure* — a `cloudgrid.yaml` and an `AGENTS.md` structure guide — not finished
 app code. The recipe is: fetch it, **read `AGENTS.md`**, then **build** the app
-following it. Be honest that a runtime deploy is async and needs the local edition.
+following it. Be honest that a runtime deploy is async and needs a cloudgrid.yaml and an async build.
 
-## 1. Edition check FIRST (hard gate)
+## 1. Edition check FIRST (pick the plug path)
 
-A marketplace is a built + deployed container (Next.js + Mongo + Stripe). It
-requires the **local edition** (Claude Desktop / Claude Code) or the CLI.
+A persistent app is a built + deployed container: an async build, not an
+instant static drop. It works on every edition; what differs is how the files
+reach the grid.
 
-- **Hosted edition (Claude Web / hosted MCP):** you CANNOT build a runtime app —
-  hosted is inline-only and can only publish static pages. Tell the user plainly,
-  offer a **static storefront mockup** instead, and STOP the runtime path here.
-- **Local edition:** continue.
-
+- **Hosted edition (Claude Web / hosted MCP):** write the files in the
+  conversation and pass them inline to `grid_plug` as `artifact_files` (one
+  entry per file, with the manifest as `cloudgrid_yaml`), then poll
+  `grid_check_deploy`. A few text files plug fine; a framework build with a
+  lockfile or binary assets is more reliable from the CLI
+  (`npx -y @cloudgrid-io/cli@latest plug`), so say so rather than dropping
+  files silently. Where this recipe says "scaffold with `grid new`" or "deploy
+  the folder", do the same work inline: write the same files and plug them.
+- **Local edition:** continue — scaffold, write the folder, and plug it with
+  `path`.
 ## 2. Auth + grid
 
 1. Ensure signed in: `grid_login_status`; if not, `grid_login`.
@@ -121,5 +127,5 @@ response is `status: "building"`, NOT a live URL yet.
 Give the user the live app URL — the deliverable. Point the Stripe webhook
 endpoint at `<live-url>/api/webhooks/stripe`. To iterate, re-plug the SAME entity
 so it updates the same URL. Keep it honest: this is a blueprint you built from,
-the build is async, it is local-edition only, and credentials are injected by the
+the build is async, it runs on any edition, and credentials are injected by the
 grid (Mongo via `needs`, Stripe/auth via `vault` + `grid secrets set`).

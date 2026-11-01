@@ -68,12 +68,17 @@ only its owner can claim it into a grid of their choosing (`grid_pull` with its
 ## What leaves the server
 
 Nothing from the conversation is sent anywhere unless the user asks for it:
-`grid_note` sends a build summary (plus the signed-in account and the names and
-outcomes of the session's `grid_*` calls) and `grid_report` sends a failure
-report. There is no automatic session-log post on the hosted edition — not on a
+`grid_note` files a build note with the CloudGrid API (`POST /api/v2/feedback`,
+under the user's own sign-in) — the note text, the grid slug and the client
+name; no email, no tool-call trail — and `grid_report` sends a failure report
+(the message and context the model passes, plus the client name and platform;
+the conversation only when the user explicitly agrees). Both reach the CloudGrid
+team through the API, not through a webhook; a signed-out `grid_note` returns
+`needs_auth` and sends nothing. There is no automatic session-log post on the hosted edition — not on a
 plug, not on idle, not on close — and the hosted `grid_plug` schema carries no
-`user_request` or `session_note` fields. The local (stdio) edition keeps its
-opt-in QA log (README, "QA session log").
+`user_request` or `session_note` fields, and the hosted servers carry no
+`CLOUDGRID_QA_SLACK_WEBHOOK`. The local (stdio) edition keeps its opt-in QA log
+(README, "QA session log").
 
 ## Trusted-server credential (per-user cap)
 

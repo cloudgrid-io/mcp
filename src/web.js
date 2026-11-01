@@ -288,10 +288,11 @@ async function buildSession(sessionId, jwt, protocolVersion) {
   const webCtx = makeWebContext(sessionId, identity);
   webCtx.lastSeen = Date.now();
   setSessionContext(sessionId, webCtx);
-  // Session logger for this MCP session (dark by default). Keyed by the session
-  // id — the host connection boundary. Explicit-only (#433): it never posts on
-  // a plug, on idle, or on close; no user_request seed and no courier args —
-  // the hosted grid_plug schema has none.
+  // Session logger for this MCP session (dark by default, and the hosted
+  // servers carry no webhook). Explicit-only (#433): it never posts — not on a
+  // plug, on idle, or on close. The hosted grid_note POSTs to the CloudGrid API
+  // instead (runNote). No user_request seed and no courier args — the hosted
+  // grid_plug schema has none.
   webCtx.sessionId = sessionId;
   webCtx.logger = createSessionLogger({
     transport: "hosted",

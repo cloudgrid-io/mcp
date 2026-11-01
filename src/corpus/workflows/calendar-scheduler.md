@@ -3,10 +3,10 @@ name: calendar-scheduler
 when: "calendar scheduler, team calendar, scheduling app, meeting scheduler"
 needs: database
 deploy: runtime
-editions: local
+editions: all
 kind: blueprint
-capabilities_note: "persistent — needs a database (Mongo). Runtime app, async build, local edition only. Declare the canonical needs:{database:true}; the deployer injects DATABASE_MONGODB_URL (+legacy MONGODB_URL). Scheduled reminders want a type:cron service — BLOCKED on platform issue #1543 (documented, not yet deployable). Optional auth/payments/reminder secrets map through a vault: block (AUTH_PROVIDER_KEY / STRIPE_KEY / SENDGRID_API_KEY) with grid secrets set."
-summary: "A BLUEPRINT for a calendar / scheduling app — events, availability slots, timezones + recurrence, optional bookings, on persistent Next.js + Mongo. This is not fill-in-the-blanks app code; it ships structure + cloudgrid.yaml. Fetch the template, read AGENTS.md for the file tree / collections / CloudGrid wiring (needs + optional vault) + the cron reminder shape (blocked on #1543), then BUILD the app under services/web/ following it, and deploy async to a live URL (local edition only)."
+capabilities_note: "persistent — needs a database (Mongo). Runtime app, async build, any edition (hosted: artifact_files inline; local: a folder). Declare the canonical needs:{database:true}; the deployer injects DATABASE_MONGODB_URL (+legacy MONGODB_URL). Scheduled reminders want a type:cron service — BLOCKED on platform issue #1543 (documented, not yet deployable). Optional auth/payments/reminder secrets map through a vault: block (AUTH_PROVIDER_KEY / STRIPE_KEY / SENDGRID_API_KEY) with grid secrets set."
+summary: "A BLUEPRINT for a calendar / scheduling app — events, availability slots, timezones + recurrence, optional bookings, on persistent Next.js + Mongo. This is not fill-in-the-blanks app code; it ships structure + cloudgrid.yaml. Fetch the template, read AGENTS.md for the file tree / collections / CloudGrid wiring (needs + optional vault) + the cron reminder shape (blocked on #1543), then BUILD the app under services/web/ following it, and deploy async to a live URL (any edition)."
 ---
 
 # Workflow: calendar-scheduler
@@ -21,18 +21,24 @@ a time/availability domain.
 **This is a BLUEPRINT.** Unlike a fill-in-the-blanks template, it ships
 *structure* — a `cloudgrid.yaml` and an `AGENTS.md` structure guide — not finished
 app code. The recipe is: fetch it, **read `AGENTS.md`**, then **build** the app
-following it. Be honest that a runtime deploy is async and needs the local edition.
+following it. Be honest that a runtime deploy is async and needs a cloudgrid.yaml and an async build.
 
-## 1. Edition check FIRST (hard gate)
+## 1. Edition check FIRST (pick the plug path)
 
-A calendar scheduler is a built + deployed container (Next.js + Mongo). It
-requires the **local edition** (Claude Desktop / Claude Code) or the CLI.
+A persistent app is a built + deployed container: an async build, not an
+instant static drop. It works on every edition; what differs is how the files
+reach the grid.
 
-- **Hosted edition (Claude Web / hosted MCP):** you CANNOT build a runtime app —
-  hosted is inline-only and can only publish static pages. Tell the user plainly,
-  offer a **static calendar mockup** instead, and STOP the runtime path here.
-- **Local edition:** continue.
-
+- **Hosted edition (Claude Web / hosted MCP):** write the files in the
+  conversation and pass them inline to `grid_plug` as `artifact_files` (one
+  entry per file, with the manifest as `cloudgrid_yaml`), then poll
+  `grid_check_deploy`. A few text files plug fine; a framework build with a
+  lockfile or binary assets is more reliable from the CLI
+  (`npx -y @cloudgrid-io/cli@latest plug`), so say so rather than dropping
+  files silently. Where this recipe says "scaffold with `grid new`" or "deploy
+  the folder", do the same work inline: write the same files and plug them.
+- **Local edition:** continue — scaffold, write the folder, and plug it with
+  `path`.
 ## 2. Auth + grid
 
 1. Ensure signed in: `grid_login_status`; if not, `grid_login`.
@@ -131,6 +137,6 @@ response is `status: "building"`, NOT a live URL yet.
 
 Give the user the live app URL — the deliverable. To iterate, re-plug the SAME
 entity so it updates the same URL. Keep it honest: this is a blueprint you built
-from, the build is async, it is local-edition only, Mongo is injected via `needs`,
+from, the build is async, it runs on any edition, Mongo is injected via `needs`,
 optional secrets via `vault` + `grid secrets set`, and scheduled reminders wait on
 platform issue #1543.

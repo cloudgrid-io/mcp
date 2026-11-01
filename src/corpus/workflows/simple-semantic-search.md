@@ -3,8 +3,8 @@ name: simple-semantic-search
 when: semantic search over a document / article / text, "search my doc by meaning", question-answering search box over content, embeddings search, vector search, similarity search, "find the passage that answers X" — a SINGLE document or small text set, one service. For a multi-service document portfolio with upload UI + refresh cron, use semantic-search instead.
 needs: vector, ai
 deploy: runtime
-editions: local
-capabilities_note: "vector search — needs: { vector: pgvector } (injects VECTOR_PGVECTOR_URL; #1545 shipped, verified live 2026-07-16) + ai: true (embeddings via @cloudgrid-io/runtime, no API key). Runtime app, async build, local edition only."
+editions: all
+capabilities_note: "vector search — needs: { vector: pgvector } (injects VECTOR_PGVECTOR_URL; #1545 shipped, verified live 2026-07-16) + ai: true (embeddings via @cloudgrid-io/runtime, no API key). Runtime app, async build, any edition (hosted: artifact_files inline; local: a folder)."
 summary: "One node service that embeds a document into the entity's own pgvector schema at startup and serves POST /search + a minimal UI — probe-sized vector column, idempotent background seed, /health 503-until-ready, cosine <=> ranking. grid plug (auto-creates the entity from cloudgrid.yaml), live in ~3 minutes."
 ---
 
@@ -15,12 +15,22 @@ a question box over an article, notes, or docs. Keyword match is not enough;
 this is embeddings + a vector store. On CloudGrid that is one declared need,
 not infrastructure to run.
 
-## 1. Edition check FIRST (hard gate)
+## 1. Edition check FIRST (pick the plug path)
 
-A runtime app: needs the **local edition** (Claude Desktop / Claude Code) or
-the CLI. On the hosted edition, say persistence/vector isn't available there
-and offer a static alternative honestly.
+A persistent app is a built + deployed container: an async build, not an
+instant static drop. It works on every edition; what differs is how the files
+reach the grid.
 
+- **Hosted edition (Claude Web / hosted MCP):** write the files in the
+  conversation and pass them inline to `grid_plug` as `artifact_files` (one
+  entry per file, with the manifest as `cloudgrid_yaml`), then poll
+  `grid_check_deploy`. A few text files plug fine; a framework build with a
+  lockfile or binary assets is more reliable from the CLI
+  (`npx -y @cloudgrid-io/cli@latest plug`), so say so rather than dropping
+  files silently. Where this recipe says "scaffold with `grid new`" or "deploy
+  the folder", do the same work inline: write the same files and plug them.
+- **Local edition:** continue — scaffold, write the folder, and plug it with
+  `path`.
 ## 2. Fetch the template
 
 `grid_get_template({kind: "template", name: "simple-semantic-search"})` — it

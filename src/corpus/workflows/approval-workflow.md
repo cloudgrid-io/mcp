@@ -1,11 +1,11 @@
 ---
 name: approval-workflow
-when: approval workflow, request approvals, multi-step approval system — a persistent app where requests advance through an ordered chain of approver roles (approve/reject/delegate) with an audit log. Needs a database → runtime → local edition.
+when: approval workflow, request approvals, multi-step approval system — a persistent app where requests advance through an ordered chain of approver roles (approve/reject/delegate) with an audit log. Needs a database → runtime app.
 needs: database
 deploy: runtime
-editions: local
+editions: all
 kind: blueprint
-capabilities_note: BLUEPRINT — structure + cloudgrid.yaml, not shipped app code. Persistent Next.js + Mongo. Declare the canonical `needs: { database: true }`; the deployer injects DATABASE_MONGODB_URL (+legacy MONGODB_URL). Auth-provider roles + optional payments wired via a `vault:` secret block → env vars. Runtime app, async build, local edition only.
+capabilities_note: BLUEPRINT — structure + cloudgrid.yaml, not shipped app code. Persistent Next.js + Mongo. Declare the canonical `needs: { database: true }`; the deployer injects DATABASE_MONGODB_URL (+legacy MONGODB_URL). Auth-provider roles + optional payments wired via a `vault:` secret block → env vars. Runtime app, async build, any edition (hosted: artifact_files inline; local: a folder).
 summary: Build a multi-step approval system on the grid — requests advance through an ordered chain of approval steps decided by assigned roles (approve/reject/delegate), with an append-only audit log and approver notifications. This is a BLUEPRINT: read AGENTS.md for the file tree, Mongo collections (users/requests/steps/audit), the state machine, and CloudGrid wiring (DB injection, vault: secrets, deploy), then build the Next.js + Mongo app under services/web/ following it. Edition-gate first, scaffold, declare needs:{database:true}, wire auth via a vault: secret, deploy async, poll to a live URL.
 ---
 
@@ -22,19 +22,24 @@ state machine, auth-provider roles, and notifications — the same proven shape 
 **This is a BLUEPRINT.** The template ships the *structure* (an `AGENTS.md`
 guide + a `cloudgrid.yaml`), not runnable app code. The recipe is: read the
 blueprint, then build the app following it. Be honest that a runtime deploy is
-async (not instant like a static drop) and that it needs the local edition.
+async (not instant like a static drop) and that it needs a cloudgrid.yaml and an async build.
 
-## 1. Edition check FIRST (hard gate)
+## 1. Edition check FIRST (pick the plug path)
 
-A persistent approval app is a built + deployed container. It requires the
-**local edition** (Claude Desktop / Claude Code) or the CLI.
+A persistent app is a built + deployed container: an async build, not an
+instant static drop. It works on every edition; what differs is how the files
+reach the grid.
 
-- **Hosted edition (Claude Web / hosted MCP):** you CANNOT build a runtime app —
-  hosted is inline-only and can only publish static pages. Tell the user
-  plainly, offer a **static mock** of the approval UI instead, and STOP the
-  runtime path here.
-- **Local edition:** continue.
-
+- **Hosted edition (Claude Web / hosted MCP):** write the files in the
+  conversation and pass them inline to `grid_plug` as `artifact_files` (one
+  entry per file, with the manifest as `cloudgrid_yaml`), then poll
+  `grid_check_deploy`. A few text files plug fine; a framework build with a
+  lockfile or binary assets is more reliable from the CLI
+  (`npx -y @cloudgrid-io/cli@latest plug`), so say so rather than dropping
+  files silently. Where this recipe says "scaffold with `grid new`" or "deploy
+  the folder", do the same work inline: write the same files and plug them.
+- **Local edition:** continue — scaffold, write the folder, and plug it with
+  `path`.
 ## 2. Auth + grid
 
 1. Ensure signed in: `grid_login_status`; if not, `grid_login`.
@@ -121,5 +126,5 @@ response is `status: "building"`, NOT a live URL yet.
 
 Give the user the live app URL — that is the deliverable. To iterate, re-plug the
 SAME entity so it updates the same URL. Keep it honest: this is a blueprint you
-built out, an async runtime build, local-edition only, credentials injected by
+built out, an async runtime build, any edition, credentials injected by
 the grid.

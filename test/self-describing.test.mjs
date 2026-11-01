@@ -54,7 +54,8 @@ for (const name of ALL_WORKFLOWS) {
   check(`workflow ${name} has when:`, !!fm && fm.when.length > 10);
   check(`workflow ${name} has needs:`, !!fm && fm.needs.length > 0);
   check(`workflow ${name} has deploy:`, !!fm && (fm.deploy === "inspiration" || fm.deploy === "runtime"));
-  check(`workflow ${name} has editions:`, !!fm && (fm.editions === "all" || fm.editions === "local"));
+  // #432: every workflow runs on every edition (hosted plugs runtime apps inline).
+  check(`workflow ${name} has editions: all`, !!fm && fm.editions === "all");
   check(`workflow ${name} has capabilities_note:`, !!fm && fm.capabilities_note.length > 5);
 }
 
@@ -65,12 +66,12 @@ for (const name of STATIC_WORKFLOWS) {
     fm.needs === "none" && fm.deploy === "inspiration" && fm.editions === "all");
 }
 
-// app-with-data: needs database, runtime, local edition; when: still fires on
+// app-with-data: needs database, runtime, every edition; when: still fires on
 // the persistence intent the app-with-data test relies on.
 {
   const fm = frontmatter(fetchCorpus("workflow", "app-with-data"));
-  check("app-with-data is persistent (needs: database, runtime, local)",
-    fm.needs === "database" && fm.deploy === "runtime" && fm.editions === "local");
+  check("app-with-data is persistent (needs: database, runtime, all editions)",
+    fm.needs === "database" && fm.deploy === "runtime" && fm.editions === "all");
   check("app-with-data when: still fires on SAVES/PERSISTS + to-do list",
     /SAVES or PERSISTS/.test(fm.when) && /to-do list/.test(fm.when));
 }
@@ -88,8 +89,8 @@ for (const name of STATIC_WORKFLOWS) {
       .every((n) => cap.includes(n)));
   check("capability-map notes cron is a service type, not a need", /cron/.test(cap) && /service type/i.test(cap));
   check("capability-map notes needs: injects (with #1527 historical note)", /#1527/.test(cap) && /[Tt]oday/.test(cap) && /[Ii]njects via `needs:`/.test(cap));
-  check("capability-map states the static→inspiration / needs→runtime rule",
-    /inspiration/i.test(cap) && /runtime/i.test(cap) && /local edition/i.test(cap));
+  check("capability-map states the static→inspiration / needs→runtime rule, with both plug paths",
+    /inspiration/i.test(cap) && /runtime/i.test(cap) && /artifact_files/.test(cap) && /folder/.test(cap));
 }
 
 // ── 3. Static template dirs: reference yaml + index.md; HTML still served ────
