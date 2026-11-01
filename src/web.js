@@ -18,8 +18,8 @@ import { installProxy } from "./proxy.js";
 installProxy();
 
 import { readFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
 import express from "express";
+import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
@@ -40,7 +40,18 @@ import {
   logNoSession,
   logRehydrateFailed,
   logInitialize,
+  logOriginRefused,
+  logSessionCap,
+  logSessionUnknown,
 } from "./web-observability.js";
+import {
+  createOriginMatcher,
+  originGuard,
+  createSessionIds,
+  sendRateLimited,
+  clientIp,
+  envInt,
+} from "./web-guards.js";
 
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url)));
 
@@ -58,6 +69,61 @@ const REQUIRE_AUTH = process.env.MCP_REQUIRE_AUTH === "1";
 // than the shared cluster egress IP. Missing/bad secret falls back to the IP cap
 // server-side, so it is safe to leave unset.
 const TRUSTED_SERVER_SECRET = process.env.MCP_TRUSTED_SERVER_SECRET || null;
+
+// --- Edge limits -------------------------------------------------------------
+// Sessions live in this process's memory, so their number is capped and idle
+// ones are swept. A client whose session was swept keeps working: its next
+// request carries an id this edge issued, which is rebuilt in place (below).
+// A session holds a full server and transport, about 0.8 MB resident when
+// measured; 300 keeps a 512 MiB container clear of its limit. 0 = no cap.
+const MAX_SESSIONS = envInt(process.env, "MCP_MAX_SESSIONS", 300);
+const SESSION_IDLE_TTL_MS = envInt(process.env, "MCP_SESSION_IDLE_TTL_MS", 30 * 60 * 1000);
+const SESSION_SWEEP_MS = envInt(process.env, "MCP_SESSION_SWEEP_MS", 60 * 1000);
+// Proxies in front of this process that append to X-Forwarded-For (the ingress).
+const PROXY_HOPS = envInt(process.env, "MCP_TRUSTED_PROXY_HOPS", 1);
+// Per-client-IP request budgets, per minute (0 turns one off). The OAuth
+// register and token calls, and /mcp traffic, come from the connectors'
+// servers, so one address can carry many users: those budgets are sized for that.
+const RATE_LIMITS = {
+  register: envInt(process.env, "MCP_RATE_OAUTH_REGISTER", 60),
+  authorize: envInt(process.env, "MCP_RATE_OAUTH_AUTHORIZE", 30),
+  token: envInt(process.env, "MCP_RATE_OAUTH_TOKEN", 120),
+  mcp: envInt(process.env, "MCP_RATE_MCP", 1200),
+  initialize: envInt(process.env, "MCP_RATE_MCP_INITIALIZE", 600),
+};
+
+const isOriginAllowed = createOriginMatcher({ publicBase: PUBLIC_BASE });
+const sessionIds = createSessionIds({ publicBase: PUBLIC_BASE });
+if (sessionIds.ephemeral) {
+  console.warn(
+    "cloudgrid-mcp: no MCP_SESSION_SECRET or MCP_TRUSTED_SERVER_SECRET set; session ids are signed with a " +
+      "per-process key, so sessions are not rebuilt after a restart (clients are asked to initialize again).",
+  );
+}
+// A fixed one-minute window per client IP, in this process's memory. The key is
+// the rightmost X-Forwarded-For entry (clientIp), so Express's own `trust proxy`
+// is not used; IPv6 addresses are grouped by /56 (ipKeyGenerator). Over the
+// budget: 429 with Retry-After, JSON-RPC shaped on /mcp.
+function perIpLimit(perMinute, { jsonRpc = false, skip } = {}) {
+  return rateLimit({
+    windowMs: 60_000,
+    limit: Math.max(1, perMinute),
+    skip: perMinute > 0 ? skip : () => true,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    keyGenerator: (req) => ipKeyGenerator(clientIp(req, PROXY_HOPS)),
+    handler: (_req, res) => sendRateLimited(res, Number(res.getHeader("Retry-After")) || 60, { jsonRpc }),
+    // The client address comes from keyGenerator, not req.ip.
+    validate: { xForwardedForHeader: false, trustProxy: false },
+  });
+}
+const limit = {
+  register: perIpLimit(RATE_LIMITS.register),
+  authorize: perIpLimit(RATE_LIMITS.authorize),
+  token: perIpLimit(RATE_LIMITS.token),
+  mcp: perIpLimit(RATE_LIMITS.mcp, { jsonRpc: true }),
+  initialize: perIpLimit(RATE_LIMITS.initialize, { jsonRpc: true, skip: (req) => !isInitializeRequest(req.body) }),
+};
 
 function bearerOf(req) {
   const h = req.headers.authorization;
@@ -97,6 +163,13 @@ function makeWebContext(sessionId, identity) {
 }
 
 const app = express();
+// Origin check first, so a refused request is not parsed.
+app.use(
+  "/mcp",
+  originGuard(isOriginAllowed, {
+    onRefused: (origin) => logOriginRefused(origin),
+  }),
+);
 app.use(express.json({ limit: "8mb" }));
 app.use(express.urlencoded({ extended: false })); // OAuth token exchange is form-encoded
 
@@ -106,11 +179,65 @@ app.get("/healthz", (_req, res) => res.json({ ok: true, edition: "web" }));
 // it renders is driven by the same REQUIRE_AUTH flag used below.
 mountLanding(app, PUBLIC_BASE, { requireAuth: REQUIRE_AUTH });
 
-mountOAuth(app, PUBLIC_BASE, { requireAuth: REQUIRE_AUTH });
+// Rate limits run before the OAuth handlers. Exact paths: the interstitial's
+// /oauth/authorize/poll is not limited here (it polls every two seconds).
+app.post("/oauth/register", limit.register);
+app.get("/oauth/authorize", limit.authorize);
+app.post("/oauth/token", limit.token);
+
+mountOAuth(app, PUBLIC_BASE, { requireAuth: REQUIRE_AUTH, isOriginAllowed });
 
 // One transport per MCP session, keyed by the session id.
-const transports = Object.create(null);
-const sessionContexts = Object.create(null);
+// Maps, not plain objects: the keys are client-supplied session ids.
+const transports = new Map();
+const sessionContexts = new Map();
+
+function setSessionContext(sid, ctx) {
+  sessionContexts.set(sid, ctx);
+}
+
+function dropSession(sid) {
+  transports.delete(sid);
+  sessionContexts.delete(sid);
+}
+
+function touchSession(sid) {
+  const ctx = sessionContexts.get(sid);
+  if (ctx) ctx.lastSeen = Date.now();
+}
+
+function atSessionCap() {
+  return MAX_SESSIONS > 0 && sessionContexts.size >= MAX_SESSIONS;
+}
+
+function sendSessionCap(res) {
+  logSessionCap(sessionContexts.size);
+  res.setHeader("Retry-After", "30");
+  res.status(503).json({
+    jsonrpc: "2.0",
+    error: { code: -32000, message: "The server is at its session limit. Try again shortly." },
+    id: null,
+  });
+}
+
+// Close sessions with no request for SESSION_IDLE_TTL_MS. The entry is dropped
+// first; transport.close() then runs the transport's onclose, which flushes the
+// session log (and leaves alone an entry rebuilt on the same id meanwhile).
+function sweepIdleSessions(now = Date.now()) {
+  if (SESSION_IDLE_TTL_MS <= 0) return;
+  for (const [sid, ctx] of [...sessionContexts]) {
+    if (now - (ctx.lastSeen ?? 0) < SESSION_IDLE_TTL_MS) continue;
+    const transport = transports.get(sid);
+    dropSession(sid);
+    if (transport) transport.close().catch(() => {});
+  }
+}
+
+if (SESSION_SWEEP_MS > 0) {
+  setInterval(() => {
+    sweepIdleSessions();
+  }, SESSION_SWEEP_MS).unref();
+}
 
 // Per the MCP authorization spec, a resource server that receives no usable
 // credential answers 401 with a Bearer WWW-Authenticate challenge — the signal
@@ -127,7 +254,7 @@ function sendAuthChallenge(res) {
 
 function captureRequestIdentity(sessionId, jwt) {
   if (!jwt) return;
-  const ctx = sessionContexts[sessionId];
+  const ctx = sessionContexts.get(sessionId);
   if (!ctx) return;
   const { identityChanged } = ctx.identity.captureTransportToken(jwt);
   if (identityChanged) {
@@ -147,21 +274,21 @@ async function buildSession(sessionId, jwt, protocolVersion) {
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: () => sessionId,
     onsessioninitialized: (sid) => {
-      transports[sid] = transport;
+      transports.set(sid, transport);
     },
   });
   transport.onclose = () => {
     // Flush the QA log when the host closes the session (abandoned / build-only).
     // Fire-and-forget; never blocks the close path.
     try { webCtx.logger?.flush("abandoned").catch(() => {}); } catch { /* never */ }
-    if (transport.sessionId) {
-      delete transports[transport.sessionId];
-      delete sessionContexts[transport.sessionId];
+    if (transport.sessionId && transports.get(transport.sessionId) === transport) {
+      dropSession(transport.sessionId);
     }
   };
   const server = new McpServer({ name: "cloudgrid-mcp-web", version }, { instructions: INSTRUCTIONS_WEB });
   const webCtx = makeWebContext(sessionId, identity);
-  sessionContexts[sessionId] = webCtx;
+  webCtx.lastSeen = Date.now();
+  setSessionContext(sessionId, webCtx);
   // QA session log for this MCP session (dark by default). Keyed by the session
   // id — the host connection boundary. No seed user_request here: current hosts
   // don't forward the first message. The model-as-courier path fills it instead —
@@ -233,9 +360,11 @@ async function primeSession(transport, req) {
   try { await initRes.text(); } catch { /* the init result is discarded either way */ }
 }
 
-app.post("/mcp", async (req, res) => {
+// Every POST /mcp counts against the per-IP budget; initialize also against
+// its own, smaller one.
+app.post("/mcp", limit.mcp, limit.initialize, async (req, res) => {
   const sessionId = req.headers["mcp-session-id"];
-  let transport = sessionId ? transports[sessionId] : undefined;
+  let transport = sessionId ? transports.get(sessionId) : undefined;
   const jwt = bearerOf(req);
 
   if (REQUIRE_AUTH && !jwt) {
@@ -259,6 +388,7 @@ app.post("/mcp", async (req, res) => {
     // ask is the recovery path. The only auth gate is the missing-Bearer guard at
     // the top of this handler (the deployed v0.21.2 posture).
     captureRequestIdentity(sessionId, jwt);
+    touchSession(sessionId);
     await transport.handleRequest(req, res, req.body);
     return;
   }
@@ -284,7 +414,11 @@ app.post("/mcp", async (req, res) => {
     // expired-Bearer transport 401 is reverted (see the transport-present block
     // above), so an expired-but-present Bearer proceeds to the tool layer where
     // the in-band needs_auth ask lives, rather than being challenged.
-    const newSessionId = randomUUID();
+    if (atSessionCap()) {
+      sendSessionCap(res);
+      return;
+    }
+    const newSessionId = sessionIds.mint();
     ({ transport } = await buildSession(newSessionId, jwt, negotiateProtocol(req.body?.params?.protocolVersion)));
     await transport.handleRequest(req, res, req.body);
     return;
@@ -305,6 +439,24 @@ app.post("/mcp", async (req, res) => {
   // stuck behind the same 401 (the #286 brick, on the rebuild path). Gating on
   // expiry (hasUsableCredential) here is exactly what #288 got wrong and was pulled
   // from production for.
+  //
+  // Only an id this edge issued is rebuilt: the id's HMAC tag must verify (see
+  // createSessionIds). Anything else is a session this server does not know, and
+  // the transport spec's answer to that is 404, on which the client starts a new
+  // session. A rebuild also counts against the session cap.
+  if (!sessionIds.verify(sessionId)) {
+    logSessionUnknown(sessionId);
+    res.status(404).json({
+      jsonrpc: "2.0",
+      error: { code: -32000, message: "Session not found. Send an initialize request to start a new session." },
+      id: null,
+    });
+    return;
+  }
+  if (atSessionCap()) {
+    sendSessionCap(res);
+    return;
+  }
   ({ transport } = await buildSession(sessionId, jwt, negotiateProtocol(req.headers["mcp-protocol-version"])));
   // Rehydrate the evicted session. If priming fails (e.g. an SDK internal moved
   // out from under us), tear the half-built session down and fall back to the
@@ -316,8 +468,7 @@ app.post("/mcp", async (req, res) => {
     // #353: 400 branch 2 — a stale-id rehydrate that could not be primed.
     logRehydrateFailed(sessionId);
     try { await transport.close(); } catch { /* best effort */ }
-    delete transports[sessionId];
-    delete sessionContexts[sessionId];
+    dropSession(sessionId);
     res.status(400).json({
       jsonrpc: "2.0",
       error: { code: -32000, message: "No valid session. Send an initialize request first." },
@@ -331,13 +482,14 @@ app.post("/mcp", async (req, res) => {
 // SSE stream (GET) and session close (DELETE) reuse the same transport.
 async function handleSessionRequest(req, res) {
   const sessionId = req.headers["mcp-session-id"];
-  const transport = sessionId ? transports[sessionId] : undefined;
+  const transport = sessionId ? transports.get(sessionId) : undefined;
   if (!transport) {
     res.status(400).send("Invalid or missing session id");
     return;
   }
   const jwt = bearerOf(req);
   captureRequestIdentity(sessionId, jwt);
+  touchSession(sessionId);
   await transport.handleRequest(req, res);
 }
 

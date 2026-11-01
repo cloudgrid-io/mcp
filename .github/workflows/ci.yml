@@ -191,6 +191,14 @@ jobs:
       # across the rebuild (id ≠ identity; the credential on the request decides),
       # the anonymous path recovering, and grid_login staying reachable.
       - run: npm run test:web-restart-recovery
+      # Edge limits on the hosted edition: a request with a foreign Origin is
+      # refused (403; no Origin and the known client origins are served), the
+      # session table has a cap (503 on initialize) and an idle sweep, an unknown
+      # session id is rebuilt only if this edge issued it (signed ids; 404
+      # otherwise), and per-client-IP rate limits (express-rate-limit) answer 429
+      # with Retry-After on the OAuth routes, on every POST /mcp and, tighter, on
+      # initialize. Each guard is mutation-proven.
+      - run: npm run test:web-edge-limits
       # OAuth client-registration persistence (#3060): dynamic registrations were
       # process-local, so every deploy/pod restart wiped them and users hit
       # "Unknown client" at /oauth/authorize. The fix makes client_id a signed,

@@ -78,6 +78,21 @@ export function logRehydrateFailed(sessionId, emit = defaultEmit) {
   emit(`cloudgrid-mcp: /mcp 400 rehydrate-failed session-id=${logSafe(sessionId)}`);
 }
 
+// A request refused by the Origin check. The Origin is client-supplied text.
+export function logOriginRefused(origin, emit = defaultEmit) {
+  emit(`cloudgrid-mcp: /mcp 403 origin-refused origin=${logSafe(origin, 128)}`);
+}
+
+// A new or rebuilt session refused because the process is at its session cap.
+export function logSessionCap(count, emit = defaultEmit) {
+  emit(`cloudgrid-mcp: /mcp 503 session-cap sessions=${Number(count) || 0}`);
+}
+
+// A non-initialize request whose session id this edge did not issue (404).
+export function logSessionUnknown(sessionId, emit = defaultEmit) {
+  emit(`cloudgrid-mcp: /mcp 404 session-unknown session-id=${logSafe(sessionId)}`);
+}
+
 // The successful-session exit, emitted from the SDK's `oninitialized`. TWO lines
 // with a DELIBERATE separation:
 //
