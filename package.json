@@ -99,8 +99,8 @@
     "express": "^5.3.0",
     "express-rate-limit": "8.7.1",
     "fflate": "^0.8.3",
-    "undici": "^8.12.2",
-    "zod": "^3.23.0"
+    "undici": "^8.12.3",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"
@@ -111,10 +111,10 @@
     "type": "git",
     "url": "https://github.com/cloudgrid-io/mcp.git"
   },
-  "//overrides-qs": "qs is held at 6.15.x by express and body-parser, which both declare ~6.15.1: a tilde range that excludes 6.16.0, so no lockfile refresh reaches the patched version. cloudgrid runs this same override in packages/api and functions/event-consumer through the identical pins. REMOVE once express/body-parser declare a range admitting >= 6.16.0: npm view body-parser dependencies.qs . See cloudgrid-io/cloudgrid#4346.",
+  "//overrides-qs": "qs is held at a floor of 6.17.1, the release that carries the qs.stringify fix (patched from 6.16.1). express 5.3.0 now declares ^6.16.0 and body-parser 2.4.0 declares ^6.16.1, so the old ~6.15.1 tilde block is gone; the override stays as a floor so no lockfile refresh can resolve below the patched version. cloudgrid runs this same override in packages/api and functions/event-consumer through the identical pins. REMOVE once express declares a qs range whose floor is >= 6.16.1: npm view express dependencies.qs . See cloudgrid-io/cloudgrid#4346.",
   "overrides": {
     "proxy-addr": "^2.0.8",
-    "fast-uri": "^3.1.8",
-    "qs": "^6.16.0"
+    "fast-uri": "^3.1.9",
+    "qs": "^6.17.1"
   }
 }
