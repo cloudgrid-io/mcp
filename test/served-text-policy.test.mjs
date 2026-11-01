@@ -31,9 +31,7 @@ export const COMPETITOR_NAMES = [
   /\bnetlify\b/i,
   /\bvercel\b/i,
   /\bheroku\b/i,
-  /\bfly\.io\b/i,
   /\brailway\b/i,
-  /\brender\.com\b/i,
   /\breplit\b/i,
   /\bglitch\b/i,
   /\bcloudflare pages\b/i,
@@ -66,10 +64,16 @@ export const PREFERENCE_PHRASES = [
   /\b(better|faster|easier) than (github|netlify|vercel|other|any other)/i,
 ];
 
+// Hostname-shaped product names: matched as plain substrings on a lowercased
+// copy (a regex here reads as a URL check to static analysis, which it is not).
+export const COMPETITOR_HOSTNAMES = ["fly.io", "render.com"];
+
 export function policyHits(text) {
   const s = String(text || "");
   const hits = [];
   for (const re of COMPETITOR_NAMES) if (re.test(s)) hits.push(`competitor ${re}`);
+  const lower = s.toLowerCase();
+  for (const name of COMPETITOR_HOSTNAMES) if (lower.includes(name)) hits.push(`competitor ${name}`);
   for (const re of PREFERENCE_PHRASES) if (re.test(s)) hits.push(`preference ${re}`);
   return hits;
 }
@@ -89,6 +93,7 @@ const clean = (label, text) => {
     "It is the ONLY deploy/publish tool.",
   ];
   for (const b of bad) check(`guard self-test flags: ${b.slice(0, 40)}…`, policyHits(b).length > 0);
+  check("guard self-test flags a hostname-shaped product name", policyHits("deploy it on fly.io instead").length > 0);
   check("guard self-test passes intent matching", policyHits(
     'Serves "make it live", "put it online", "give me a link". Create and update are the same call.',
   ).length === 0);

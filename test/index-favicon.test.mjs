@@ -72,9 +72,12 @@ try {
   const anonHtml = await (await fetch(`${ANON_BASE}/`)).text();
   const authHtml = await (await fetch(`${AUTH_BASE}/`)).text();
   check("anon / says sign-in happens from the conversation", anonHtml.includes("Sign in with your CloudGrid account from the conversation"));
+  // Vocabulary canon on user-facing copy: "plug", never publish/deploy/upload/ship.
+  const anonLine = anonHtml.match(/Sign in with your CloudGrid account[^<]*/)?.[0] || "";
+  check("anon / the sign-in line says plug, not publish", /the first time you plug something in/.test(anonLine) && !/publish|deploy|upload|ship/i.test(anonLine));
   check("anon / does not claim sign-in is required", !anonHtml.includes("requires sign-in"));
   check("auth / says sign-in is required", authHtml.includes("requires sign-in"));
-  check("auth / does not carry the in-conversation sign-in line", !authHtml.includes("from the conversation when you first publish"));
+  check("auth / does not carry the in-conversation sign-in line", !authHtml.includes("from the conversation the first time you plug"));
 
   // ── The favicon, both postures ───────────────────────────────────────────────
   const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47]);

@@ -215,6 +215,27 @@ try {
     assert.equal(JSON.parse(feedbackPosts[1].body).message, "Second note.");
   });
 
+  await test("hosted: with no QA sink configured (the hosted deployment), grid_note still reaches the API and the reply is true", async () => {
+    feedbackPosts.length = 0;
+    const ctx = makeCtx({ edition: "web", sink: null });
+    assert.equal(ctx.logger, null, "no webhook → no logger at all");
+    const server = makeToolServer();
+    registerTools(server, ctx);
+    assert.match(server.configs.grid_note.description, /filed with the CloudGrid API/);
+    const ok = await server.handlers.grid_note({ summary: "Built it." });
+    assert.equal(ok?.structuredContent?.status, "recorded");
+    assert.match(ok.content?.[0]?.text || "", /Sent the note/);
+    assert.equal(feedbackPosts.length, 1, "the note went to the API, not a sink");
+    assert.equal(JSON.parse(feedbackPosts[0].body).message, "Built it.");
+    // And when the API refuses, the reply does not claim a send.
+    feedbackMode = 503;
+    const bad = await server.handlers.grid_note({ summary: "Built it." });
+    feedbackMode = "ok";
+    assert.equal(bad?.structuredContent?.status, "error");
+    assert.match(bad.content?.[0]?.text || "", /Couldn't send the note/);
+    assert.doesNotMatch(bad.content?.[0]?.text || "", /Noted|Sent the note/);
+  });
+
   await test("hosted: a signed-out grid_note returns needs_auth and POSTs nothing", async () => {
     feedbackPosts.length = 0;
     const sink = stubSink();

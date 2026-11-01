@@ -16,6 +16,21 @@ import https from "node:https";
 import tls from "node:tls";
 import { createRequire } from "node:module";
 
+// Does the message name the hosted connector? Parse each URL it carries and
+// compare the host and path (not a substring match, which would also accept
+// an unrelated host that merely contains the text).
+function namesHostedConnector(message) {
+  const urls = String(message || "").match(/https?:\/\/[^\s)"']+/g) || [];
+  return urls.some((raw) => {
+    try {
+      const u = new URL(raw.replace(/[.,;]+$/, ""));
+      return u.host === "mcp.cloudgrid.io" && u.pathname.replace(/\/+$/, "") === "/mcp";
+    } catch {
+      return false;
+    }
+  });
+}
+
 const HAS_CA_API = typeof tls.setDefaultCACertificates === "function";
 
 let failures = 0;
@@ -337,7 +352,7 @@ if (HAS_CA_API) {
   check("pollStatusOnce cert error: throws", !!pollErr);
   check("pollStatusOnce cert error: certError flag", pollErr?.certError === true);
   check("pollStatusOnce cert error: mentions hosted connector",
-    pollErr?.message?.includes("https://mcp.cloudgrid.io/mcp"));
+    namesHostedConnector(pollErr?.message));
   check("pollStatusOnce cert error: mentions NODE_EXTRA_CA_CERTS",
     pollErr?.message?.includes("NODE_EXTRA_CA_CERTS"));
   check("pollStatusOnce cert error: does not say 'try again'",
@@ -353,7 +368,7 @@ if (HAS_CA_API) {
   check("checkApiConnectivity cert error: throws", !!connectErr);
   check("checkApiConnectivity cert error: certError flag", connectErr?.certError === true);
   check("checkApiConnectivity cert error: mentions hosted connector",
-    connectErr?.message?.includes("https://mcp.cloudgrid.io/mcp"));
+    namesHostedConnector(connectErr?.message));
 
   globalThis.fetch = originalFetch;
 }
