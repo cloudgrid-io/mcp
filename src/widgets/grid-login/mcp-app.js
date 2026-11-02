@@ -7,7 +7,7 @@
  * ChatGPT Apps-SDK bridge the old org-picker widget targets).
  *
  * It is bundled into a single self-contained src/widgets/grid-login.html by
- * scripts/build-login-widget.mjs (esbuild inlines this file and the whole
+ * scripts/build-widgets.mjs (esbuild inlines this file and the whole
  * @modelcontextprotocol/ext-apps App class). The iframe CSP is deny-by-default,
  * so nothing here may reference a remote script, stylesheet, or font.
  *

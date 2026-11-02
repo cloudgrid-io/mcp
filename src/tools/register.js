@@ -7,7 +7,6 @@ import { registerAppResource, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/e
 import { newLoginCode, buildLoginUrl, pollStatusOnce, checkApiConnectivity, decodeJwt as decodeJwtAuth } from "../auth.js";
 import { ORIENTATION, fetchCorpus, listWorkflows } from "../playbook.js";
 import {
-  APPS_WIDGETS_ENABLED,
   CHATGPT_WIDGET_MIME,
   LIVE_RESULT_URI,
   GRID_PICKER_URI,
@@ -15,6 +14,9 @@ import {
   GRID_PICKER_HTML,
   GRID_LOGIN_APP_URI,
   GRID_LOGIN_APP_HTML,
+  previewOrigin,
+  previewUrlFor,
+  PREVIEW_META_KEY,
 } from "./constants.js";
 import { fail, okResult } from "./util.js";
 import { cliTool, tryOpenBrowser } from "./cli.js";
@@ -99,6 +101,42 @@ export function strictInput(schema) {
   return Object.keys(schema).length > 0 ? z.strictObject(schema) : schema;
 }
 
+// ── live-result card (#434) ──────────────────────────────────────────────────
+// Tool `_meta` that binds the card: the MCP Apps key plus ChatGPT's alias.
+export const LIVE_RESULT_TOOL_META = {
+  ui: { resourceUri: LIVE_RESULT_URI },
+  "openai/outputTemplate": LIVE_RESULT_URI,
+};
+
+// Resource `_meta` for the card. Deny-by-default CSP, stated explicitly; the
+// only origin it ever admits is the configured preview origin, as a frame
+// source. clipboardWrite backs Copy link (the card falls back to a selection
+// copy when a host does not grant it).
+export function liveResultResourceMeta() {
+  const origin = previewOrigin();
+  return {
+    ui: {
+      csp: {
+        connectDomains: [],
+        resourceDomains: [],
+        frameDomains: origin ? [origin] : [],
+      },
+      permissions: { clipboardWrite: {} },
+      prefersBorder: false,
+    },
+  };
+}
+
+// Add the preview URL to a plug result's `_meta` (web edition, preview origin
+// configured, result names an entity). The text and structuredContent are left
+// exactly as runPlug built them, so a client with no UI loses nothing.
+export function withPreviewMeta(ctx, res) {
+  if (ctx?.edition !== "web") return res;
+  const url = previewUrlFor(res?.structured?.entity_id);
+  if (!url) return res;
+  return { ...res, meta: { ...(res.meta || {}), [PREVIEW_META_KEY]: url } };
+}
+
 // ── Registration ───────────────────────────────────────────────────────────────
 // Registers the tools onto `server`. ctx.edition decides whether the CLI-wrapping
 // tools are included (they need a local machine).
@@ -146,22 +184,21 @@ export function registerTools(server, ctx) {
 
   // ── Widget resources (web edition, ChatGPT Apps SDK) ──────────────────────
   if (ctx.edition === "web") {
-    // ChatGPT Apps-SDK widgets. mimeType is CHATGPT_WIDGET_MIME, which since
-    // SEP-1865 (2026-01-26) IS `text/html;profile=mcp-app` — the standard MCP-Apps
-    // type. The old `text/html+skybridge` was retired and was the black frame
-    // (#308); the hosts stay separated by binding, not MIME. widgetAccessible
-    // lets the widget call tools back over window.openai.callTool (the visibility
-    // pills call grid_visibility). These make no direct network requests, so no
-    // openai/widgetCSP is declared — the default deny is correct.
-    server.registerResource("cloudgrid-live-result", LIVE_RESULT_URI, {
-      description: "Live result card after a CloudGrid drop — shows URL, grid link, and visibility controls.",
-      mimeType: CHATGPT_WIDGET_MIME,
+    // live-result MCP App (#434): the app card after a plug, for Claude and
+    // ChatGPT. Registered via the ext-apps helper (MIME RESOURCE_MIME_TYPE,
+    // `text/html;profile=mcp-app`, the type both hosts render). The CSP is
+    // declared explicitly: it admits NO network, resource, or frame origin,
+    // except the one configured preview origin as a frame source when
+    // MCP_PREVIEW_ORIGIN is set. The card calls tools only over the host bridge
+    // (grid_visibility, grid_check_deploy), which needs no CSP entry.
+    registerAppResource(server, "cloudgrid-live-result", LIVE_RESULT_URI, {
+      description: "App card after a plug: the live URL with Open, Copy link, Update, and who can open it.",
     }, async () => ({
       contents: [{
         uri: LIVE_RESULT_URI,
-        mimeType: CHATGPT_WIDGET_MIME,
+        mimeType: RESOURCE_MIME_TYPE,
         text: LIVE_RESULT_HTML,
-        _meta: { "openai/widgetAccessible": true },
+        _meta: liveResultResourceMeta(),
       }],
     }));
 
@@ -579,15 +616,12 @@ export function registerTools(server, ctx) {
       // live at a public URL in place. Versions + grid rollback exist, but the
       // honest MCP annotation for overwrite-live-state is destructive.
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
-      // Bound via openai/outputTemplate, which ChatGPT honors as a compatibility
-      // alias for `_meta.ui.resourceUri` and which Claude ignores — so this
-      // widget renders in ChatGPT only. Deliberately NOT `_meta.ui.resourceUri`:
-      // since SEP-1865 both hosts read THAT key, so binding there would render the
-      // widget in Claude too. The two mechanisms stay independent because they
-      // bind on different keys, not different MIMEs (#308/#303).
-      ...(ctx.edition === "web" && APPS_WIDGETS_ENABLED ? {
-        _meta: { "openai/outputTemplate": LIVE_RESULT_URI },
-      } : {}),
+      // The live-result card (#434), web edition. `_meta.ui.resourceUri` is the
+      // MCP Apps key Claude and ChatGPT both read; `openai/outputTemplate` is
+      // ChatGPT's compatibility alias for it. The card speaks the standard
+      // bridge, so it renders on both. A client without the UI extension
+      // ignores both keys and gets the text result, which starts with the URL.
+      ...(ctx.edition === "web" ? { _meta: LIVE_RESULT_TOOL_META } : {}),
   };
   const plugHandler = async (input) => {
       try {
@@ -664,19 +698,19 @@ export function registerTools(server, ctx) {
             input = { ...(input || {}), grid: decision.single.slug };
             if (decision.single.render_ready === false) {
               const res = await runPlug(ctx, input || {});
-              return okResult({
+              return okResult(withPreviewMeta(ctx, {
                 ...res,
                 text:
                   `Warning: your only grid "${decision.single.slug}" isn't fully set up yet — the page may not load until provisioning completes.\n` +
                   res.text,
-              });
+              }));
             }
           } else if (decision.grid) {
             input = { ...(input || {}), grid: decision.grid };
           }
         }
         const res = await runPlug(ctx, input || {});
-        return okResult(res);
+        return okResult(withPreviewMeta(ctx, res));
       } catch (err) {
         return fail(err.message);
       }
@@ -911,6 +945,10 @@ export function registerTools(server, ctx) {
         build_log_url: z.string().optional().describe("Cloud Build console URL for the full log, when available."),
       },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
+      // The live-result card's Check status button calls this back over the
+      // host bridge (#434). ChatGPT's compatibility key for that permission;
+      // inert elsewhere. Same as grid_visibility.
+      ...(ctx.edition === "web" ? { _meta: { "openai/widgetAccessible": true } } : {}),
     },
     async (input) => {
       try {
@@ -1251,13 +1289,9 @@ export function registerTools(server, ctx) {
         error: z.boolean().optional().describe("True when the grid listing failed (network/auth error). The text carries a human-readable message. Do NOT treat this as needs_grid_create."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
-      // ChatGPT Apps-SDK card, same binding as grid_plug: grid_hello returns a
-      // runPlug result, so it deserves the same live-result widget. Without this a
-      // grid_hello success renders no card even when the MIME is correct (#308).
-      // openai/outputTemplate is ChatGPT-only; Claude ignores it, so #303 is safe.
-      ...(ctx.edition === "web" && APPS_WIDGETS_ENABLED ? {
-        _meta: { "openai/outputTemplate": LIVE_RESULT_URI },
-      } : {}),
+      // Same live-result card as grid_plug (#434): grid_hello returns a runPlug
+      // result, so it gets the same binding.
+      ...(ctx.edition === "web" ? { _meta: LIVE_RESULT_TOOL_META } : {}),
     },
     async (input) => {
       try {
@@ -1302,7 +1336,7 @@ export function registerTools(server, ctx) {
 
         // 4. PLUG — one inline HTML document is an inspiration. runPlug does the rest.
         const res = await runPlug(ctx, { html, grid });
-        return okResult(res);
+        return okResult(withPreviewMeta(ctx, res));
       } catch (err) {
         return fail(err.message);
       }

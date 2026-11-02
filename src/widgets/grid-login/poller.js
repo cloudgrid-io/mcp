@@ -18,7 +18,7 @@
  * fake timers and a fake clock, with no DOM and no ext-apps import. mcp-app.js
  * wires the real `setTimeout`, `performance.now`, `document.hidden`, and the
  * grid_login_status round-trip into it. This whole module is bundled inline into
- * src/widgets/grid-login.html by scripts/build-login-widget.mjs.
+ * src/widgets/grid-login.html by scripts/build-widgets.mjs.
  */
 
 /**

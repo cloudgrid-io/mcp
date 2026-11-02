@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>CloudGrid app</title>
+<style>/* __CSS__ */</style>
+</head>
+<body>
+<main id="card" hidden>
+  <div class="head">
+    <h1 id="headline">Live</h1>
+    <span class="badge" id="badge" hidden></span>
+  </div>
+  <div class="preview" id="preview" hidden>
+    <iframe id="preview-frame" title="Preview of the app" loading="lazy"
+      sandbox="allow-scripts allow-forms allow-same-origin allow-popups"
+      referrerpolicy="no-referrer"></iframe>
+  </div>
+  <a class="url" id="url" href="#" target="_blank" rel="noopener noreferrer"></a>
+  <div class="actions">
+    <button id="open" type="button">Open</button>
+    <button id="copy" type="button" class="secondary">Copy link</button>
+    <button id="update" type="button" class="secondary">Update</button>
+    <button id="check" type="button" class="secondary" hidden>Check status</button>
+  </div>
+  <form class="update-form" id="update-form" hidden>
+    <label for="update-text">What should change?</label>
+    <textarea id="update-text" rows="2" placeholder="For example: make the header blue"></textarea>
+    <div class="actions">
+      <button id="update-send" type="submit">Send</button>
+      <button id="update-cancel" type="button" class="secondary">Cancel</button>
+    </div>
+  </form>
+  <section class="visibility" id="visibility" hidden>
+    <div class="label">Who can open it</div>
+    <div class="pills" id="pills"></div>
+  </section>
+  <p class="status" id="status" role="status" aria-live="polite"></p>
+</main>
+<script type="module">/* __JS__ */</script>
+</body>
+</html>
