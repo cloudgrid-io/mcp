@@ -317,6 +317,7 @@ mountLanding(app, PUBLIC_BASE);
 // /oauth/authorize/poll is not limited here (it polls every two seconds).
 app.post("/oauth/register", limit.register);
 app.get("/oauth/authorize", limit.authorize);
+app.post("/oauth/authorize/approve", limit.authorize);
 app.post("/oauth/token", limit.token);
 
 mountOAuth(app, {

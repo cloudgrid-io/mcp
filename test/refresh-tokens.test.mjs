@@ -16,6 +16,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { createRefreshStore, createMemoryBackend } from "../src/refresh-store.js";
 import { createRedisClient } from "../src/redis-client.js";
+import { browserCookies } from "./helpers/browser.mjs";
 
 const b64url = (b) => Buffer.from(b).toString("base64url");
 
@@ -200,14 +201,15 @@ function platformJwt() {
 }
 const SIGNIN = platformJwt();
 const issued = []; // sessions the stub handed out
+let nextSignIn = SIGNIN; // the session the next sign-in completes with
 const signedOut = new Set(); // sessions the user signed out of
 const api = createServer((req, res) => {
   const json = (s, b) => { res.writeHead(s, { "Content-Type": "application/json" }); res.end(JSON.stringify(b)); };
   if (req.url.startsWith("/auth/status")) {
-    // A fresh session per sign-in, so each test's session has its own state.
-    const jwt = issued.length === 0 ? SIGNIN : platformJwt();
-    issued.push(jwt);
-    return json(200, { status: "authenticated", jwt });
+    // A fresh session per sign-in (signIn() picks it), so each test's session
+    // has its own state.
+    issued.push(nextSignIn);
+    return json(200, { status: "authenticated", jwt: nextSignIn });
   }
   const bearer = String(req.headers.authorization || "").replace(/^Bearer /, "");
   const ok = issued.includes(bearer) && !signedOut.has(bearer);
@@ -253,9 +255,11 @@ async function signIn() {
   const { client_id } = await (await fetch(`${BASE}/oauth/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ redirect_uris: [REDIRECT] }) })).json();
   const verifier = b64url(randomBytes(32));
   const challenge = b64url(createHash("sha256").update(verifier).digest());
-  const html = await (await fetch(`${BASE}/oauth/authorize?response_type=code&client_id=${encodeURIComponent(client_id)}&redirect_uri=${encodeURIComponent(REDIRECT)}&code_challenge=${challenge}&code_challenge_method=S256`)).text();
+  const page = await fetch(`${BASE}/oauth/authorize?response_type=code&client_id=${encodeURIComponent(client_id)}&redirect_uri=${encodeURIComponent(REDIRECT)}&code_challenge=${challenge}&code_challenge_method=S256`);
+  const html = await page.text();
   const sid = html.match(/sid=([0-9a-f-]{36})/)[1];
-  const poll = await (await fetch(`${BASE}/oauth/authorize/poll?sid=${sid}`)).json();
+  if (issued.length > 0) nextSignIn = platformJwt();
+  const poll = await (await fetch(`${BASE}/oauth/authorize/poll?sid=${sid}`, { headers: { Cookie: browserCookies(page, nextSignIn) } })).json();
   const code = new URL(poll.redirect).searchParams.get("code");
   const tok = await form({ grant_type: "authorization_code", code, code_verifier: verifier, redirect_uri: REDIRECT, client_id });
   return { client_id, tok: await tok.json() };

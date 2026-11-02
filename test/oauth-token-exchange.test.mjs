@@ -19,6 +19,7 @@ import { createServer } from "node:http";
 import { createHash, randomBytes } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { TEST_SIGNING_SEED } from "./helpers/mcp-tokens.mjs";
+import { browserCookies } from "./helpers/browser.mjs";
 
 const SECRET = "test-oauth-hmac-secret-token-exchange-000000";
 // ChatGPT's real connector callback — the shape that matters for this bug.
@@ -112,7 +113,7 @@ async function codeInHand() {
   assert.ok(sid, "interstitial should carry a poll sid");
 
   // The sign-in the user just completed.
-  const poll = await (await fetch(`${web.baseUrl}/oauth/authorize/poll?sid=${sid}`)).json();
+  const poll = await (await fetch(`${web.baseUrl}/oauth/authorize/poll?sid=${sid}`, { headers: { Cookie: browserCookies(page, upstream.jwt) } })).json();
   assert.equal(poll.status, "ready", `poll should be ready once signed in: ${JSON.stringify(poll)}`);
   const code = new URL(poll.redirect).searchParams.get("code");
   assert.ok(code, "the redirect should carry an authorization code");
