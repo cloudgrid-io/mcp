@@ -2,15 +2,14 @@
 //
 // The same tool core as the local edition, served over the MCP Streamable HTTP
 // transport so web clients (claude.ai) can connect by URL with nothing installed.
-// The light, CLI-free toolset only: plug, claim, login. Identity is a per-session
-// token held in memory for the life of the MCP session (no local files on a
-// shared host).
+// The light, CLI-free toolset only. Identity is the access token the client
+// presents on each request (no local files on a shared host).
 //
-// Transport-level OAuth (src/oauth.js): clients can complete the MCP-spec OAuth
+// Sign-in (src/web-auth.js, src/oauth.js, src/mcp-tokens.js): the MCP-spec OAuth
 // connect — metadata discovery, dynamic registration, PKCE code flow — bridged to
-// CloudGrid's existing sign-in. A Bearer presented on /mcp requests becomes the
-// session's identity. MCP_REQUIRE_AUTH=1 makes the connect mandatory (401
-// challenge); default is anonymous-first with auth honored when presented.
+// CloudGrid's existing sign-in, on every host. Browsing tools work signed out;
+// every other tool needs an account, and each AI tool is asked to sign in the way
+// it understands (authMode). A presented token is verified on every request.
 //
 // Run: PORT=8080 node src/web.js     Health: GET /healthz
 
@@ -28,7 +27,18 @@ import {
   LATEST_PROTOCOL_VERSION,
 } from "@modelcontextprotocol/sdk/types.js";
 import { registerTools } from "./tools.js";
-import { mountOAuth, bearerChallenge } from "./oauth.js";
+import { mountOAuth, createBaseResolver } from "./oauth.js";
+import { createTokenService, resolveSigningKeys } from "./mcp-tokens.js";
+import {
+  authMode,
+  bearerChallenge,
+  callsProtectedTool,
+  createBearerResolver,
+  createPlatformValidator,
+  parseAuthModeOverrides,
+  signInRequiredResult,
+} from "./web-auth.js";
+import { API_BASE } from "./tools/constants.js";
 import { mountLanding } from "./landing.js";
 import { createSessionLogger } from "./session-logger.js";
 import { createSink } from "./log-sink.js";
@@ -59,10 +69,38 @@ const PORT = Number(process.env.PORT || 8080);
 
 // This server's public origin — used in OAuth metadata and the interstitial.
 const PUBLIC_BASE = (process.env.MCP_PUBLIC_URL || "https://mcp.cloudgrid.io").replace(/\/+$/, "");
+// Other public origins served by this same server (MCP_ALIAS_URLS, comma
+// separated), e.g. https://mcp-connected.cloudgrid.io. Each is answered for its
+// own origin, and a token issued on any of them is accepted on all.
+const ALIAS_BASES = String(process.env.MCP_ALIAS_URLS || "")
+  .split(/[\s,]+/)
+  .filter(Boolean)
+  .map((u) => u.replace(/\/+$/, ""))
+  .filter((u) => u !== PUBLIC_BASE);
+const BASES = [PUBLIC_BASE, ...ALIAS_BASES];
+const baseFor = createBaseResolver(BASES);
 
-// MCP_REQUIRE_AUTH=1 turns on the 401 challenge: clients must complete the OAuth
-// connect before using tools. Default off — anonymous-first is the GTM posture.
-const REQUIRE_AUTH = process.env.MCP_REQUIRE_AUTH === "1";
+// Access tokens: signed by this server (MCP_TOKEN_SIGNING_KEYS), for this
+// server's resources only.
+const signing = resolveSigningKeys(process.env);
+if (signing.ephemeral) {
+  console.warn(
+    "cloudgrid-mcp: MCP_TOKEN_SIGNING_KEYS is not set; access tokens are signed with a per-process key, " +
+      "so every client must sign in again after a restart. Set it in production.",
+  );
+} else {
+  console.error(`cloudgrid-mcp: access-token signing key configured (${signing.keys.length} key(s), signing kid ${signing.keys[0].kid.slice(0, 8)}…)`);
+}
+const tokens = createTokenService({
+  keys: signing.keys,
+  issuers: BASES,
+  audiences: BASES.map((b) => `${b}/mcp`),
+});
+const AUTH_MODE_OVERRIDES = parseAuthModeOverrides(process.env.MCP_AUTH_MODE_OVERRIDES);
+const modeOf = (clientInfo) => authMode(clientInfo, AUTH_MODE_OVERRIDES);
+const resolveBearer = createBearerResolver({ tokens, validatePlatformToken: createPlatformValidator({ apiBase: API_BASE }) });
+// Access-token lifetime, in seconds, while no refresh store is configured.
+const ACCESS_TOKEN_TTL_NO_REFRESH_S = envInt(process.env, "MCP_ACCESS_TOKEN_TTL_NO_REFRESH_S", 24 * 3600);
 
 // The trusted-server credential, if this host is provisioned as one. Sent on
 // anonymous drops so the platform keys the anon-drop cap on the per-user id rather
@@ -142,8 +180,8 @@ function negotiateProtocol(requested) {
 
 // A web session: identity lives in memory for the session's lifetime only. The
 // session id doubles as the stable, opaque end-user id for the trusted-server cap.
-// The identity carries the request's transport token; auth is enforced in-band by
-// the tool layer (needs_auth via grid_login / grid_plug), not by a transport gate.
+// The identity carries the account credential of the request's verified token;
+// the sign-in gate in the POST /mcp handler decides what may run without one.
 function makeWebContext(sessionId, identity) {
   return {
     edition: "web",
@@ -175,9 +213,8 @@ app.use(express.urlencoded({ extended: false })); // OAuth token exchange is for
 
 app.get("/healthz", (_req, res) => res.json({ ok: true, edition: "web" }));
 
-// The human-facing root page and favicon. Mounted on both postures; the auth line
-// it renders is driven by the same REQUIRE_AUTH flag used below.
-mountLanding(app, PUBLIC_BASE, { requireAuth: REQUIRE_AUTH });
+// The human-facing root page and favicon.
+mountLanding(app, PUBLIC_BASE);
 
 // Rate limits run before the OAuth handlers. Exact paths: the interstitial's
 // /oauth/authorize/poll is not limited here (it polls every two seconds).
@@ -185,7 +222,12 @@ app.post("/oauth/register", limit.register);
 app.get("/oauth/authorize", limit.authorize);
 app.post("/oauth/token", limit.token);
 
-mountOAuth(app, PUBLIC_BASE, { requireAuth: REQUIRE_AUTH, isOriginAllowed });
+mountOAuth(app, {
+  bases: BASES,
+  tokens,
+  accessTokenTtlSeconds: ACCESS_TOKEN_TTL_NO_REFRESH_S,
+  isOriginAllowed,
+});
 
 // One transport per MCP session, keyed by the session id.
 // Maps, not plain objects: the keys are client-supplied session ids.
@@ -240,16 +282,58 @@ if (SESSION_SWEEP_MS > 0) {
 }
 
 // Per the MCP authorization spec, a resource server that receives no usable
-// credential answers 401 with a Bearer WWW-Authenticate challenge — the signal
-// Claude web needs to re-run OAuth and render its native login UI. Reused for
-// the missing, expired, and invalid transport-token cases.
-function sendAuthChallenge(res) {
-  res.setHeader("WWW-Authenticate", bearerChallenge(PUBLIC_BASE));
+// credential answers 401 with a Bearer WWW-Authenticate challenge, the signal a
+// client acts on to run OAuth (or refresh its token) and retry.
+function sendAuthChallenge(req, res, opts = {}) {
+  res.setHeader("WWW-Authenticate", bearerChallenge(baseFor(req), { error: opts.error }));
   res.status(401).json({
     jsonrpc: "2.0",
-    error: { code: -32001, message: "Authorization required. Complete the OAuth connect." },
+    error: {
+      code: -32001,
+      message: opts.error === "invalid_token"
+        ? "The access token is not valid. Sign in to CloudGrid again."
+        : opts.atConnect
+          ? "Sign in to CloudGrid to connect."
+          : "Sign in to CloudGrid to use this tool.",
+    },
     id: null,
   });
+}
+
+function sendAuthUnavailable(res) {
+  res.setHeader("Retry-After", "5");
+  res.status(503).json({
+    jsonrpc: "2.0",
+    error: { code: -32000, message: "Sign-in could not be checked right now. Try again shortly." },
+    id: null,
+  });
+}
+
+// The account behind the request's Bearer, verified. Answers the request itself
+// (401 or 503) and returns undefined when the Bearer is present but unusable;
+// returns null when there is no Bearer.
+async function requestPrincipal(req, res) {
+  const bearer = bearerOf(req);
+  if (!bearer) return null;
+  const r = await resolveBearer(bearer);
+  if (r.ok) return r;
+  if (r.reason === "unavailable") {
+    sendAuthUnavailable(res);
+    return undefined;
+  }
+  logAuthChallenge(req, undefined, r.reason);
+  sendAuthChallenge(req, res, { error: "invalid_token" });
+  return undefined;
+}
+
+// A protected call with no account, in the "tool-error" mode: answered here
+// with the tool error that carries the sign-in challenge. Only a single
+// tools/call message is answered this way; anything else gets the 401.
+function sendSignInToolError(req, res) {
+  const body = req.body;
+  if (Array.isArray(body) || body?.id === undefined) return false;
+  res.status(200).json({ jsonrpc: "2.0", id: body.id, result: signInRequiredResult(baseFor(req)) });
+  return true;
 }
 
 function captureRequestIdentity(sessionId, jwt) {
@@ -269,7 +353,7 @@ function captureRequestIdentity(sessionId, jwt) {
 // for a rehydrated (restart-evicted) session, the id the client keeps presenting.
 // Identity derives ONLY from the credential passed here (`jwt`), never from
 // anything remembered about the id: a session id is not proof of identity.
-async function buildSession(sessionId, jwt, protocolVersion) {
+async function buildSession(sessionId, jwt, protocolVersion, mode = "call") {
   const identity = createWebIdentity({ initialTransportToken: jwt });
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: () => sessionId,
@@ -287,6 +371,7 @@ async function buildSession(sessionId, jwt, protocolVersion) {
   const server = new McpServer({ name: "cloudgrid-mcp-web", version }, { instructions: INSTRUCTIONS_WEB });
   const webCtx = makeWebContext(sessionId, identity);
   webCtx.lastSeen = Date.now();
+  webCtx.authMode = mode;
   setSessionContext(sessionId, webCtx);
   // Session logger for this MCP session (dark by default, and the hosted
   // servers carry no webhook). Explicit-only (#433): it never posts — not on a
@@ -365,35 +450,41 @@ async function primeSession(transport, req) {
 app.post("/mcp", limit.mcp, limit.initialize, async (req, res) => {
   const sessionId = req.headers["mcp-session-id"];
   let transport = sessionId ? transports.get(sessionId) : undefined;
-  const jwt = bearerOf(req);
 
-  if (REQUIRE_AUTH && !jwt) {
-    // #353: name WHY no usable Bearer was found — absent / not-bearer / empty-token
-    // — without revealing the token. This is the whole diagnostic value of the 401.
-    logAuthChallenge(req);
-    sendAuthChallenge(res);
-    return;
+  // The sign-in gate. A Bearer that is present but not valid (expired, for
+  // another resource, forged, signed out) is a 401 on every request: the client
+  // refreshes or signs in again. Sign-in is no longer in-band (grid_login is
+  // gone from this edition), so the 401 always has a way out; this is what
+  // makes the old #286 objection to an expiry 401 not apply any more.
+  const principal = await requestPrincipal(req, res);
+  if (principal === undefined) return;
+  const jwt = principal?.platformToken ?? null;
+  const isInit = isInitializeRequest(req.body);
+  if (!principal) {
+    // Any initialize, well-formed or not, so a client that never sends a valid
+    // one still learns that sign-in is needed.
+    const asksInitialize = !Array.isArray(req.body) && req.body?.method === "initialize";
+    if (asksInitialize && modeOf(req.body?.params?.clientInfo) === "connect") {
+      logAuthChallenge(req, undefined, "connect");
+      sendAuthChallenge(req, res, { atConnect: true });
+      return;
+    }
+    if (callsProtectedTool(req.body)) {
+      const mode = transport ? sessionContexts.get(sessionId)?.authMode : undefined;
+      if (mode === "tool-error" && sendSignInToolError(req, res)) return;
+      logAuthChallenge(req, undefined, "protected-tool");
+      sendAuthChallenge(req, res);
+      return;
+    }
   }
 
   if (transport) {
-    // Capture the request's transport token into the session identity — #279: an
-    // explicit in-session login stays authoritative over an expired transport
-    // token. Do NOT gate on expiry here. #288 added a transport-level 401 on an
-    // expired/invalid Bearer (the "#286 challenge"); it shipped in 0.21.3/0.21.4,
-    // was pulled from production (manifests re-pinned to 0.21.2) hours later, and
-    // #286 is closed not-planned. Auth on this connector is IN-BAND via grid_login
-    // / grid_plug (2026-08-23 founder decision), so a transport 401 on expiry is
-    // wrong by design — it bricks the client with grid_login behind the same 401.
-    // An expired-but-present Bearer must reach the tool layer, where the needs_auth
-    // ask is the recovery path. The only auth gate is the missing-Bearer guard at
-    // the top of this handler (the deployed v0.21.2 posture).
+    // The verified account of this request becomes the session identity.
     captureRequestIdentity(sessionId, jwt);
     touchSession(sessionId);
     await transport.handleRequest(req, res, req.body);
     return;
   }
-
-  const isInit = isInitializeRequest(req.body);
 
   // A brand-new connection with no session id that is NOT an initialize is a real
   // protocol error — there is nothing to recover.
@@ -409,17 +500,19 @@ app.post("/mcp", limit.mcp, limit.initialize, async (req, res) => {
   }
 
   if (isInit) {
-    // A genuine new session — mint a fresh id. The only auth gate is the top-of-
-    // handler missing-Bearer guard (the deployed v0.21.2 posture); the #288
-    // expired-Bearer transport 401 is reverted (see the transport-present block
-    // above), so an expired-but-present Bearer proceeds to the tool layer where
-    // the in-band needs_auth ask lives, rather than being challenged.
+    // A genuine new session — mint a fresh id. The sign-in gate above has
+    // already run.
     if (atSessionCap()) {
       sendSessionCap(res);
       return;
     }
     const newSessionId = sessionIds.mint();
-    ({ transport } = await buildSession(newSessionId, jwt, negotiateProtocol(req.body?.params?.protocolVersion)));
+    ({ transport } = await buildSession(
+      newSessionId,
+      jwt,
+      negotiateProtocol(req.body?.params?.protocolVersion),
+      modeOf(req.body?.params?.clientInfo),
+    ));
     await transport.handleRequest(req, res, req.body);
     return;
   }
@@ -429,16 +522,8 @@ app.post("/mcp", limit.mcp, limit.initialize, async (req, res) => {
   // keeps presenting, so it recovers without reconnecting. Identity comes ONLY from
   // this request's Bearer; the stale id carries no remembered identity, and a
   // rebuilt session legitimately loses the prior in-memory explicit-login override
-  // — degrading to a fresh grid_login, never silently reusing a login (#279/#280).
-  //
-  // No auth gate beyond the top-of-handler missing-Bearer guard (the deployed
-  // v0.21.2 posture): auth on the connected edge is IN-BAND via grid_login /
-  // grid_plug (2026-08-23 founder decision), so an expired-but-present Bearer — a
-  // connected session after a restart — must rebuild and reach the tool layer where
-  // the needs_auth ask is the recovery path, NOT be challenged with grid_login
-  // stuck behind the same 401 (the #286 brick, on the rebuild path). Gating on
-  // expiry (hasUsableCredential) here is exactly what #288 got wrong and was pulled
-  // from production for.
+  // — never silently reusing a login (#279/#280). The sign-in gate above has
+  // already run for this request.
   //
   // Only an id this edge issued is rebuilt: the id's HMAC tag must verify (see
   // createSessionIds). Anything else is a session this server does not know, and
@@ -487,8 +572,9 @@ async function handleSessionRequest(req, res) {
     res.status(400).send("Invalid or missing session id");
     return;
   }
-  const jwt = bearerOf(req);
-  captureRequestIdentity(sessionId, jwt);
+  const principal = await requestPrincipal(req, res);
+  if (principal === undefined) return;
+  captureRequestIdentity(sessionId, principal?.platformToken ?? null);
   touchSession(sessionId);
   await transport.handleRequest(req, res);
 }
@@ -503,6 +589,6 @@ app.use(createErrorHandler());
 app.listen(PORT, () => {
   // eslint-disable-next-line no-console
   console.error(
-    `cloudgrid-mcp web edition listening on :${PORT} (POST /mcp, GET /healthz, OAuth ${REQUIRE_AUTH ? "required" : "optional"})`,
+    `cloudgrid-mcp web edition listening on :${PORT} (POST /mcp, GET /healthz; origins ${BASES.join(", ")})`,
   );
 });

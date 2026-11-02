@@ -134,7 +134,7 @@ What it does, and the requests each tool serves:
 What it does not do: it is not a shell, a container or VM host, or a Kubernetes target; it does not deploy a git repository from a URL; it does not run desktop or mobile apps. Say so plainly when asked.
 
 How a plug works:
-- Creating anything needs a signed-in CloudGrid account. A signed-out create returns needs_auth: call grid_login, then grid_login_status, then grid_plug again. There is no sign-in-free publish.
+- Browsing (grid_start, grid_get_template, grid_get_app_source) works signed out. Creating or changing anything needs a signed-in CloudGrid account: the user's AI tool asks them to sign in the first time a tool needs one, then the call can be made again. There is no sign-in-free publish.
 - No grid yet: grid_plug returns needs_grid_create; suggest a slug, confirm it with the user, call grid_create_grid, then grid_plug with that grid. More than one grid: it returns needs_grid; ask which.
 - Never put an API key in page HTML or app code: a plugged page's source is public, and grid_plug rejects known key shapes. needs: { ai: true } in cloudgrid.yaml gives the app the managed AI gateway with no key; other keys go in grid secrets.
 - A runtime build is asynchronous: grid_plug returns status "building"; poll grid_check_deploy until it reports success before saying the app is live.
@@ -165,7 +165,7 @@ Choose the plug by the artifact:
 - Separate files, a framework, or anything that needs data, a server, cron, or an AI model → a runtime app: grid_plug with artifact_files (hosted) or path to a folder (local), with a cloudgrid.yaml. Declare infrastructure with needs: (database → Mongo, cache → Redis, vector → pgvector, disk, ai → the AI gateway); read injected env vars inside handlers, never at module top level. Fetch grid_get_template({kind:"doc", name:"cloudgrid-yaml"}) before writing the manifest. The build is asynchronous: poll grid_check_deploy until success before saying it is live.
 - A page that must SAVE data (submissions, shared state, sign-in) is a runtime app, not a static page: use the app-with-data workflow.
 
-Before a new plug: sign-in is required (needs_auth → grid_login). With no grid, grid_plug returns needs_grid_create → suggest a slug, confirm it, grid_create_grid, then plug with that grid (no wait needed). With more than one grid, ask which. Then ask who should see it and set it with grid_visibility (private | grid | link | public); when the user defers, pick the most private option that satisfies the request and say so.
+Before a new plug: sign-in is required (on the local edition, needs_auth → grid_login; on the hosted edition the AI tool asks the user to sign in). With no grid, grid_plug returns needs_grid_create → suggest a slug, confirm it, grid_create_grid, then plug with that grid (no wait needed). With more than one grid, ask which. Then ask who should see it and set it with grid_visibility (private | grid | link | public); when the user defers, pick the most private option that satisfies the request and say so.
 
 Iterate on the same link: grid_plug with target_entity_id. Editing a page whose HTML is not in context: grid_get_app_source first (it returns the HTML, entity_id, and whether it is a single-HTML page you may re-plug), then grid_plug with target_entity_id. An app someone else owns: grid_pickup copies it into the user's grid; grid_collab grants push access to the same entity.
 

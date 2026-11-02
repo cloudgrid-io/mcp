@@ -18,7 +18,7 @@ import {
   GRID_PICKER_URI,
   PLUG_UPLOAD_TIMEOUT_MS,
 } from "./constants.js";
-import { okResult } from "./util.js";
+import { okResult, signInHow, signInRef } from "./util.js";
 import { runCloudgrid } from "./cli.js";
 import { decodeJwt } from "../auth.js";
 import { logSafe } from "../web-observability.js";
@@ -225,7 +225,7 @@ export async function runCreateGrid(ctx, { slug, name } = {}) {
   const token = await ctx.getToken();
   if (!token) {
     return {
-      text: "Creating a grid needs an account — sign the user in first (grid_login), then re-call grid_create_grid.",
+      text: `Creating a grid needs an account — sign the user in first${signInRef(ctx)}, then re-call grid_create_grid.`,
       structured: { needs_auth: true },
     };
   }
@@ -749,8 +749,8 @@ export async function runReport(
     // degrade gracefully rather than erroring.
     return okResult({
       text: usedTrustedServer || !token
-        ? "Sign in to send a report to the CloudGrid team (grid_login), then try again."
-        : "That didn't authorize a report. Sign in again (grid_login) and retry.",
+        ? `Sign in to send a report to the CloudGrid team${signInRef(ctx)}, then try again.`
+        : `That didn't authorize a report. Sign in again${signInRef(ctx)} and retry.`,
       structured: { status: "unauthorized" },
     });
   }
@@ -779,7 +779,7 @@ export async function runNote(ctx, { summary } = {}) {
   try { token = await ctx.getToken(); } catch { token = null; }
   if (!token) {
     return okResult({
-      text: "Sending a note to the CloudGrid team needs an account, so it is filed under the user. Call grid_login to sign in, then re-call grid_note.",
+      text: `Sending a note to the CloudGrid team needs an account, so it is filed under the user. ${signInHow(ctx)}, then re-call grid_note.`,
       structured: { status: "unauthorized", needs_auth: true },
     });
   }
@@ -821,7 +821,7 @@ export async function runNote(ctx, { summary } = {}) {
   }
   if (res.status === 401) {
     return okResult({
-      text: "Couldn't send the note: the sign-in didn't authorize it. Sign in again (grid_login) and retry.",
+      text: `Couldn't send the note: the sign-in didn't authorize it. Sign in again${signInRef(ctx)} and retry.`,
       structured: { status: "unauthorized", needs_auth: true },
     });
   }
@@ -852,7 +852,7 @@ export function anonClaimTokenFor(claim, entityId) {
 export async function runPull(ctx, { claim_token, claim_url, entity_id, grid } = {}) {
   const token = await ctx.getToken();
   if (!token) {
-    throw new Error("You are not signed in. Run grid_login first, then claim.");
+    throw new Error(ctx.edition === "web" ? `You are not signed in. ${signInHow(ctx)} first, then claim.` : "You are not signed in. Run grid_login first, then claim.");
   }
 
   // `/api/v2/anon-claim` (claim-token-in-body, returns a list) was retired; the
@@ -1045,7 +1045,7 @@ export async function runPull(ctx, { claim_token, claim_url, entity_id, grid } =
 export async function runCollab(ctx, { entity_id, grid } = {}) {
   const token = await ctx.getToken();
   if (!token) {
-    throw new Error("You are not signed in. Run grid_login first, then collab.");
+    throw new Error(ctx.edition === "web" ? `You are not signed in. ${signInHow(ctx)} first, then collab.` : "You are not signed in. Run grid_login first, then collab.");
   }
   const target = entity_id;
   if (!target) {
@@ -1148,7 +1148,7 @@ export async function runDelete(ctx, { name, grid, confirm } = {}) {
   }
   const token = await ctx.getToken();
   if (!token) {
-    throw new Error("You are not signed in. Run grid_login first.");
+    throw new Error(ctx.edition === "web" ? `You are not signed in. ${signInHow(ctx)} first.` : "You are not signed in. Run grid_login first.");
   }
   if (!name) {
     throw new Error("`name` (entity slug) is required.");
@@ -1608,8 +1608,8 @@ export function errorGuidance({ status, code, edition, isEdit, isAnon, signedIn 
   // 401 on an edit — the credential didn't authorize this entity.
   if (status === 401) {
     return isEdit
-      ? "That did not authorize this entity (wrong entity, expired, or already claimed). Sign in if you own it (grid_login), pass its owner_token for an anonymously-created drop, or omit target_entity_id to create a new entity."
-      : "Your sign-in is missing or expired. Run grid_login, then retry the same grid_plug. Do not offer anonymous publishing as a fix for a failed sign-in; anonymous is only for a user who explicitly asks to publish without attribution.";
+      ? `That did not authorize this entity (wrong entity, expired, or already claimed). Sign in if you own it${signInRef({ edition })}, pass its owner_token for an anonymously-created drop, or omit target_entity_id to create a new entity.`
+      : `Your sign-in is missing or expired. ${edition === "web" ? signInHow({ edition }) : "Run grid_login"}, then retry the same grid_plug. Do not offer anonymous publishing as a fix for a failed sign-in; anonymous is only for a user who explicitly asks to publish without attribution.`;
   }
   if (status === 403) {
     // NO_ACTIVE_ORG / NO_ACTIVE_GRID is not a role problem — the account has no
@@ -1993,7 +1993,7 @@ export async function runPlug(ctx, input, deps = {}) {
   const useAnonWire = isEdit ? Boolean(ownerToken) : !authToken;
   if (isEdit && !ownerToken && !authToken) {
     throw new Error(
-      "Re-plugging needs authorization: sign in (grid_login) for an entity in your grid, or pass the " +
+      `Re-plugging needs authorization: sign in${signInRef(ctx)} for an entity in your grid, or pass the ` +
         "owner_token that came back when the drop was created anonymously.",
     );
   }
@@ -2527,7 +2527,7 @@ export async function runPlug(ctx, input, deps = {}) {
 async function authedApiCall(ctx, { method, pathName, body, verb, gridParam = "grid" }) {
   const token = await ctx.getToken();
   if (!token) {
-    throw new Error(`${verb} requires sign-in. Run grid_login first.`);
+    throw new Error(ctx.edition === "web" ? `${verb} requires sign-in. ${signInHow(ctx)} first.` : `${verb} requires sign-in. Run grid_login first.`);
   }
   const headers = { Authorization: `Bearer ${token}` };
   const orgSlug = await ctx.getActiveGrid();
@@ -2621,7 +2621,7 @@ export async function runPickup(ctx, { id, into_org_slug, name, source_version_i
 export async function runVisibility(ctx, { target, visibility, inside, outside, require_signin, spaces, indexed, kind, org }) {
   const token = await ctx.getToken();
   if (!token) {
-    throw new Error("Changing visibility needs an owner. Run grid_login first.");
+    throw new Error(ctx.edition === "web" ? `Changing visibility needs an owner. ${signInHow(ctx)} first.` : "Changing visibility needs an owner. Run grid_login first.");
   }
   const id = target || ctx.state.lastDrop?.entity_id;
   if (!id) {

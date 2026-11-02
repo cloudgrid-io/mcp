@@ -6,7 +6,14 @@
 // sign-in: /oauth/authorize shows an interstitial, the user completes the normal
 // api.cloudgrid.io/auth/login flow in a new tab, we poll /auth/status server-side,
 // then redirect back to the client with an authorization code. /oauth/token
-// exchanges it (PKCE-verified) for the CloudGrid JWT as the access token.
+// exchanges it (PKCE-verified) for an access token this server signs for itself
+// (src/mcp-tokens.js). The CloudGrid session the sign-in produced stays on the
+// server side, sealed inside that token; it is never returned to the client.
+//
+// Mounted on every host. One server can answer for several public origins (its
+// own and its aliases, e.g. mcp.cloudgrid.io and mcp-connected.cloudgrid.io):
+// each request is answered for the origin it arrived on, and a token issued on
+// any of them is accepted on all.
 //
 // No new identity provider. Client REGISTRATIONS are stateless (a signed,
 // self-describing client_id — durable across restarts and replicas, see #3060);
@@ -14,6 +21,7 @@
 
 import { randomUUID, createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { newLoginCode, buildLoginUrl, pollStatusOnce, decodeJwt } from "./auth.js";
+import { AUTH_SCOPE } from "./web-auth.js";
 
 const CODE_TTL_MS = 5 * 60 * 1000; // authorize sessions + auth codes live 5 minutes
 
@@ -22,7 +30,7 @@ const CODE_TTL_MS = 5 * 60 * 1000; // authorize sessions + auth codes live 5 min
 // the user clicks "sign in" again, never that they must re-add the connector.
 // Client REGISTRATIONS are NOT here — they are stateless (see below, #3060).
 const authSessions = new Map(); // sid -> { cgCode, client_id, redirect_uri, state, code_challenge, resource, created }
-const authCodes = new Map(); // code -> { jwt, client_id, redirect_uri, code_challenge, resource, created }
+const authCodes = new Map(); // code -> { grant, client_id, redirect_uri, code_challenge, resource, created }
 
 function sweep(map) {
   const now = Date.now();
@@ -353,20 +361,32 @@ function interstitialHtml({ sid, loginUrl, clientName, redirectHost }) {
 }
 
 /**
- * Mounts the OAuth surface on an express app.
- * publicBase = this server's public origin (e.g. https://mcp.cloudgrid.io).
- * opts.requireAuth — when false the OAuth discovery and registration routes are
- *   not mounted (anonymous-first host has no use for them).
+ * The public origin a request arrived on: one of `bases` (matched on the Host
+ * header), else the first (primary) one. Never a value the client made up.
  */
-export function mountOAuth(app, publicBase, opts = {}) {
-  if (!opts.requireAuth) return;
-  const base = publicBase.replace(/\/+$/, "");
+export function createBaseResolver(bases) {
+  const list = bases.map((b) => String(b).replace(/\/+$/, ""));
+  const byHost = new Map(list.map((b) => [new URL(b).host.toLowerCase(), b]));
+  return (req) => byHost.get(String(req?.headers?.host || "").toLowerCase()) ?? list[0];
+}
+
+/**
+ * Mounts the OAuth surface on an express app.
+ * opts.bases — this server's public origins; the first is the primary one.
+ * opts.tokens — the token service (src/mcp-tokens.js) that signs access tokens.
+ * opts.accessTokenTtlSeconds — the access token lifetime.
+ * opts.isOriginAllowed — the browser Origin allow-list for CORS.
+ */
+export function mountOAuth(app, opts) {
+  const bases = opts.bases.map((b) => String(b).replace(/\/+$/, ""));
+  const baseFor = createBaseResolver(bases);
+  const tokens = opts.tokens;
+  const accessTtl = opts.accessTokenTtlSeconds;
   const isOriginAllowed = opts.isOriginAllowed ?? (() => false);
   const corsOk = (req, res) => corsAllowListed(req, res, isOriginAllowed);
-  // This server's resource identifier — the exact value the protected-resource
-  // metadata returns and the canonical `resource` a client must send (#329).
-  const resourceId = `${base}/mcp`;
-  const expectedResource = normalizeResource(resourceId);
+  // Every resource identifier this server answers for, canonical form (#329).
+  // A client may name any of them; the token is bound to the one it named.
+  const acceptedResources = new Set(bases.map((b) => normalizeResource(`${b}/mcp`)));
 
   // Resolve the client-registration signing secret(s) once at mount. Log which
   // mode is active — durable vs. ephemeral — so a production deploy can be
@@ -395,16 +415,16 @@ export function mountOAuth(app, publicBase, opts = {}) {
     );
   }
 
-  const asMetadata = {
+  const asMetadata = (base) => ({
     issuer: base,
     authorization_endpoint: `${base}/oauth/authorize`,
     token_endpoint: `${base}/oauth/token`,
     registration_endpoint: `${base}/oauth/register`,
     response_types_supported: ["code"],
-    grant_types_supported: ["authorization_code"],
+    grant_types_supported: opts.grantTypes ?? ["authorization_code"],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none"],
-    scopes_supported: ["cloudgrid"],
+    scopes_supported: [AUTH_SCOPE],
     // RFC 8707 Resource Indicators support (#329). RFC 8707 defines NO
     // authorization-server metadata field of its own, and neither does the MCP
     // spec; the only IANA-registered resource-related AS-metadata field is
@@ -412,8 +432,8 @@ export function mountOAuth(app, publicBase, opts = {}) {
     // identifiers this AS issues tokens for. Advertising ours here lets a client
     // discover the canonical `resource` value to send, and signals that we honour
     // the parameter rather than ignoring it.
-    protected_resources: [resourceId],
-  };
+    protected_resources: [`${base}/mcp`],
+  });
 
   app.options(/^\/\.well-known\/.*/, (_req, res) => {
     corsPublic(res);
@@ -425,14 +445,13 @@ export function mountOAuth(app, publicBase, opts = {}) {
   });
 
   // RFC 9728 — the resource points at its authorization server (us).
-  app.get("/.well-known/oauth-protected-resource", (_req, res) => {
+  const serveResourceMetadata = (req, res) => {
     corsPublic(res);
-    res.json({ resource: `${base}/mcp`, authorization_servers: [base], scopes_supported: ["cloudgrid"] });
-  });
-  app.get("/.well-known/oauth-protected-resource/mcp", (_req, res) => {
-    corsPublic(res);
-    res.json({ resource: `${base}/mcp`, authorization_servers: [base], scopes_supported: ["cloudgrid"] });
-  });
+    const base = baseFor(req);
+    res.json({ resource: `${base}/mcp`, authorization_servers: [base], scopes_supported: [AUTH_SCOPE] });
+  };
+  app.get("/.well-known/oauth-protected-resource", serveResourceMetadata);
+  app.get("/.well-known/oauth-protected-resource/mcp", serveResourceMetadata);
 
   // RFC 8414. Both the root form and the path-inserted form: the MCP
   // authorization spec has clients derive the metadata URL from the RESOURCE
@@ -440,9 +459,9 @@ export function mountOAuth(app, publicBase, opts = {}) {
   // first must not get a 404 HTML page. The protected-resource document above
   // already served both forms; this one served only the root, and the asymmetry
   // was an oversight rather than a decision.
-  const serveAsMetadata = (_req, res) => {
+  const serveAsMetadata = (req, res) => {
     corsPublic(res);
-    res.json(asMetadata);
+    res.json(asMetadata(baseFor(req)));
   };
   app.get("/.well-known/oauth-authorization-server", serveAsMetadata);
   app.get("/.well-known/oauth-authorization-server/mcp", serveAsMetadata);
@@ -529,10 +548,12 @@ export function mountOAuth(app, publicBase, opts = {}) {
     // invalid_target; a MISSING resource stays acceptable (Claude compatibility).
     // The bound value is the canonical string, so the token endpoint can compare
     // apples to apples later.
-    let boundResource = "";
+    // No `resource` sent: the token is for the resource of the host the
+    // client is talking to.
+    let boundResource = normalizeResource(`${baseFor(req)}/mcp`);
     if (resource !== undefined && String(resource) !== "") {
       const requested = normalizeResource(resource);
-      if (!requested || requested !== expectedResource) {
+      if (!requested || !acceptedResources.has(requested)) {
         // RFC 6749 §4.1.2.1: the redirect_uri is already verified as registered
         // (the render-path 400 above), so an authorization error is returned by
         // REDIRECTING to it with error= and state=, NOT by rendering an opaque
@@ -544,7 +565,7 @@ export function mountOAuth(app, publicBase, opts = {}) {
         // symptom). The two 400s above STAY renders: an unverified client or
         // redirect_uri must NEVER be redirected to, so they are not precedent.
         console.error(
-          `[oauth] authorize refused (redirect): invalid_target resource_host=${hostOf(resource)} expected_host=${hostOf(resourceId)}`,
+          `[oauth] authorize refused (redirect): invalid_target resource_host=${hostOf(resource)} expected_host=${hostOf(baseFor(req))}`,
         );
         const sep = String(redirect_uri).includes("?") ? "&" : "?";
         let location = `${redirect_uri}${sep}error=invalid_target&error_description=${encodeURIComponent(
@@ -604,7 +625,7 @@ export function mountOAuth(app, publicBase, opts = {}) {
       }
       const code = b64url(Buffer.from(randomUUID()));
       authCodes.set(code, {
-        jwt: upstream.jwt,
+        grant: upstream.jwt,
         client_id: sess.client_id,
         redirect_uri: sess.redirect_uri,
         code_challenge: sess.code_challenge,
@@ -631,7 +652,8 @@ export function mountOAuth(app, publicBase, opts = {}) {
     res.json({ status: "pending" });
   });
 
-  // Token endpoint — PKCE-verified exchange; the CloudGrid JWT is the access token.
+  // Token endpoint — PKCE-verified exchange for an access token this server
+  // signs. The CloudGrid session is sealed inside it and never returned.
   //
   // WHY THIS BRANCHES INSTEAD OF ONE COMBINED `if`
   //
@@ -721,18 +743,31 @@ export function mountOAuth(app, publicBase, opts = {}) {
       denyToken(res, "invalid_grant", code_verifier === undefined ? "code_verifier is required (PKCE)" : "PKCE verification failed");
       return;
     }
-    const claims = decodeJwt(rec.jwt);
-    const expiresIn = claims.exp ? Math.max(60, claims.exp - Math.floor(Date.now() / 1000)) : 30 * 86400;
+    const sub = decodeJwt(rec.grant).sub;
+    if (!sub) {
+      denyToken(res, "invalid_grant", "the sign-in did not produce an account");
+      return;
+    }
+    const issued = tokens.issue({
+      iss: baseFor(req),
+      aud: rec.resource,
+      sub,
+      clientId: client_id,
+      grant: rec.grant,
+      ttlSeconds: grantTtl(rec.grant, accessTtl),
+    });
     // Observability (#345): the success path. Without this, a successful
     // exchange and total silence were the same observation. The token is never
     // logged; client_id is a prefix only.
     console.error(`[oauth] token exchange succeeded; access token issued (client_id=${clientIdPrefix(client_id)})`);
-    res.json({ access_token: rec.jwt, token_type: "Bearer", expires_in: expiresIn, scope: "cloudgrid" });
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ access_token: issued.token, token_type: "Bearer", expires_in: issued.expiresIn, scope: AUTH_SCOPE });
   });
 }
 
-/** The WWW-Authenticate challenge for 401s when auth is required. */
-export function bearerChallenge(publicBase) {
-  const base = publicBase.replace(/\/+$/, "");
-  return `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource"`;
+// An access token never outlives the CloudGrid session sealed inside it.
+function grantTtl(grant, ttlSeconds) {
+  const exp = decodeJwt(grant).exp;
+  if (typeof exp !== "number") return ttlSeconds;
+  return Math.max(60, Math.min(ttlSeconds, exp - Math.floor(Date.now() / 1000)));
 }

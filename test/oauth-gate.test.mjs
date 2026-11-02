@@ -1,6 +1,7 @@
-// OAuth-route gating test (M14): with MCP_REQUIRE_AUTH unset the OAuth discovery
-// and registration routes 404 (anon host); with it set to "1" they 200 and carry
-// the right issuer. /healthz is 200 in both postures.
+// OAuth-route test. Since #5783 (one address, sign-in on demand) OAuth discovery
+// and registration are served on EVERY host: with MCP_REQUIRE_AUTH unset (the old
+// anon host) and with it set (the old sign-in host, where it is now ignored)
+// they answer 200 with that host's issuer. /healthz is 200 on both.
 // Run: node test/oauth-gate.test.mjs
 
 import { spawn } from "node:child_process";
@@ -49,19 +50,19 @@ try {
   check("anon host healthy", await waitForHealth(ANON_BASE));
   check("auth host healthy", await waitForHealth(AUTH_BASE));
 
-  // Anon host: discovery routes must 404.
+  // The formerly anonymous host serves discovery and registration too.
   for (const path of DISCOVERY_PATHS) {
     const r = await fetch(`${ANON_BASE}${path}`);
-    check(`anon ${path} → 404`, r.status === 404);
+    check(`anon ${path} → 200`, r.status === 200);
   }
-
-  // Anon host: /oauth/register must 404.
+  const asmAnon = await (await fetch(`${ANON_BASE}/.well-known/oauth-authorization-server`)).json();
+  check("anon AS metadata names its own issuer", asmAnon.issuer === ANON_BASE);
   const regAnon = await fetch(`${ANON_BASE}/oauth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ redirect_uris: ["http://localhost:9/cb"] }),
   });
-  check("anon /oauth/register → 404", regAnon.status === 404);
+  check("anon /oauth/register → 201", regAnon.status === 201);
 
   // Auth host: discovery routes must 200 with the right issuer.
   const asm = await (await fetch(`${AUTH_BASE}/.well-known/oauth-authorization-server`)).json();

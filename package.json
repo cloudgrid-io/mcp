@@ -74,7 +74,7 @@
     "test:pull-claim-scope": "node test/pull-claim-scope.test.mjs",
     "test:pull-output-schema": "node test/pull-output-schema.test.mjs",
     "test:web-identity": "node --test test/web-identity.test.mjs",
-    "test:web-auth-integration": "node --test test/web-auth-integration.test.mjs",
+    "test:web-signin": "node --test test/web-signin.test.mjs",
     "test:web-restart-recovery": "node --test test/web-restart-recovery.test.mjs",
     "test:web-edge-limits": "node --test test/web-edge-limits.test.mjs",
     "test:oauth-client-persistence": "node --test test/oauth-client-persistence.test.mjs",

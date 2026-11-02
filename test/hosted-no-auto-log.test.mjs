@@ -246,7 +246,9 @@ try {
     const res = await server.handlers.grid_note({ summary: "x" });
     assert.equal(res?.structuredContent?.needs_auth, true);
     assert.equal(res?.structuredContent?.status, "unauthorized");
-    assert.match(res.content?.[0]?.text || "", /grid_login/);
+    // Hosted has no sign-in tool (#5783): the note points at the AI tool's sign-in.
+    assert.match(res.content?.[0]?.text || "", /sign in to CloudGrid/);
+    assert.doesNotMatch(res.content?.[0]?.text || "", /grid_login/);
     assert.doesNotMatch(res.content?.[0]?.text || "", /Noted|Sent/);
     assert.equal(feedbackPosts.length, 0, "nothing posted while signed out");
     assert.equal(sink.sent.length, 0);

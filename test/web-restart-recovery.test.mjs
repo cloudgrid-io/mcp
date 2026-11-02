@@ -16,29 +16,21 @@
 // session, is killed, and a fresh child boots on the SAME port with empty memory;
 // the SAME stale session id must then complete a tool call.
 //
-// Two editions run in parallel:
-//   - anon      (MCP_REQUIRE_AUTH=0) — the default GTM posture.
-//   - connected (MCP_REQUIRE_AUTH=1) — mcp-connected.cloudgrid.io, where auth is
-//     IN-BAND via grid_login. Here the rebuild path must gate on a MISSING Bearer
-//     only, never expiry: an expired-but-present Bearer (a connected session after
-//     a restart) must rebuild and reach the tool layer, NOT draw a 401 the client
-//     cannot answer (the #286 brick). That is the P0 this file guards.
+// Since #5783 every host runs one posture: browsing tools work signed out, the
+// rest need a valid access token, and an invalid one is a 401 the client answers
+// by refreshing or signing in again (it can: sign-in is the client's OAuth, not
+// an in-band tool behind the same 401). The rebuild path applies the same gate.
 
 import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { setTimeout as sleep } from "node:timers/promises";
+import { TEST_SIGNING_SEED, mcpToken } from "./helpers/mcp-tokens.mjs";
 
-function jwt(payload) {
-  const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
-  return `${encode({ alg: "none", typ: "JWT" })}.${encode(payload)}.`;
-}
-
-const nowSeconds = Math.floor(Date.now() / 1000);
-const userA = jwt({ sub: "user-a", email: "alice@example.com", exp: nowSeconds + 3600 });
-const userB = jwt({ sub: "user-b", email: "bob@example.com", exp: nowSeconds + 3600 });
-const expiredBearer = jwt({ sub: "user-a", email: "alice@example.com", exp: nowSeconds - 60 });
+let userA;
+let userB;
+let expiredBearer;
 
 const PROTOCOL_VERSION = "2025-06-18";
 const INITIALIZE_BODY = {
@@ -74,17 +66,19 @@ async function reservePort() {
 
 // One edition of the web server, pinned to a fixed port so it can be restarted
 // in place. CLOUDGRID_API_URL points at a closed loopback port so no test ever
-// touches production; grid_login tolerates the resulting connection error and
-// still returns a login URL built from the public base.
-function makeHandle(requireAuth) {
-  return { requireAuth, port: null, baseUrl: null, child: null, childClosed: null };
+// touches production.
+function makeHandle() {
+  return { port: null, baseUrl: null, child: null, childClosed: null };
 }
 
 function childEnv(h) {
   return {
     PORT: String(h.port),
     MCP_PUBLIC_URL: h.baseUrl,
-    MCP_REQUIRE_AUTH: h.requireAuth ? "1" : "0",
+    MCP_TOKEN_SIGNING_KEYS: TEST_SIGNING_SEED,
+    // This file's client gets the per-call sign-in signal, so it can open a
+    // session without a token and browse.
+    MCP_AUTH_MODE_OVERRIDES: "restart-recovery=call",
     CLOUDGRID_API_URL: "http://127.0.0.1:1",
     CLOUDGRID_PUBLIC_API_URL: "http://127.0.0.1:1",
     CLOUDGRID_QA_SLACK_WEBHOOK: "",
@@ -216,21 +210,19 @@ function toolCall(id, name, args = {}) {
   return { jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } };
 }
 
-const anon = makeHandle(false);
-const connected = makeHandle(true);
+const anon = makeHandle();
 
 before(async () => {
   anon.port = await reservePort();
   anon.baseUrl = `http://127.0.0.1:${anon.port}`;
-  connected.port = await reservePort();
-  connected.baseUrl = `http://127.0.0.1:${connected.port}`;
+  userA = mcpToken(anon.baseUrl, { sub: "user-a", email: "alice@example.com" });
+  userB = mcpToken(anon.baseUrl, { sub: "user-b", email: "bob@example.com" });
+  expiredBearer = mcpToken(anon.baseUrl, { sub: "user-a", email: "alice@example.com", ttlSeconds: -60 });
   await startChild(anon);
-  await startChild(connected);
 });
 
 after(async () => {
   await stopChild(anon);
-  await stopChild(connected);
 });
 
 test("stale session id from before a restart completes a tool call (the #292 acceptance test)", async () => {
@@ -299,17 +291,16 @@ test("the anonymous publish path recovers from a stale session (no credential ne
   assert.equal(ctx?.signed_in, false, "still anonymous after recovery");
 });
 
-test("grid_login is reachable from a stale-session state (recovery path stays open)", async () => {
+test("on a stale session, browsing stays open and a protected call asks for sign-in", async () => {
   const sessionId = await openSession(anon, null);
   await restart(anon);
 
-  // The exact constraint #286 violated: the recovery tools must work from any
-  // session state. grid_login on a stale (evicted) session must return a login
-  // URL, not a bricked error.
-  const res = await rawPost(anon, { bearer: null, body: toolCall(3, "grid_login"), sessionId });
-  assert.equal(res.status, 200, `grid_login must be reachable after a restart:\n${res.text}`);
-  const loginUrl = res.message?.result?.structuredContent?.login_url;
-  assert.ok(loginUrl && /\/auth\/login\?/.test(loginUrl), `grid_login returned a login URL: ${loginUrl}`);
+  const browse = await rawPost(anon, { bearer: null, body: toolCall(3, "grid_start"), sessionId });
+  assert.equal(browse.status, 200, `grid_start must be reachable after a restart:\n${browse.text}`);
+
+  const plug = await rawPost(anon, { bearer: null, body: toolCall(4, "grid_plug", { html: "<p>x</p>" }), sessionId });
+  assert.equal(plug.status, 401, `a protected call with no token must ask for sign-in:\n${plug.text}`);
+  assert.match(plug.wwwAuthenticate ?? "", /^Bearer resource_metadata=.*scope="cloudgrid"/);
 });
 
 test("a brand-new connection with no session id and no initialize still 400s (unchanged)", async () => {
@@ -320,52 +311,15 @@ test("a brand-new connection with no session id and no initialize still 400s (un
   assert.match(res.text, /No valid session/);
 });
 
-// --- Connected edge (MCP_REQUIRE_AUTH=1) — the P0 this review caught ----------
-//
-// On mcp-connected, auth is IN-BAND via grid_login (founder decision
-// 2026-08-23). The rebuild path must mirror the DEPLOYED transport guard
-// literally — a MISSING Bearer only, never expiry. An expired-but-present Bearer
-// is exactly the connected co-founder's session after a restart; if the rebuild
-// path consulted expiry it would 401 him behind a challenge his client cannot
-// answer, with grid_login stuck behind the same 401 — the #286 brick rebuilt on
-// the rebuild path. This is the class the anon-only tests above cannot catch.
+test("[#292] stale session + EXPIRED token gets 401 invalid_token; a fresh token then rebuilds and serves", async () => {
+  const sessionId = await openSession(anon, userA);
+  await restart(anon);
 
-test("[#292 connected] stale session + EXPIRED Bearer rebuilds and serves, does NOT 401", async () => {
-  // Open a session with a valid Bearer (initialize needs one under REQUIRE_AUTH),
-  // then the pod restarts and the token has since expired — the co-founder's
-  // scenario. The stale-session tool call must reach the tool layer (200), where
-  // the in-band needs_auth ask is the recovery path — not draw a transport 401.
-  const sessionId = await openSession(connected, userA);
-  await restart(connected);
+  const expired = await rawPost(anon, { bearer: expiredBearer, body: toolCall(3, "grid_start"), sessionId });
+  assert.equal(expired.status, 401, `an expired token must be refused so the client refreshes:\n${expired.text}`);
+  assert.match(expired.wwwAuthenticate ?? "", /error="invalid_token"/);
 
-  const res = await rawPost(connected, {
-    bearer: expiredBearer,
-    body: toolCall(3, "grid_start"),
-    sessionId,
-  });
-  assert.equal(
-    res.status,
-    200,
-    `an expired-but-present Bearer on a stale session must rebuild and serve, not 401:\n${res.text}`,
-  );
-  assert.equal(res.wwwAuthenticate, null, "a proceeding rebuild must not carry a WWW-Authenticate challenge");
-  const ctx = res.message?.result?.structuredContent?.context;
-  assert.equal(ctx?.signed_in, false, "an expired token is not signed in");
-  assert.equal(ctx?.session_expired, true, "grid_start reports the expiry in-band, the recovery path");
-});
-
-test("[#292 connected] stale session + MISSING Bearer still challenges (deployed guard preserved)", async () => {
-  // The other half of the deployed `if (REQUIRE_AUTH && !jwt)` guard: no anonymous
-  // on the connected edge. A stale-session call with no Bearer at all still draws
-  // the 401 challenge, exactly as production does today.
-  const sessionId = await openSession(connected, userA);
-  await restart(connected);
-
-  const res = await rawPost(connected, {
-    bearer: null,
-    body: toolCall(3, "grid_start"),
-    sessionId,
-  });
-  assert.equal(res.status, 401, `a missing Bearer under REQUIRE_AUTH must still challenge:\n${res.text}`);
-  assert.match(res.wwwAuthenticate ?? "", /^Bearer\b/i, "expected a Bearer WWW-Authenticate challenge");
+  const fresh = await rawPost(anon, { bearer: userA, body: toolCall(4, "grid_start"), sessionId });
+  assert.equal(fresh.status, 200, `a fresh token on the stale id must rebuild and serve:\n${fresh.text}`);
+  assert.equal(fresh.message?.result?.structuredContent?.context?.email, "alice@example.com");
 });

@@ -23,6 +23,7 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import net from "node:net";
 import { setTimeout as sleep } from "node:timers/promises";
+import { TEST_SIGNING_SEED, mcpToken } from "./helpers/mcp-tokens.mjs";
 
 import {
   authHeaderState,
@@ -161,8 +162,10 @@ test("logRehydrateFailed flattens an injected mcp-session-id header", () => {
 // Integration layer — the real src/web.js over real HTTP
 // ---------------------------------------------------------------------------
 
-// A known bearer for the redaction test: it must NEVER appear in stderr.
-const KNOWN_BEARER = "KNOWN-BEARER-must-not-be-logged-3f9a2c7e11";
+// A known bearer for the redaction test: it must NEVER appear in stderr. A real
+// access token for the child (minted once its URL is known), so it passes the
+// sign-in gate.
+let KNOWN_BEARER = "";
 
 const handle = { child: null, closed: null, baseUrl: null };
 let stderr = "";
@@ -242,12 +245,13 @@ async function waitFor(substr, sinceLen = 0) {
 before(async () => {
   const mcpPort = await reservePort();
   handle.baseUrl = `http://127.0.0.1:${mcpPort}`;
+  KNOWN_BEARER = mcpToken(handle.baseUrl, { sub: "obs-user", email: "obs@example.com" });
   const loopback = `http://127.0.0.1:${await reservePort()}`; // not listening; initialize never calls it
   handle.child = spawn(process.execPath, ["src/web.js"], {
     env: {
       PORT: String(mcpPort),
       MCP_PUBLIC_URL: handle.baseUrl,
-      MCP_REQUIRE_AUTH: "1",
+      MCP_TOKEN_SIGNING_KEYS: TEST_SIGNING_SEED,
       CLOUDGRID_API_URL: loopback,
       CLOUDGRID_PUBLIC_API_URL: loopback,
       CLOUDGRID_QA_SLACK_WEBHOOK: "",

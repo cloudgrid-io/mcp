@@ -17,7 +17,9 @@ function check(label, cond) {
 }
 
 const child = spawn("node", ["src/web.js"], {
-  env: { ...process.env, PORT: String(PORT) },
+  // This client gets the per-call sign-in signal, so it can list tools and
+  // browse signed out (#5783).
+  env: { ...process.env, PORT: String(PORT), MCP_AUTH_MODE_OVERRIDES: "cloudgrid-mcp-web-smoke=call" },
   stdio: ["ignore", "ignore", "inherit"],
 });
 
@@ -45,9 +47,13 @@ try {
   const toolList = (await client.listTools()).tools;
   const names = toolList.map((t) => t.name).sort();
   console.log("web tools:", names.join(", "));
-  // New grid_* names (direct-API + Agent Core) on the authed web edition.
-  for (const t of ["grid_plug", "grid_login", "grid_login_status", "grid_start", "grid_report"]) {
+  // New grid_* names (direct-API + Agent Core) on the web edition.
+  for (const t of ["grid_plug", "grid_start", "grid_report"]) {
     check(`exposes ${t}`, names.includes(t));
+  }
+  // No sign-in tools on the hosted edition (#5783): the AI tool signs in.
+  for (const t of ["grid_login", "grid_login_status"]) {
+    check(`does not expose ${t}`, !names.includes(t));
   }
   // Tool-name cleanup: the canonical primary names are present (both editions).
   for (const nm of ["grid_get_template", "grid_get_app_source", "grid_list_grids", "grid_create_grid", "grid_pickup", "grid_pull", "grid_visibility", "grid_check_deploy"]) {
@@ -112,36 +118,26 @@ try {
   check("web deploy has `target_entity_id` param", "target_entity_id" in plugProps);
   check("web deploy has `owner_token` param", "owner_token" in plugProps);
 
-  // CREATE REQUIRES SIGN-IN (#395): the anonymous create path is closed. An
-  // unauthenticated create over the real HTTP transport must return needs_auth
-  // and publish NOTHING — even with anon: true, which no longer selects a guest
-  // wire. This proves the gate holds end-to-end on the hosted edition (the one
-  // that resolves identity per-session), with no credentials needed.
-  const gated = await client.callTool({
-    name: "grid_plug",
-    arguments: { html: "<h1>web edition smoke</h1>", anon: true },
-  });
-  const gatedText = gated.content?.[0]?.text ?? "";
-  const gatedStructured = gated.structuredContent ?? gated.structured ?? {};
-  console.log("--- web anon:true plug, first call (expect needs_auth, no publish) ---\n" + gatedText);
-  check("unauthenticated anon:true create returns needs_auth",
-    gatedStructured.needs_auth === true);
-  check("the refusal routes to sign-in only (grid_login, no guest/anon path)",
-    /grid_login/.test(gatedText) && !/guest/i.test(gatedText) && !/anon/i.test(gatedText));
-  check("the refusal is NOT a live drop (nothing published)",
-    !gatedText.includes("guest.cloudgrid.io") && !/\bLive:\s*https/i.test(gatedText));
+  // CREATE REQUIRES SIGN-IN (#395, #5783): a signed-out create over the real
+  // HTTP transport is refused with HTTP 401 and a sign-in challenge before any
+  // tool runs, so nothing can be published — even with anon: true.
+  for (const attempt of ["first", "second"]) {
+    let status = null;
+    let published = false;
+    try {
+      const r = await client.callTool({ name: "grid_plug", arguments: { html: "<h1>web edition smoke</h1>", anon: true } });
+      published = JSON.stringify(r).includes("guest.cloudgrid.io") || /\bLive:\s*https/i.test(r.content?.[0]?.text ?? "");
+    } catch (err) {
+      status = err?.code ?? (/(\b401\b)/.test(String(err?.message)) ? 401 : null);
+      console.log(`--- web anon:true plug, ${attempt} call (expect 401) ---\n${err?.message}`);
+    }
+    check(`signed-out anon:true create, ${attempt} call: refused with 401`, status === 401);
+    check(`signed-out anon:true create, ${attempt} call: nothing published`, !published);
+  }
 
-  // No "offer once then allow" escape hatch: a second anon:true create is still
-  // refused — nothing is ever published without a token.
-  const gated2 = await client.callTool({
-    name: "grid_plug",
-    arguments: { html: "<h1>web edition smoke</h1>", anon: true },
-  });
-  const gated2Structured = gated2.structuredContent ?? gated2.structured ?? {};
-  const gated2Text = gated2.content?.[0]?.text ?? "";
-  console.log("--- web anon:true plug, second call (expect needs_auth again) ---\n" + gated2Text);
-  check("a later anon:true create is STILL refused (no publish)",
-    gated2Structured.needs_auth === true && !gated2Text.includes("guest.cloudgrid.io"));
+  // Browsing still works signed out.
+  const start = await client.callTool({ name: "grid_start", arguments: {} });
+  check("grid_start works signed out", !start.isError && /not signed in/.test(start.content?.[0]?.text ?? ""));
 } finally {
   try {
     await client?.close();
