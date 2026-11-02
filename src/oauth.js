@@ -811,16 +811,70 @@ export function mountOAuth(app, opts) {
       denyToken(res, "invalid_request", "refresh_token is required");
       return;
     }
+    // A public client has only its client_id; the refresh token must have been
+    // issued to it (RFC 6749 §6), so it is required.
+    if (typeof client_id !== "string" || client_id === "") {
+      denyToken(res, "invalid_request", "client_id is required at the token endpoint");
+      return;
+    }
+    const unavailable = (err) => {
+      // The store or the API did not answer. Every check runs before the
+      // refresh token is used, so a failure here leaves it unused and the
+      // client's retry can still succeed. (A store failure after rotate() has
+      // used it cannot be undone; that retry gets invalid_grant.)
+      console.error(`[oauth] refresh unavailable (${String(err?.message || err).slice(0, 80)})`);
+      res.status(503);
+      res.setHeader("Retry-After", "5");
+      res.json({ error: "temporarily_unavailable", error_description: "Try again shortly." });
+    };
+    // Every check before the token is used: a wrong client, resource or a
+    // signed-out session must not consume it.
+    let peeked;
+    try {
+      peeked = await refresh.peek(refresh_token);
+    } catch (err) {
+      unavailable(err);
+      return;
+    }
+    if (peeked) {
+      const prec = peeked.record;
+      // Only the client that started the family may continue it.
+      if (String(client_id) !== prec.clientId) {
+        await refresh.revoke(peeked.family).catch(() => {});
+        denyToken(res, "invalid_grant", "refresh token was issued to another client");
+        return;
+      }
+      if (resource !== undefined && String(resource) !== "" && normalizeResource(resource) !== prec.aud) {
+        denyToken(res, "invalid_target", "resource does not match the sign-in");
+        return;
+      }
+      const g = tokens.unseal(prec.grant);
+      if (!g) {
+        await refresh.revoke(peeked.family).catch(() => {});
+        denyToken(res, "invalid_grant", "the sign-in can no longer be refreshed");
+        return;
+      }
+      // The CloudGrid session may have been signed out (or the account
+      // removed) since the sign-in. If so the whole sign-in ends.
+      if (opts.validatePlatformToken) {
+        const live = await opts.validatePlatformToken(g);
+        if (live.unavailable) {
+          unavailable("CloudGrid API");
+          return;
+        }
+        if (!live.ok) {
+          await refresh.revoke(peeked.family).catch(() => {});
+          console.error("[oauth] refresh refused: the CloudGrid session is signed out; its sign-in was revoked");
+          denyToken(res, "invalid_grant", "the CloudGrid session is signed out");
+          return;
+        }
+      }
+    }
     let r;
     try {
       r = await refresh.rotate(refresh_token);
     } catch (err) {
-      // The store is down: say so, so the client retries rather than
-      // discarding a refresh token that is still good.
-      console.error(`[oauth] refresh store unavailable (${String(err?.message || err).slice(0, 80)})`);
-      res.status(503);
-      res.setHeader("Retry-After", "5");
-      res.json({ error: "temporarily_unavailable", error_description: "Try again shortly." });
+      unavailable(err);
       return;
     }
     if (!r.ok) {
@@ -829,34 +883,16 @@ export function mountOAuth(app, opts) {
       return;
     }
     const rec = r.record;
-    // The client that started the family is the only one that may continue it
-    // (RFC 6749 §6 for public clients: bound to the client_id).
-    if (client_id !== undefined && String(client_id) !== rec.clientId) {
-      await refresh.revoke(r.family);
+    if (String(client_id) !== rec.clientId) {
+      await refresh.revoke(r.family).catch(() => {});
       denyToken(res, "invalid_grant", "refresh token was issued to another client");
-      return;
-    }
-    if (resource !== undefined && String(resource) !== "" && normalizeResource(resource) !== rec.aud) {
-      denyToken(res, "invalid_target", "resource does not match the sign-in");
       return;
     }
     const grant = tokens.unseal(rec.grant);
     if (!grant) {
-      await refresh.revoke(r.family);
+      await refresh.revoke(r.family).catch(() => {});
       denyToken(res, "invalid_grant", "the sign-in can no longer be refreshed");
       return;
-    }
-    // The CloudGrid session may have been signed out (or the account removed)
-    // since the sign-in. Ask the API before minting; if it says no, the whole
-    // sign-in ends and the client asks the user to sign in again.
-    if (opts.validatePlatformToken) {
-      const live = await opts.validatePlatformToken(grant);
-      if (!live.ok && !live.unavailable) {
-        await refresh.revoke(r.family);
-        console.error("[oauth] refresh refused: the CloudGrid session is signed out; its sign-in was revoked");
-        denyToken(res, "invalid_grant", "the CloudGrid session is signed out");
-        return;
-      }
     }
     const issued = tokens.issue({
       iss: baseFor(req),

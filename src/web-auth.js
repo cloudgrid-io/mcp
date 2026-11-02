@@ -292,12 +292,20 @@ export function createBearerResolver({
   tokens,
   validatePlatformToken,
   exchangeDownstream = null,
+  isFamilyLive = null,
   legacyIssuedBefore = Infinity,
   log = console.error,
 }) {
   return async function resolveBearer(token) {
     const v = tokens.verify(token);
     if (v.ok) {
+      // A sign-in ended by refresh-token reuse (or revoked) ends its access
+      // tokens too, not only its refresh tokens.
+      if (v.claims.fam && isFamilyLive) {
+        const fam = await isFamilyLive(v.claims.fam);
+        if (fam === "unavailable") return { ok: false, reason: "unavailable" };
+        if (!fam) return { ok: false, reason: "family_revoked" };
+      }
       // The CloudGrid session sealed in the token can be signed out or its
       // account removed after the token was issued. Ask the API (cached), so
       // that reaches the client as a 401 within minutes, not a dead end. If

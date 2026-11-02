@@ -145,7 +145,10 @@ CloudGrid API; it is never returned to the client or accepted from it.
   session itself is used; any other failure answers 503.
 - Refresh tokens rotate: each works once and returns a new access token and a
   new refresh token. A refresh token presented a second time ends that sign-in
-  (every token in it stops working). A sign-in slides on use and never outlives
+  (every token in it stops working, access tokens included: an access token
+  names its sign-in, checked on each request with a 30 s cache). `client_id` is
+  required at refresh, and every check runs before the refresh token is used.
+  A sign-in slides on use and never outlives
   the CloudGrid session sealed in it. Only SHA-256 hashes of refresh tokens are
   stored, under `mcp:oauth:`; the store uses GET, SET, GETDEL, DEL and EXPIRE
   only (no scripting, no transactions).

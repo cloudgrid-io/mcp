@@ -134,6 +134,7 @@ const resolveBearer = createBearerResolver({
   tokens,
   validatePlatformToken,
   exchangeDownstream,
+  isFamilyLive: (fam) => (refreshStore ? familyLive(fam) : true),
   legacyIssuedBefore: LEGACY_ISSUED_BEFORE,
 });
 const REFRESH_TOKEN_TTL_S = envInt(process.env, "MCP_REFRESH_TOKEN_TTL_S", 30 * 24 * 3600);
@@ -154,8 +155,37 @@ function createRefresh(env) {
     console.error("cloudgrid-mcp: no refresh store configured; access tokens are issued without refresh tokens");
     return null;
   }
-  return createRefreshStore({ backend, refreshTtlSeconds: REFRESH_TOKEN_TTL_S });
+  return createRefreshStore({ backend, refreshTtlSeconds: REFRESH_TOKEN_TTL_S, onRevoke: (fam) => familyLive.forget(fam) });
 }
+
+// Whether a refresh family is still live, for access tokens that name one.
+// Positive answers are cached for 30 s; a revocation in this process takes
+// effect at once (onRevoke above). Returns true | false | "unavailable".
+const familyLive = (() => {
+  const live = new Map(); // family -> until
+  const revoked = new Set();
+  const MAX = 5000;
+  async function check(fam) {
+    if (revoked.has(fam)) return false;
+    const until = live.get(fam);
+    if (until && until > Date.now()) return true;
+    let ok;
+    try {
+      ok = await refreshStore.isLive(fam);
+    } catch {
+      return "unavailable";
+    }
+    if (live.size >= MAX) live.delete(live.keys().next().value);
+    if (ok) live.set(fam, Date.now() + 30_000);
+    return ok;
+  }
+  check.forget = (fam) => {
+    live.delete(fam);
+    if (revoked.size >= MAX) revoked.delete(revoked.keys().next().value);
+    revoked.add(fam);
+  };
+  return check;
+})();
 const refreshStore = createRefresh(process.env);
 
 // Access-token lifetime: one setting, MCP_ACCESS_TOKEN_TTL_S. Its default

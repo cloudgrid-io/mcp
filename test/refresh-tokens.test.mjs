@@ -223,13 +223,16 @@ await new Promise((r) => reservation.listen(0, "127.0.0.1", r));
 const port = reservation.address().port;
 await new Promise((r) => reservation.close(r));
 const BASE = `http://127.0.0.1:${port}`;
+const storeFake = await fakeRedis();
 let stderr = "";
 const child = spawn(process.execPath, ["src/web.js"], {
   env: {
     PATH: process.env.PATH, PORT: String(port), MCP_PUBLIC_URL: BASE,
     MCP_TOKEN_SIGNING_KEYS: b64url(randomBytes(32)),
     MCP_OAUTH_HMAC_SECRET: "refresh-test-hmac-secret-0000000000000",
-    MCP_REFRESH_STORE: "memory",
+    // The store this server uses: the RESP fake above, so the test can read
+    // what is stored.
+    MCP_REDIS_URL: `redis://mcp@127.0.0.1:${storeFake.port}`, MCP_REDIS_PASSWORD: "pw",
     CLOUDGRID_API_URL: apiBase, CLOUDGRID_PUBLIC_API_URL: apiBase, MCP_TRUSTED_SERVER_SECRET: "",
     NO_PROXY: "localhost,127.0.0.1", no_proxy: "localhost,127.0.0.1", HTTPS_PROXY: "", HTTP_PROXY: "",
   },
@@ -242,7 +245,7 @@ for (let i = 0; i < 100; i++) {
   try { if ((await fetch(`${BASE}/healthz`)).ok) break; } catch { /* starting */ }
   await sleep(50);
 }
-after(() => { child.kill("SIGTERM"); api.close(); });
+after(() => { child.kill("SIGTERM"); api.close(); storeFake.server.close(); });
 
 const form = (body) => fetch(`${BASE}/oauth/token`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(body) });
 
@@ -294,9 +297,44 @@ test("code -> access + refresh (1 h); refresh rotates; the old refresh token rep
 });
 
 test("a refresh token presented by another client is refused and revoked", async () => {
-  const { tok } = await signIn();
+  const { client_id, tok } = await signIn();
   const r = await form({ grant_type: "refresh_token", refresh_token: tok.refresh_token, client_id: "someone-else" });
   assert.equal(r.status, 400);
+  const owner = await form({ grant_type: "refresh_token", refresh_token: tok.refresh_token, client_id });
+  assert.equal(owner.status, 400, "the sign-in is revoked, the owner signs in again");
+  assert.equal(await listGrids(tok.access_token), 401, "and its access token stops working");
+});
+
+test("client_id is required at refresh", async () => {
+  const { client_id, tok } = await signIn();
+  const r = await form({ grant_type: "refresh_token", refresh_token: tok.refresh_token });
+  assert.equal(r.status, 400);
+  assert.equal((await r.json()).error, "invalid_request");
+  assert.equal((await form({ grant_type: "refresh_token", refresh_token: tok.refresh_token, client_id })).status, 200, "the refused call did not use the token");
+});
+
+test("a wrong resource does not use up the refresh token", async () => {
+  const { client_id, tok } = await signIn();
+  const bad = await form({ grant_type: "refresh_token", refresh_token: tok.refresh_token, client_id, resource: "https://elsewhere.example/mcp" });
+  assert.equal((await bad.json()).error, "invalid_target");
+  assert.equal((await form({ grant_type: "refresh_token", refresh_token: tok.refresh_token, client_id, resource: `${BASE}/mcp` })).status, 200);
+});
+
+test("reuse ends every access token of the sign-in, not only its refresh tokens", async () => {
+  const { client_id, tok } = await signIn();
+  const r1 = await (await form({ grant_type: "refresh_token", refresh_token: tok.refresh_token, client_id })).json();
+  assert.equal(await listGrids(tok.access_token), 200);
+  assert.equal(await listGrids(r1.access_token), 200);
+  assert.equal((await form({ grant_type: "refresh_token", refresh_token: tok.refresh_token, client_id })).status, 400);
+  assert.equal(await listGrids(tok.access_token), 401, "the original access token");
+  assert.equal(await listGrids(r1.access_token), 401, "the refreshed access token");
+});
+
+test("the store never holds the CloudGrid session in the clear", async () => {
+  await signIn();
+  const stored = [...storeFake.data.values()].join("\n");
+  assert.ok(stored.length > 0);
+  for (const jwt of issued) assert.ok(!stored.includes(jwt), "no session in the store");
 });
 
 test("refresh after a CloudGrid sign-out is refused and ends the sign-in", async () => {

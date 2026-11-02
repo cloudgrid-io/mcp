@@ -82,7 +82,7 @@ export function createMemoryBackend({ now = () => Date.now() } = {}) {
  * backend: { get, set, getdel, del, expire } (Redis client or memory backend).
  * refreshTtlSeconds: the sliding lifetime of a family.
  */
-export function createRefreshStore({ backend, refreshTtlSeconds, now = () => Date.now() }) {
+export function createRefreshStore({ backend, refreshTtlSeconds, now = () => Date.now(), onRevoke = () => {} }) {
   const ttlFor = (record) => {
     const cap = typeof record?.expiresAt === "number" ? Math.floor((record.expiresAt - now()) / 1000) : refreshTtlSeconds;
     return Math.min(refreshTtlSeconds, cap);
@@ -118,6 +118,7 @@ export function createRefreshStore({ backend, refreshTtlSeconds, now = () => Dat
       const h = hashOf(token);
       if (await backend.get(`${PREFIX}ru:${h}`)) {
         await backend.del(`${PREFIX}rf:${family}`);
+        onRevoke(family);
         return { ok: false, reason: "reused" };
       }
       // Single use: GETDEL makes exactly one caller the winner.
@@ -141,9 +142,28 @@ export function createRefreshStore({ backend, refreshTtlSeconds, now = () => Dat
       return { ok: true, family, record, token: next, expiresIn: ttl };
     },
 
+    /**
+     * Read the family a live refresh token belongs to, without using the
+     * token, so every check can run before rotate() consumes it. Returns
+     * { family, record } or null (unknown, used, expired or malformed).
+     */
+    async peek(token) {
+      const family = familyOf(token);
+      if (!family) return null;
+      if ((await backend.get(`${PREFIX}rt:${hashOf(token)}`)) !== family) return null;
+      const raw = await backend.get(`${PREFIX}rf:${family}`);
+      try {
+        return raw ? { family, record: JSON.parse(raw) } : null;
+      } catch {
+        return null;
+      }
+    },
+
     /** End a family: every refresh token in it stops working. */
     async revoke(family) {
-      if (family) await backend.del(`${PREFIX}rf:${family}`);
+      if (!family) return;
+      await backend.del(`${PREFIX}rf:${family}`);
+      onRevoke(family);
     },
 
     /** Whether a family is still live (used to check a token's family). */
