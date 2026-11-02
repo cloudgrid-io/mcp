@@ -47,6 +47,8 @@ export function annotationProblems(name, cfg) {
 }
 
 // The reviewed hints for every hosted tool: [readOnly, destructive, openWorld].
+// Sign-in on the hosted edition goes through the AI tool, so grid_login and
+// grid_login_status are local-only and absent here.
 // Reasons, for the reviewer notes:
 // - read-only: the tool changes nothing (lookups, status, source fetch).
 // - destructive: grid_plug can replace a live app in place; grid_visibility can
@@ -60,8 +62,6 @@ const HOSTED = {
   grid_get_app_source: [true, false, true],
   grid_list_grids: [true, false, true],
   grid_check_deploy: [true, false, true],
-  grid_login: [false, false, true],
-  grid_login_status: [false, false, true],
   grid_create_grid: [false, false, true],
   grid_plug: [false, true, true],
   grid_hello: [false, false, true],
@@ -119,7 +119,8 @@ function capture(edition) {
 const editions = { web: capture("web"), local: capture("local") };
 for (const [edition, configs] of Object.entries(editions)) {
   const names = Object.keys(configs);
-  check(`[${edition}] tools registered (${names.length})`, names.length >= 17);
+  const min = edition === "web" ? 15 : 17;
+  check(`[${edition}] tools registered (${names.length})`, names.length >= min);
   const problems = names.flatMap((n) => annotationProblems(n, configs[n]));
   check(`[${edition}] every tool has a title and all three hints`, problems.length === 0, problems.join("; "));
 }
