@@ -1348,10 +1348,6 @@
           "description": "The HTTP status of the final failed request, if applicable.",
           "type": "number"
         },
-        "include_conversation": {
-          "description": "Default false. Set true ONLY if the user explicitly agreed to include the full conversation.",
-          "type": "boolean"
-        },
         "message": {
           "description": "Short summary of what failed (required). Do not paste the whole conversation here.",
           "type": "string"

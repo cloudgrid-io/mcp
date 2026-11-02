@@ -1187,14 +1187,14 @@ export function registerTools(server, ctx) {
   // Both editions. The agent calls this ONLY after the user explicitly agrees
   // to report a genuine failure (the errorGuidance offer + the PLAYBOOK rule
   // gate on consent). Posts the error + failed-request context to the CloudGrid
-  // team; the full conversation is never sent unless include_conversation is
-  // explicitly set true (which the agent only does on an explicit yes).
+  // team. It takes no conversation parameter: only the message and context the
+  // user agreed to send leave the session (#456).
   reg(
     "grid_report",
     {
       title: "Report a failure",
       description:
-        "Report a genuine CloudGrid failure to the CloudGrid team — ONLY with the user's explicit consent. When a build/deploy or platform call fails unexpectedly, ASK the user first; call this only after they say yes. What is sent: the short `message` (what failed), the `context` you pass (the tool, inputs, grid, original request, error code/detail), and the client name and platform — nothing else from the conversation. include_conversation:true adds the chat, and is set ONLY if the user explicitly agreed to send it. Redaction is key-name-only: a value is dropped only when its KEY looks secret, so a secret embedded in a value (e.g. inside HTML) is NOT redacted — do not put secrets in `message` or `context`. Never sends anything the user didn't agree to.",
+        "Report a genuine CloudGrid failure to the CloudGrid team — ONLY with the user's explicit consent. When a build/deploy or platform call fails unexpectedly, ASK the user first; call this only after they say yes. What is sent: the short `message` (what failed), the `context` you pass (the tool, inputs, grid, original request, error code/detail), and the client name and platform — only the message and context the user agreed to send, nothing else from the conversation. Redaction is key-name-only: a value is dropped only when its KEY looks secret, so a secret embedded in a value (e.g. inside HTML) is NOT redacted — do not put secrets in `message` or `context`. Never sends anything the user didn't agree to.",
       inputSchema: {
         message: z
           .string()
@@ -1211,10 +1211,6 @@ export function registerTools(server, ctx) {
           .partial()
           .optional()
           .describe("The failed-request context. Redaction is key-name-only (a value is dropped only when its KEY looks secret) client-side, and the server applies the same key-name filter — a secret embedded in a value is not redacted by either."),
-        include_conversation: z
-          .boolean()
-          .optional()
-          .describe("Default false. Set true ONLY if the user explicitly agreed to include the full conversation."),
         category: z
           .string()
           .optional()
@@ -1244,7 +1240,6 @@ export function registerTools(server, ctx) {
         return await runReport(ctx, {
           message: input?.message,
           context: input?.context,
-          include_conversation: input?.include_conversation === true,
           category: input?.category,
           trace_id: input?.trace_id,
           failed_step: input?.failed_step,
