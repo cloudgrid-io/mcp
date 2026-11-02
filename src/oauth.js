@@ -375,6 +375,8 @@ export function createBaseResolver(bases) {
  * opts.bases — this server's public origins; the first is the primary one.
  * opts.tokens — the token service (src/mcp-tokens.js) that signs access tokens.
  * opts.accessTokenTtlSeconds — the access token lifetime.
+ * opts.refresh — the refresh-token store (src/refresh-store.js), or null: then
+ *   no refresh token is issued and the access token is the whole sign-in.
  * opts.isOriginAllowed — the browser Origin allow-list for CORS.
  */
 export function mountOAuth(app, opts) {
@@ -382,6 +384,7 @@ export function mountOAuth(app, opts) {
   const baseFor = createBaseResolver(bases);
   const tokens = opts.tokens;
   const accessTtl = opts.accessTokenTtlSeconds;
+  const refresh = opts.refresh ?? null;
   const isOriginAllowed = opts.isOriginAllowed ?? (() => false);
   const corsOk = (req, res) => corsAllowListed(req, res, isOriginAllowed);
   // Every resource identifier this server answers for, canonical form (#329).
@@ -421,7 +424,7 @@ export function mountOAuth(app, opts) {
     token_endpoint: `${base}/oauth/token`,
     registration_endpoint: `${base}/oauth/register`,
     response_types_supported: ["code"],
-    grant_types_supported: opts.grantTypes ?? ["authorization_code"],
+    grant_types_supported: refresh ? ["authorization_code", "refresh_token"] : ["authorization_code"],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none"],
     scopes_supported: [AUTH_SCOPE],
@@ -690,12 +693,22 @@ export function mountOAuth(app, opts) {
     res.status(400).json({ error, error_description: reason });
   };
 
-  app.post("/oauth/token", (req, res) => {
+  app.post("/oauth/token", async (req, res) => {
     corsOk(req, res);
+    res.setHeader("Cache-Control", "no-store");
     sweep(authCodes);
     const { grant_type, code, code_verifier, redirect_uri, client_id, resource } = req.body ?? {};
+    if (grant_type === "refresh_token" && refresh) {
+      await refreshGrant(req, res);
+      return;
+    }
     if (grant_type !== "authorization_code") {
-      denyToken(res, "unsupported_grant_type", "grant_type must be authorization_code", `(got ${JSON.stringify(grant_type ?? null)})`);
+      denyToken(
+        res,
+        "unsupported_grant_type",
+        refresh ? "grant_type must be authorization_code or refresh_token" : "grant_type must be authorization_code",
+        `(got ${JSON.stringify(grant_type ?? null)})`,
+      );
       return;
     }
     const codeKey = String(code);
@@ -748,21 +761,121 @@ export function mountOAuth(app, opts) {
       denyToken(res, "invalid_grant", "the sign-in did not produce an account");
       return;
     }
+    // A refresh family for this sign-in. A store failure here costs only the
+    // refresh token: the user still gets an access token now.
+    let family = null;
+    if (refresh) {
+      try {
+        const exp = decodeJwt(rec.grant).exp;
+        family = await refresh.start({
+          sub,
+          clientId: String(client_id),
+          aud: rec.resource,
+          grant: tokens.seal(rec.grant),
+          ...(typeof exp === "number" ? { expiresAt: exp * 1000 } : {}),
+        });
+      } catch (err) {
+        console.error(`[oauth] refresh store unavailable at sign-in; issuing an access token only (${String(err?.message || err).slice(0, 80)})`);
+      }
+    }
     const issued = tokens.issue({
       iss: baseFor(req),
       aud: rec.resource,
       sub,
       clientId: client_id,
       grant: rec.grant,
-      ttlSeconds: grantTtl(rec.grant, accessTtl),
+      ttlSeconds: grantTtl(rec.grant, family ? accessTtl : opts.accessTokenTtlNoRefreshSeconds ?? accessTtl),
+      family: family?.family,
     });
     // Observability (#345): the success path. Without this, a successful
     // exchange and total silence were the same observation. The token is never
     // logged; client_id is a prefix only.
-    console.error(`[oauth] token exchange succeeded; access token issued (client_id=${clientIdPrefix(client_id)})`);
-    res.setHeader("Cache-Control", "no-store");
-    res.json({ access_token: issued.token, token_type: "Bearer", expires_in: issued.expiresIn, scope: AUTH_SCOPE });
+    console.error(
+      `[oauth] token exchange succeeded; access token issued${family ? " with a refresh token" : ""} (client_id=${clientIdPrefix(client_id)})`,
+    );
+    res.json({
+      access_token: issued.token,
+      token_type: "Bearer",
+      expires_in: issued.expiresIn,
+      scope: AUTH_SCOPE,
+      ...(family ? { refresh_token: family.token } : {}),
+    });
   });
+
+  // RFC 6749 §6 — refresh. Each refresh token works once: it returns a new
+  // access token and a new refresh token. A refresh token presented a second
+  // time revokes its whole family (src/refresh-store.js).
+  async function refreshGrant(req, res) {
+    const { refresh_token, client_id, resource } = req.body ?? {};
+    if (typeof refresh_token !== "string" || refresh_token === "") {
+      denyToken(res, "invalid_request", "refresh_token is required");
+      return;
+    }
+    let r;
+    try {
+      r = await refresh.rotate(refresh_token);
+    } catch (err) {
+      // The store is down: say so, so the client retries rather than
+      // discarding a refresh token that is still good.
+      console.error(`[oauth] refresh store unavailable (${String(err?.message || err).slice(0, 80)})`);
+      res.status(503);
+      res.setHeader("Retry-After", "5");
+      res.json({ error: "temporarily_unavailable", error_description: "Try again shortly." });
+      return;
+    }
+    if (!r.ok) {
+      if (r.reason === "reused") console.error("[oauth] refresh token reuse detected; its sign-in was revoked");
+      denyToken(res, "invalid_grant", "refresh token is unknown, expired or already used");
+      return;
+    }
+    const rec = r.record;
+    // The client that started the family is the only one that may continue it
+    // (RFC 6749 §6 for public clients: bound to the client_id).
+    if (client_id !== undefined && String(client_id) !== rec.clientId) {
+      await refresh.revoke(r.family);
+      denyToken(res, "invalid_grant", "refresh token was issued to another client");
+      return;
+    }
+    if (resource !== undefined && String(resource) !== "" && normalizeResource(resource) !== rec.aud) {
+      denyToken(res, "invalid_target", "resource does not match the sign-in");
+      return;
+    }
+    const grant = tokens.unseal(rec.grant);
+    if (!grant) {
+      await refresh.revoke(r.family);
+      denyToken(res, "invalid_grant", "the sign-in can no longer be refreshed");
+      return;
+    }
+    // The CloudGrid session may have been signed out (or the account removed)
+    // since the sign-in. Ask the API before minting; if it says no, the whole
+    // sign-in ends and the client asks the user to sign in again.
+    if (opts.validatePlatformToken) {
+      const live = await opts.validatePlatformToken(grant);
+      if (!live.ok && !live.unavailable) {
+        await refresh.revoke(r.family);
+        console.error("[oauth] refresh refused: the CloudGrid session is signed out; its sign-in was revoked");
+        denyToken(res, "invalid_grant", "the CloudGrid session is signed out");
+        return;
+      }
+    }
+    const issued = tokens.issue({
+      iss: baseFor(req),
+      aud: rec.aud,
+      sub: rec.sub,
+      clientId: rec.clientId,
+      grant,
+      ttlSeconds: grantTtl(grant, accessTtl),
+      family: r.family,
+    });
+    console.error(`[oauth] refresh succeeded; tokens rotated (client_id=${clientIdPrefix(rec.clientId)})`);
+    res.json({
+      access_token: issued.token,
+      token_type: "Bearer",
+      expires_in: issued.expiresIn,
+      scope: AUTH_SCOPE,
+      refresh_token: r.token,
+    });
+  }
 }
 
 // An access token never outlives the CloudGrid session sealed inside it.

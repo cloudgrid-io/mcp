@@ -351,6 +351,7 @@ test("the token endpoint returns this server's token, never the account credenti
   assert.equal(tok.token_type, "Bearer");
   // No refresh store: a 30-day token, never past the session sealed in it.
   assert.ok(tok.expires_in > 29 * 86400 && tok.expires_in <= 30 * 86400, `expires_in=${tok.expires_in}`);
+  assert.equal(tok.refresh_token, undefined, "no refresh store configured: no refresh token");
 
   const session = await open("claude-code", tok.access_token);
   const before = seenAuth.length;
