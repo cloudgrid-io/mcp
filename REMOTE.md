@@ -156,8 +156,9 @@ CloudGrid API; it is never returned to the client or accepted from it.
   Secret) — the refresh-token store. `MCP_REFRESH_STORE=memory` keeps it in the
   process instead (local runs; not shared between replicas, lost on restart).
   Neither set: no refresh tokens.
-- `MCP_ACCESS_TOKEN_TTL_S` (default 3600) and `MCP_REFRESH_TOKEN_TTL_S` (default
-  2592000, sliding) apply with a store.
+- `MCP_REFRESH_TOKEN_TTL_S` (default 2592000, sliding) applies with a store.
+  With a store, `MCP_ACCESS_TOKEN_TTL_S` defaults to 3600; turning the store on
+  or off changes only what is issued.
 - A CloudGrid session token presented directly as the Bearer (what releases before
   0.22 returned as the access token) is accepted while it lasts, if it was issued
   before `MCP_LEGACY_TOKENS_ISSUED_BEFORE` (epoch seconds; set it to the 0.22
