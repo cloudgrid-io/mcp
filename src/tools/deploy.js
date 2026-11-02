@@ -417,7 +417,7 @@ function htmlToArtifact(html, filename) {
 }
 
 // Anonymous drops are owned by the platform Guest Org, whose slug is the apex
-// the public URL hangs off (https://guest.cloudgrid.io/<slug>).
+// the public URL hangs off (https://<slug>--guest.cloudgrid.io/).
 const GUEST_ORG_SLUG = "guest";
 
 // FALLBACK-ONLY URL composition. Since the unified plug contract (spec v2 /
@@ -429,15 +429,16 @@ const GUEST_ORG_SLUG = "guest";
 // `entityUrl()` rules (the flat-only platform host), but only the server knows
 // the per-entity nuances (custom domains, guest-org placement), so it must never
 // be the primary source:
-//   - inspiration (HTML drops): path-based at the org apex
-//       https://<grid>.cloudgrid.io/<slug>
+//   - inspiration (HTML drops): its own host, the app shape
+//       https://<slug>--<grid>.cloudgrid.io/
+//     (the old path address https://<grid>.cloudgrid.io/<slug> redirects there)
 //   - runtime (app/agent):      flat platform host
 //       https://<slug>--<grid>.cloudgrid.io
 // The old nested `<slug>.<grid>.cloudgrid.io` host is retired — it falls outside
 // the single `*.cloudgrid.io` platform wildcard, so it has no cert and no ingress
 // (matches `composeFlatEntityHost`).
 // Anonymous drops are grid-less in the response (`grid: null`); they live under
-// the Guest Org, so the apex slug is the constant `guest`.
+// the Guest Org, so the grid slug is the constant `guest`.
 function composePlugUrl(data) {
   const slug = data?.slug;
   if (!slug) return null;
@@ -446,8 +447,8 @@ function composePlugUrl(data) {
   if (kind === "app" || kind === "agent") {
     return `https://${slug}--${grid}.cloudgrid.io`;
   }
-  // inspiration (and any unknown/static kind) — path-based at the org apex.
-  return `https://${grid}.cloudgrid.io/${slug}`;
+  // inspiration (and any unknown/static kind) — its own host, ending in `/`.
+  return `https://${slug}--${grid}.cloudgrid.io/`;
 }
 
 // Parse the top-level `name:` from a cloudgrid.yaml manifest (issue #48). The
@@ -3220,12 +3221,12 @@ export async function runSource(ctx, { entity_id, url, grid, slug } = {}) {
   } else if (last?.url && (!entity_id || last.entity_id === entity_id)) {
     target = last.url;
   } else if (grid && slug) {
-    // Inspirations/HTML drops are path-based at the org apex.
+    // Inspirations/HTML drops are served on their own host.
     target = composePlugUrl({ slug, grid });
   }
   if (!target) {
     throw new Error(
-      "I don't have this drop's URL — pass the url (e.g. https://<grid>.cloudgrid.io/<slug>) or grid+slug.",
+      "I don't have this drop's URL — pass the url (e.g. https://<slug>--<grid>.cloudgrid.io/) or grid+slug.",
     );
   }
 
