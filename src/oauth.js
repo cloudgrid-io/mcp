@@ -740,7 +740,7 @@ export function mountOAuth(app, opts) {
     const base = baseFor(req);
     const site = req.headers["sec-fetch-site"];
     const origin = req.headers.origin;
-    // Both headers are required (decision 033, 2026-11-02 amendment): current
+    // Both headers are required (the platform cookie policy): current
     // browsers send them on a same-origin form POST.
     if (site !== "same-origin" || origin !== new URL(base).origin) {
       sendOAuthError(res, "This approval must come from the CloudGrid connect page.", 403);
