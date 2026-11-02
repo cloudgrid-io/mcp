@@ -28,13 +28,15 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { registerTools } from "./tools.js";
 import { mountOAuth, createBaseResolver } from "./oauth.js";
-import { createTokenService, resolveSigningKeys } from "./mcp-tokens.js";
+import { createTokenService, resolveSealKeys, resolveSigningKeys } from "./mcp-tokens.js";
 import {
   authMode,
   bearerChallenge,
   callsProtectedTool,
   createBearerResolver,
+  createDownstreamExchanger,
   createPlatformValidator,
+  observeApiRefusals,
   parseAuthModeOverrides,
   signInRequiredResult,
 } from "./web-auth.js";
@@ -83,6 +85,16 @@ const baseFor = createBaseResolver(BASES);
 // Access tokens: signed by this server (MCP_TOKEN_SIGNING_KEYS), for this
 // server's resources only.
 const signing = resolveSigningKeys(process.env);
+// Fail closed: a hosted server that holds the OAuth registration secret is a
+// real deployment, and a per-process signing key there would issue tokens no
+// other pod (and no later pod) can verify.
+if (signing.ephemeral && process.env.MCP_OAUTH_HMAC_SECRET) {
+  console.error(
+    "cloudgrid-mcp: MCP_OAUTH_HMAC_SECRET is set but MCP_TOKEN_SIGNING_KEYS is not. Refusing to start: " +
+      "access tokens need a stable signing key.",
+  );
+  process.exit(1);
+}
 if (signing.ephemeral) {
   console.warn(
     "cloudgrid-mcp: MCP_TOKEN_SIGNING_KEYS is not set; access tokens are signed with a per-process key, " +
@@ -93,14 +105,34 @@ if (signing.ephemeral) {
 }
 const tokens = createTokenService({
   keys: signing.keys,
+  sealKeys: resolveSealKeys(process.env, signing.keys),
   issuers: BASES,
   audiences: BASES.map((b) => `${b}/mcp`),
 });
 const AUTH_MODE_OVERRIDES = parseAuthModeOverrides(process.env.MCP_AUTH_MODE_OVERRIDES);
 const modeOf = (clientInfo) => authMode(clientInfo, AUTH_MODE_OVERRIDES);
-const resolveBearer = createBearerResolver({ tokens, validatePlatformToken: createPlatformValidator({ apiBase: API_BASE }) });
-// Access-token lifetime, in seconds, while no refresh store is configured.
-const ACCESS_TOKEN_TTL_NO_REFRESH_S = envInt(process.env, "MCP_ACCESS_TOKEN_TTL_NO_REFRESH_S", 24 * 3600);
+// CloudGrid session tokens presented directly as the Bearer (what releases
+// before 0.22 returned as the access token) are accepted only if they were
+// issued before MCP_LEGACY_TOKENS_ISSUED_BEFORE (epoch seconds; set to the 0.22
+// release time). Unset: this process's start time. No 0.22 server hands out a
+// session token, so a newer one is not a pre-0.22 connection.
+const LEGACY_ISSUED_BEFORE = envInt(process.env, "MCP_LEGACY_TOKENS_ISSUED_BEFORE", Math.floor(Date.now() / 1000));
+const validatePlatformToken = createPlatformValidator({ apiBase: API_BASE });
+// A tool call the API refuses as signed out marks that session refused, so the
+// client's next request gets a 401 and it signs in again (src/web-auth.js).
+const exchangeDownstream = createDownstreamExchanger({ apiBase: API_BASE, trustedSecret: process.env.MCP_TRUSTED_SERVER_SECRET || null });
+observeApiRefusals({
+  apiBase: API_BASE,
+  onRefused: (token) => validatePlatformToken.markRefused(exchangeDownstream.parentOf(token) ?? token),
+});
+const resolveBearer = createBearerResolver({
+  tokens,
+  validatePlatformToken,
+  exchangeDownstream,
+  legacyIssuedBefore: LEGACY_ISSUED_BEFORE,
+});
+// Access-token lifetime while no refresh store is configured: 24 hours.
+const ACCESS_TOKEN_TTL_NO_REFRESH_S = 24 * 3600;
 
 // The trusted-server credential, if this host is provisioned as one. Sent on
 // anonymous drops so the platform keys the anon-drop cap on the per-user id rather
@@ -336,25 +368,44 @@ function sendSignInToolError(req, res) {
   return true;
 }
 
-function captureRequestIdentity(sessionId, jwt) {
-  if (!jwt) return;
+// A session belongs to one account. The first verified token on it binds the
+// account; a session started signed out is bound when the user signs in (and
+// its signed-out state is cleared). A token for another account on a bound
+// session ends that session: the request gets 404 and the client starts a new
+// one, so nothing a session remembers crosses to a different account.
+// Returns false when it has answered the request.
+function bindRequestIdentity(sessionId, principal, res) {
+  if (!principal) return true;
   const ctx = sessionContexts.get(sessionId);
-  if (!ctx) return;
-  const { identityChanged } = ctx.identity.captureTransportToken(jwt);
-  if (identityChanged) {
-    ctx.state.identityChanged = true;
-    ctx.state.pendingLoginCode = null;
-    ctx.state.authChoiceOffered = false;
+  if (!ctx) return true;
+  if (ctx.boundSub && principal.sub !== ctx.boundSub) {
+    const transport = transports.get(sessionId);
+    dropSession(sessionId);
+    if (transport) transport.close().catch(() => {});
+    logSessionUnknown(sessionId);
+    res.status(404).json({
+      jsonrpc: "2.0",
+      error: { code: -32000, message: "Session not found. Send an initialize request to start a new session." },
+      id: null,
+    });
+    return false;
   }
+  if (!ctx.boundSub) {
+    ctx.boundSub = principal.sub;
+    ctx.state = { pendingLoginCode: null, lastAnonClaim: null, lastDrop: null, anonCookie: null, client: ctx.state.client };
+  }
+  ctx.identity.captureTransportToken(principal.platformToken);
+  return true;
 }
+
 
 // Build a fresh MCP session — server + transport + per-session identity context —
 // keyed by `sessionId`. `sessionId` is also the trusted-server end-user id and,
 // for a rehydrated (restart-evicted) session, the id the client keeps presenting.
 // Identity derives ONLY from the credential passed here (`jwt`), never from
 // anything remembered about the id: a session id is not proof of identity.
-async function buildSession(sessionId, jwt, protocolVersion, mode = "call") {
-  const identity = createWebIdentity({ initialTransportToken: jwt });
+async function buildSession(sessionId, principal, protocolVersion, mode = "call") {
+  const identity = createWebIdentity({ initialTransportToken: principal?.platformToken ?? null });
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: () => sessionId,
     onsessioninitialized: (sid) => {
@@ -372,6 +423,7 @@ async function buildSession(sessionId, jwt, protocolVersion, mode = "call") {
   const webCtx = makeWebContext(sessionId, identity);
   webCtx.lastSeen = Date.now();
   webCtx.authMode = mode;
+  webCtx.boundSub = principal?.sub ?? null;
   setSessionContext(sessionId, webCtx);
   // Session logger for this MCP session (dark by default, and the hosted
   // servers carry no webhook). Explicit-only (#433): it never posts — not on a
@@ -458,7 +510,6 @@ app.post("/mcp", limit.mcp, limit.initialize, async (req, res) => {
   // makes the old #286 objection to an expiry 401 not apply any more.
   const principal = await requestPrincipal(req, res);
   if (principal === undefined) return;
-  const jwt = principal?.platformToken ?? null;
   const isInit = isInitializeRequest(req.body);
   if (!principal) {
     // Any initialize, well-formed or not, so a client that never sends a valid
@@ -480,7 +531,7 @@ app.post("/mcp", limit.mcp, limit.initialize, async (req, res) => {
 
   if (transport) {
     // The verified account of this request becomes the session identity.
-    captureRequestIdentity(sessionId, jwt);
+    if (!bindRequestIdentity(sessionId, principal, res)) return;
     touchSession(sessionId);
     await transport.handleRequest(req, res, req.body);
     return;
@@ -509,7 +560,7 @@ app.post("/mcp", limit.mcp, limit.initialize, async (req, res) => {
     const newSessionId = sessionIds.mint();
     ({ transport } = await buildSession(
       newSessionId,
-      jwt,
+      principal,
       negotiateProtocol(req.body?.params?.protocolVersion),
       modeOf(req.body?.params?.clientInfo),
     ));
@@ -542,7 +593,7 @@ app.post("/mcp", limit.mcp, limit.initialize, async (req, res) => {
     sendSessionCap(res);
     return;
   }
-  ({ transport } = await buildSession(sessionId, jwt, negotiateProtocol(req.headers["mcp-protocol-version"])));
+  ({ transport } = await buildSession(sessionId, principal, negotiateProtocol(req.headers["mcp-protocol-version"])));
   // Rehydrate the evicted session. If priming fails (e.g. an SDK internal moved
   // out from under us), tear the half-built session down and fall back to the
   // original 400 rather than leaking a broken session or hanging the request —
@@ -574,13 +625,13 @@ async function handleSessionRequest(req, res) {
   }
   const principal = await requestPrincipal(req, res);
   if (principal === undefined) return;
-  captureRequestIdentity(sessionId, principal?.platformToken ?? null);
+  if (!bindRequestIdentity(sessionId, principal, res)) return;
   touchSession(sessionId);
   await transport.handleRequest(req, res);
 }
 
-app.get("/mcp", handleSessionRequest);
-app.delete("/mcp", handleSessionRequest);
+app.get("/mcp", limit.mcp, handleSessionRequest);
+app.delete("/mcp", limit.mcp, handleSessionRequest);
 
 // Last middleware, after every route: any error a route did not answer itself
 // gets a generic response, never Express's default error page. See web-errors.js.

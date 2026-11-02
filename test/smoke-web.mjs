@@ -126,7 +126,7 @@ try {
     let published = false;
     try {
       const r = await client.callTool({ name: "grid_plug", arguments: { html: "<h1>web edition smoke</h1>", anon: true } });
-      published = JSON.stringify(r).includes("guest.cloudgrid.io") || /\bLive:\s*https/i.test(r.content?.[0]?.text ?? "");
+      published = /https:\/\/[^\s"]*\.cloudgrid\.io\//.test(JSON.stringify(r)) || /\bLive:\s*https/i.test(r.content?.[0]?.text ?? "");
     } catch (err) {
       status = err?.code ?? (/(\b401\b)/.test(String(err?.message)) ? 401 : null);
       console.log(`--- web anon:true plug, ${attempt} call (expect 401) ---\n${err?.message}`);

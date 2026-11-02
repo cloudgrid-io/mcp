@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { setTimeout as sleep } from "node:timers/promises";
+import { TEST_SIGNING_SEED } from "./helpers/mcp-tokens.mjs";
 import {
   createOriginMatcher,
   createSessionIds,
@@ -317,6 +318,7 @@ describe("web edition: rate limits", () => {
     h = await startWeb({
       MCP_SESSION_SECRET: "edge-test",
       MCP_OAUTH_HMAC_SECRET: "edge-test-oauth-secret-edge-test-oauth",
+      MCP_TOKEN_SIGNING_KEYS: TEST_SIGNING_SEED,
       MCP_RATE_OAUTH_REGISTER: "2",
       MCP_RATE_OAUTH_AUTHORIZE: "2",
       MCP_RATE_OAUTH_TOKEN: "2",

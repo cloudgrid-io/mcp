@@ -6,7 +6,7 @@
 // presents one is checked for signature, audience, issuer and expiry before
 // anything else happens. The CloudGrid account credential the server uses to
 // call the API on the user's behalf travels inside the token SEALED
-// (AES-256-GCM, key derived from the signing key), so the client holds an
+// (AES-256-GCM), so the client holds an
 // opaque value it cannot read, and the account credential is never handed to
 // the client or accepted from it.
 //
@@ -18,7 +18,14 @@
 //   2. move it to the front (it now signs) and roll out;
 //   3. after the longest token lifetime has passed, drop the old seed.
 // No key configured: a per-process key, with a warning. Tokens then stop
-// verifying on restart and clients are asked to sign in again.
+// verifying on restart and clients are asked to sign in again. (The hosted
+// server refuses to start that way when OAuth is configured: see web.js.)
+//
+// SEAL KEYS: MCP_TOKEN_SEAL_KEYS, the same list format (base64url 32-byte
+// keys; the first seals, all open). Unset: each signing key's seal key is
+// derived from it (HKDF), so moving to a separate secret is configuration only.
+// A sealed value names the key that sealed it, so rotation follows the same
+// three steps.
 
 import {
   createCipheriv,
@@ -55,8 +62,29 @@ function keyFromSeed(seed) {
   const x = publicKey.export({ format: "jwk" }).x;
   // RFC 7638: the thumbprint of the required members, in lexicographic order.
   const kid = b64url(createHash("sha256").update(JSON.stringify({ crv: "Ed25519", kty: "OKP", x })).digest());
-  const sealKey = Buffer.from(hkdfSync("sha256", seed, Buffer.from(kid), Buffer.from(SEAL_INFO), 32));
-  return { kid, privateKey, publicKey, sealKey };
+  const derivedSealKey = Buffer.from(hkdfSync("sha256", seed, Buffer.from(kid), Buffer.from(SEAL_INFO), 32));
+  return { kid, privateKey, publicKey, derivedSealKey };
+}
+
+function sealKeyFrom(raw) {
+  if (raw.length !== 32) throw new Error("a seal key must be 32 bytes (base64url)");
+  return { kid: `s${b64url(createHash("sha256").update(raw).digest()).slice(0, 16)}`, key: raw };
+}
+
+/**
+ * The seal keys: MCP_TOKEN_SEAL_KEYS when set (first seals, all open), else one
+ * derived from each signing key. A malformed entry stops the boot.
+ */
+export function resolveSealKeys(env, signingKeys) {
+  const entries = String(env.MCP_TOKEN_SEAL_KEYS || "").split(/[\s,]+/).filter(Boolean);
+  if (entries.length === 0) return signingKeys.map((k) => ({ kid: k.kid, key: k.derivedSealKey }));
+  return entries.map((e, i) => {
+    try {
+      return sealKeyFrom(fromB64url(e));
+    } catch {
+      throw new Error(`MCP_TOKEN_SEAL_KEYS entry ${i + 1} is not a base64url 32-byte key`);
+    }
+  });
 }
 
 /** Generates a fresh seed, base64url. For tests and for provisioning a new key. */
@@ -82,18 +110,24 @@ export function resolveSigningKeys(env = process.env) {
   return { keys, ephemeral: false };
 }
 
-function seal(key, plaintext) {
+// Sealed form: `<seal kid>.<base64url(iv | ciphertext | tag)>`.
+function seal(sk, plaintext) {
   const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key.sealKey, iv);
+  const cipher = createCipheriv("aes-256-gcm", sk.key, iv);
   const ct = Buffer.concat([cipher.update(String(plaintext), "utf8"), cipher.final()]);
-  return b64url(Buffer.concat([iv, ct, cipher.getAuthTag()]));
+  return `${sk.kid}.${b64url(Buffer.concat([iv, ct, cipher.getAuthTag()]))}`;
 }
 
-function unseal(key, sealed) {
-  const raw = fromB64url(sealed);
+function unseal(sealKeysByKid, sealed) {
+  const s = String(sealed || "");
+  const dot = s.indexOf(".");
+  if (dot < 0) return null;
+  const sk = sealKeysByKid.get(s.slice(0, dot));
+  if (!sk) return null;
+  const raw = fromB64url(s.slice(dot + 1));
   if (raw.length < 12 + 16 + 1) return null;
   try {
-    const decipher = createDecipheriv("aes-256-gcm", key.sealKey, raw.subarray(0, 12));
+    const decipher = createDecipheriv("aes-256-gcm", sk.key, raw.subarray(0, 12));
     decipher.setAuthTag(raw.subarray(raw.length - 16));
     return Buffer.concat([decipher.update(raw.subarray(12, raw.length - 16)), decipher.final()]).toString("utf8");
   } catch {
@@ -105,9 +139,11 @@ function unseal(key, sealed) {
  * The token service. `issuers` and `audiences` are every value this server
  * accepts (its own host and its aliases); a token issued on one is valid on all.
  */
-export function createTokenService({ keys, issuers, audiences, now = () => Date.now() }) {
+export function createTokenService({ keys, sealKeys, issuers, audiences, now = () => Date.now() }) {
   if (!keys?.length) throw new Error("createTokenService needs at least one key");
   const byKid = new Map(keys.map((k) => [k.kid, k]));
+  const seals = sealKeys?.length ? sealKeys : keys.map((k) => ({ kid: k.kid, key: k.derivedSealKey }));
+  const sealByKid = new Map(seals.map((k) => [k.kid, k]));
   const issuerSet = new Set(issuers);
   const audienceSet = new Set(audiences);
   const nowS = () => Math.floor(now() / 1000);
@@ -133,7 +169,7 @@ export function createTokenService({ keys, issuers, audiences, now = () => Date.
         iat,
         exp: iat + ttlSeconds,
         jti: randomUUID(),
-        grt: seal(key, grant),
+        grt: seal(seals[0], grant),
         ...(family ? { fam: family } : {}),
       };
       const input = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(claims))}`;
@@ -176,20 +212,17 @@ export function createTokenService({ keys, issuers, audiences, now = () => Date.
       if (typeof claims.exp !== "number" || claims.exp <= t) return { ok: false, reason: "expired" };
       if (typeof claims.iat !== "number" || claims.iat > t + IAT_SKEW_S) return { ok: false, reason: "not_yet_valid" };
       if (typeof claims.sub !== "string" || claims.sub === "") return { ok: false, reason: "no_subject" };
-      const grant = typeof claims.grt === "string" ? unseal(key, claims.grt) : null;
+      const grant = typeof claims.grt === "string" ? unseal(sealByKid, claims.grt) : null;
       if (!grant) return { ok: false, reason: "bad_grant" };
       return { ok: true, claims, grant };
     },
 
     /** Seal / unseal with the signing key, for state kept outside a token. */
     seal(value) {
-      return `${keys[0].kid}.${seal(keys[0], value)}`;
+      return seal(seals[0], value);
     },
     unseal(sealed) {
-      const i = String(sealed || "").indexOf(".");
-      if (i < 0) return null;
-      const key = byKid.get(sealed.slice(0, i));
-      return key ? unseal(key, sealed.slice(i + 1)) : null;
+      return unseal(sealByKid, sealed);
     },
   };
 }

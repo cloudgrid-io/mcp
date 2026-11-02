@@ -16,7 +16,7 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { createHash, randomBytes } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
-import { createTokenService, resolveSigningKeys, generateSigningSeed } from "../src/mcp-tokens.js";
+import { createTokenService, resolveSealKeys, resolveSigningKeys, generateSigningSeed } from "../src/mcp-tokens.js";
 import {
   authMode,
   callsProtectedTool,
@@ -149,6 +149,18 @@ const SEED = generateSigningSeed();
 const LEGACY_GOOD = platformJwt("legacy-user");
 const LEGACY_SIGNED_OUT = platformJwt("legacy-signed-out");
 const SIGNIN_JWT = platformJwt("user-1");
+const signedOut = new Set([LEGACY_SIGNED_OUT]); // sessions the API treats as signed out
+const children = new Map(); // downstream child token -> parent session
+const downstream = { enabled: true };
+const TRUSTED = "trusted-server-secret-for-tests";
+// A session token minted after the 0.22 cutoff (a fresh CLI login, say).
+function platformJwtIssuedAt(sub, iat) {
+  const header = b64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const payload = b64url(JSON.stringify({ sub, email: `${sub}@example.com`, iat, exp: iat + 30 * 86400 }));
+  return `${header}.${payload}.${b64url(randomBytes(32))}`;
+}
+const LEGACY_CUTOFF = Math.floor(Date.now() / 1000) + 5;
+const TOO_NEW = platformJwtIssuedAt("new-cli-user", LEGACY_CUTOFF + 10);
 
 async function listen(server) {
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
@@ -161,13 +173,25 @@ const api = createServer((req, res) => {
   seenAuth.push({ path: req.url, auth });
   const json = (status, body) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(body)); };
   if (req.url.startsWith("/auth/status")) return json(200, { status: "authenticated", jwt: SIGNIN_JWT });
-  const bearer = auth.replace(/^Bearer /, "");
-  const known = new Map([[SIGNIN_JWT, "user-1"], [LEGACY_GOOD, "legacy-user"]]);
+  const raw = auth.replace(/^Bearer /, "");
+  // A child token (from the downstream exchange) stands for its parent session.
+  const bearer = children.get(raw) ?? raw;
+  // Any session token this test minted is valid unless it was signed out.
+  const sub = (() => { try { return JSON.parse(Buffer.from(bearer.split(".")[1], "base64url").toString()).sub; } catch { return null; } })();
+  const valid = sub && !signedOut.has(bearer);
+  if (req.url === "/api/v2/auth/token/downstream" && req.method === "POST") {
+    if (!downstream.enabled) return json(404, {});
+    if (req.headers["x-cloudgrid-trusted-server-auth"] !== TRUSTED) return json(403, {});
+    if (!valid || children.has(raw)) return json(401, { code: "AUTH_INVALID" });
+    const child = `${b64url(JSON.stringify({ alg: "HS256" }))}.${b64url(JSON.stringify({ sub, email: `${sub}@example.com`, azp: "hosted-mcp", n: children.size }))}.${b64url(randomBytes(16))}`;
+    children.set(child, bearer);
+    return json(200, { access_token: child, expires_in: 3600 });
+  }
   if (req.url === "/api/v2/users/me") {
-    return known.has(bearer) ? json(200, { user_id: known.get(bearer), email: "x@example.com" }) : json(401, { error: "AUTH_INVALID" });
+    return valid ? json(200, { user_id: sub, email: `${sub}@example.com` }) : json(401, { error: "AUTH_INVALID" });
   }
   if (req.url.startsWith("/api/v2/grids")) {
-    return known.has(bearer) ? json(200, { grids: [{ slug: "g1", name: "G1", role: "admin", render_ready: true }] }) : json(401, {});
+    return valid ? json(200, { grids: [{ slug: "g1", name: "G1", role: "admin", render_ready: true }] }) : json(401, { code: "AUTH_INVALID" });
   }
   json(404, {});
 });
@@ -189,9 +213,10 @@ const child = spawn(process.execPath, ["src/web.js"], {
     MCP_TOKEN_SIGNING_KEYS: SEED,
     MCP_OAUTH_HMAC_SECRET: "test-hmac-secret-web-signin-00000000000",
     MCP_AUTH_MODE_OVERRIDES: "tool-error-client=tool-error",
+    MCP_LEGACY_TOKENS_ISSUED_BEFORE: String(LEGACY_CUTOFF),
     CLOUDGRID_API_URL: apiBase,
     CLOUDGRID_PUBLIC_API_URL: apiBase,
-    MCP_TRUSTED_SERVER_SECRET: "",
+    MCP_TRUSTED_SERVER_SECRET: TRUSTED,
     NO_PROXY: "localhost,127.0.0.1", no_proxy: "localhost,127.0.0.1",
     HTTPS_PROXY: "", HTTP_PROXY: "", https_proxy: "", http_proxy: "",
   },
@@ -328,9 +353,12 @@ test("the token endpoint returns this server's token, never the account credenti
   const r = await rpc(call("grid_list_grids"), { token: tok.access_token, session });
   assert.equal(r.status, 200);
   assert.ok(!r.json.result.isError, JSON.stringify(r.json.result));
-  const downstream = seenAuth.slice(before).filter((s) => s.path.startsWith("/api/v2/grids"));
-  assert.equal(downstream.length, 1);
-  assert.equal(downstream[0].auth, `Bearer ${SIGNIN_JWT}`, "the API gets the account credential, not the MCP token");
+  const downstreamCalls = seenAuth.slice(before).filter((s) => s.path.startsWith("/api/v2/grids"));
+  assert.equal(downstreamCalls.length, 1);
+  const sent = downstreamCalls[0].auth.replace(/^Bearer /, "");
+  assert.notEqual(sent, tok.access_token, "the API never gets the MCP token");
+  assert.notEqual(sent, SIGNIN_JWT, "nor the 30-day session: a scoped child token");
+  assert.equal(children.get(sent), SIGNIN_JWT, "the child was minted from this sign-in's session");
 });
 
 test("expired, foreign-audience and forged tokens get 401 invalid_token on every path", async () => {
@@ -386,7 +414,7 @@ test("grid_start states the signed-in account from the verified token (#317)", a
   assert.match(r.json.result.content[0].text, /signed in to CloudGrid as user-1@example\.com/);
 });
 
-test("a different account on the same session is reported as an identity change", async () => {
+test("a session belongs to one account: another account's token on it gets 404", async () => {
   const mint = (sub) => clientSideTokens.issue({ iss: BASE, aud: `${BASE}/mcp`, sub, clientId: "c", grant: platformJwt(sub), ttlSeconds: 600 }).token;
   const a = mint("first-user");
   const b = mint("second-user");
@@ -394,7 +422,81 @@ test("a different account on the same session is reported as an identity change"
   const first = await rpc(call("grid_start"), { token: a, session });
   assert.equal(first.json.result.structuredContent.context.email, "first-user@example.com");
   const second = await rpc(call("grid_start"), { token: b, session });
-  const ctx = second.json.result.structuredContent.context;
-  assert.equal(ctx.email, "second-user@example.com", "the session follows the verified token");
-  assert.equal(ctx.identity_changed, true);
+  assert.equal(second.status, 404, "the other account cannot use this session");
+  // The id may be rebuilt for whoever presents it next, but empty: nothing the
+  // first account's session held carries over.
+  const again = await rpc(call("grid_start"), { token: a, session });
+  assert.equal(again.json.result.structuredContent.context.email, "first-user@example.com");
+});
+
+test("a session started signed out is bound when the user signs in", async () => {
+  const session = await open("Anthropic/ClaudeAI");
+  const mint = (sub) => clientSideTokens.issue({ iss: BASE, aud: `${BASE}/mcp`, sub, clientId: "c", grant: platformJwt(sub), ttlSeconds: 600 }).token;
+  const a = mint("late-user");
+  const r = await rpc(call("grid_list_grids"), { token: a, session });
+  assert.equal(r.status, 200);
+  assert.equal((await rpc(call("grid_start"), { token: mint("other-user"), session })).status, 404);
+});
+
+test("a signed-out CloudGrid session reaches the client as a 401, and the refused grant stays refused", async () => {
+  const grant = platformJwt("logout-user");
+  const token = clientSideTokens.issue({ iss: BASE, aud: `${BASE}/mcp`, sub: "logout-user", clientId: "c", grant, ttlSeconds: 600 }).token;
+  const session = await open("claude-code", token);
+  assert.equal((await rpc(call("grid_list_grids"), { token, session })).status, 200);
+  signedOut.add(grant); // the user signs out in the Console
+  // The tool call itself hits the API's 401 and marks the grant refused...
+  await rpc(call("grid_list_grids", {}, 3), { token, session });
+  // ...so the next request is a 401 the client acts on, not a tool reply.
+  const next = await rpc(call("grid_start", {}, 4), { token, session });
+  assert.equal(next.status, 401);
+  assert.match(next.headers.get("www-authenticate"), /error="invalid_token"/);
+  // A new session with the same token is refused too (the API says signed out).
+  const fresh = await rpc(init("claude-code"), { token: clientSideTokens.issue({ iss: BASE, aud: `${BASE}/mcp`, sub: "logout-user", clientId: "c", grant, ttlSeconds: 600 }).token });
+  assert.equal(fresh.status, 401);
+});
+
+test("a session token issued after the 0.22 cutoff is not a legacy connection", async () => {
+  const r = await rpc(init("claude-code"), { token: TOO_NEW });
+  assert.equal(r.status, 401);
+  assert.match(r.headers.get("www-authenticate"), /error="invalid_token"/);
+});
+
+test("a hosted server with the OAuth secret but no signing key refuses to start", async () => {
+  const c = spawn(process.execPath, ["src/web.js"], {
+    env: { PATH: process.env.PATH, PORT: "0", MCP_OAUTH_HMAC_SECRET: "x".repeat(40), MCP_TOKEN_SIGNING_KEYS: "" },
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  let err = "";
+  c.stderr.on("data", (d) => { err += d; });
+  const code = await new Promise((r) => c.on("exit", r));
+  assert.equal(code, 1);
+  assert.match(err, /Refusing to start/);
+});
+
+test("when the API does not offer the exchange yet, tool calls use the session itself", async () => {
+  downstream.enabled = false;
+  try {
+    const grant = platformJwt("no-exchange-user");
+    const token = clientSideTokens.issue({ iss: BASE, aud: `${BASE}/mcp`, sub: "no-exchange-user", clientId: "c", grant, ttlSeconds: 600 }).token;
+    const session = await open("claude-code", token);
+    const before = seenAuth.length;
+    assert.equal((await rpc(call("grid_list_grids"), { token, session })).status, 200);
+    const calls = seenAuth.slice(before).filter((x) => x.path.startsWith("/api/v2/grids"));
+    assert.equal(calls[0].auth, `Bearer ${grant}`);
+  } finally {
+    downstream.enabled = true;
+  }
+});
+
+test("a separate seal key, when configured, seals the session; the signing key alone cannot open it", () => {
+  const seed = generateSigningSeed();
+  const sealKey = generateSigningSeed();
+  const keys = resolveSigningKeys({ MCP_TOKEN_SIGNING_KEYS: seed }).keys;
+  const withSeal = createTokenService({ keys, sealKeys: resolveSealKeys({ MCP_TOKEN_SEAL_KEYS: sealKey }, keys), issuers: [ISS], audiences: [AUD] });
+  const derivedOnly = createTokenService({ keys, sealKeys: resolveSealKeys({}, keys), issuers: [ISS], audiences: [AUD] });
+  const grant = platformJwt();
+  const { token } = withSeal.issue({ iss: ISS, aud: AUD, sub: "u", clientId: "c", grant, ttlSeconds: 60 });
+  assert.equal(withSeal.verify(token).grant, grant);
+  assert.equal(derivedOnly.verify(token).reason, "bad_grant", "the signing seed does not open it");
+  assert.throws(() => resolveSealKeys({ MCP_TOKEN_SEAL_KEYS: "short" }, keys), /entry 1/);
 });

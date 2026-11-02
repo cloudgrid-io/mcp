@@ -16,6 +16,7 @@
 // anything: a protected call without a valid token is refused in every mode.
 
 import { createHash } from "node:crypto";
+import { decodeJwt } from "./auth.js";
 
 /** Tools that work without an account. Everything else needs one. */
 export const PUBLIC_TOOLS = new Set(["grid_start", "grid_get_template", "grid_get_app_source"]);
@@ -115,13 +116,15 @@ export function signInRequiredResult(base) {
  * busy connection costs one API call every few minutes.
  * Returns { ok: true, sub, email } | { ok: false } | { ok: false, unavailable: true }.
  */
-export function createPlatformValidator({ apiBase, fetchImpl = fetch, now = () => Date.now() }) {
+export function createPlatformValidator({ apiBase, fetchImpl = (...a) => fetch(...a), now = () => Date.now() }) {
   const cache = new Map(); // sha256(token) -> { ok, sub, email, until }
   const OK_MS = 5 * 60 * 1000;
   const BAD_MS = 60 * 1000;
+  const REFUSED_MS = 15 * 60 * 1000;
   const MAX = 2000;
-  return async function validatePlatformToken(token) {
-    const key = createHash("sha256").update(String(token)).digest("base64url");
+  const keyOf = (token) => createHash("sha256").update(String(token)).digest("base64url");
+  async function validatePlatformToken(token) {
+    const key = keyOf(token);
     const hit = cache.get(key);
     if (hit && hit.until > now()) return hit;
     let entry;
@@ -149,7 +152,115 @@ export function createPlatformValidator({ apiBase, fetchImpl = fetch, now = () =
     if (cache.size >= MAX) cache.delete(cache.keys().next().value);
     cache.set(key, entry);
     return entry;
+  }
+  /** The API refused this token on a real call: remember it as refused. */
+  validatePlatformToken.markRefused = (token) => {
+    if (cache.size >= MAX) cache.delete(cache.keys().next().value);
+    cache.set(keyOf(token), { ok: false, until: now() + REFUSED_MS });
   };
+  return validatePlatformToken;
+}
+
+/**
+ * Watches this process's calls to the API: when the API answers a call made
+ * with a Bearer with 401 AUTH_INVALID or AUTH_EXPIRED, that credential is
+ * signed out or gone, and `onRefused(token)` is told. Every tool's API call
+ * goes through fetch, so this covers them all without each tool reporting it.
+ */
+export function observeApiRefusals({ apiBase, onRefused, target = globalThis }) {
+  const base = String(apiBase).replace(/\/+$/, "");
+  const original = target.fetch;
+  target.fetch = async function fetchObserved(input, init) {
+    const res = await original(input, init);
+    try {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input?.url;
+      if (res.status === 401 && typeof url === "string" && url.startsWith(base)) {
+        const headers = new Headers(init?.headers ?? (typeof input === "object" && input?.headers) ?? undefined);
+        const auth = headers.get("authorization") || "";
+        if (auth.startsWith("Bearer ")) {
+          const body = await res.clone().json().catch(() => null);
+          if (body?.code === "AUTH_INVALID" || body?.code === "AUTH_EXPIRED") onRefused(auth.slice(7));
+        }
+      }
+    } catch {
+      /* observation never changes the response */
+    }
+    return res;
+  };
+  return () => { target.fetch = original; };
+}
+
+/**
+ * The downstream credential. The CloudGrid session sealed in an access token is
+ * the user's 30-day session; the server does not send it on tool calls. It
+ * trades it at the API (POST /api/v2/auth/token/downstream, authenticated as
+ * the trusted server) for a short-lived child token that the API scopes to what
+ * a connected AI tool may do, and sends that child instead. Children are cached
+ * until shortly before they expire.
+ *
+ * Returns { token, expiresAt } | { refused: true } (the session is signed out)
+ * | { unavailable: true } (the API did not answer, or does not offer the
+ * exchange yet: the caller then uses the session itself, as before 0.22).
+ */
+export function createDownstreamExchanger({
+  apiBase,
+  trustedSecret,
+  fetchImpl = (...a) => fetch(...a),
+  now = () => Date.now(),
+  log = console.error,
+}) {
+  const cache = new Map(); // sha256(parent) -> { token, expiresAt }
+  const parents = new Map(); // child token -> parent token
+  const MAX = 2000;
+  const keyOf = (t) => createHash("sha256").update(String(t)).digest("base64url");
+  let warned = false;
+
+  async function exchange(parent, endUserId = "hosted-mcp") {
+    if (!trustedSecret) return { unavailable: true };
+    const key = keyOf(parent);
+    const hit = cache.get(key);
+    if (hit && hit.expiresAt - 60_000 > now()) return hit;
+    let res;
+    try {
+      res = await fetchImpl(`${apiBase}/api/v2/auth/token/downstream`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${parent}`,
+          "X-CloudGrid-Trusted-Server-Auth": trustedSecret,
+          "X-CloudGrid-Trusted-Server-End-User": String(endUserId),
+        },
+        signal: AbortSignal.timeout(5000),
+      });
+    } catch {
+      return { unavailable: true };
+    }
+    if (res.status === 401) {
+      cache.delete(key);
+      return { refused: true };
+    }
+    if (!res.ok) {
+      if (!warned) {
+        warned = true;
+        log(`[auth] the API's downstream token exchange answered ${res.status}; using the session itself`);
+      }
+      return { unavailable: true };
+    }
+    const body = await res.json().catch(() => null);
+    if (typeof body?.access_token !== "string") return { unavailable: true };
+    const entry = { token: body.access_token, expiresAt: now() + Math.max(60, Number(body.expires_in) || 0) * 1000 };
+    if (cache.size >= MAX) {
+      const [oldKey, old] = cache.entries().next().value;
+      cache.delete(oldKey);
+      parents.delete(old.token);
+    }
+    cache.set(key, entry);
+    parents.set(entry.token, parent);
+    if (parents.size > MAX * 2) parents.delete(parents.keys().next().value);
+    return entry;
+  }
+  /** The session a child was minted from (for refusal tracking). */
+  exchange.parentOf = (child) => parents.get(child) ?? null;
+  return exchange;
 }
 
 /**
@@ -159,22 +270,55 @@ export function createPlatformValidator({ apiBase, fetchImpl = fetch, now = () =
  *  - A CloudGrid session token presented directly, which is what this server
  *    handed out as the access token before 0.22. Connections made then still
  *    hold one, so it is accepted while it lasts (at most 30 days after it was
- *    issued), and only after the API confirms it is valid and not signed out.
+ *    issued), only if it was issued before the cutoff (legacyIssuedBefore), and
+ *    only after the API confirms it is valid and not signed out.
  *    Remove this branch once the last such token has expired.
  *
  * Returns { ok: true, platformToken, sub, kind } or { ok: false, reason }.
  */
-export function createBearerResolver({ tokens, validatePlatformToken, log = console.error }) {
+export function createBearerResolver({
+  tokens,
+  validatePlatformToken,
+  exchangeDownstream = null,
+  legacyIssuedBefore = Infinity,
+  log = console.error,
+}) {
   return async function resolveBearer(token) {
     const v = tokens.verify(token);
-    if (v.ok) return { ok: true, kind: "mcp", platformToken: v.grant, sub: v.claims.sub, claims: v.claims };
+    if (v.ok) {
+      // The CloudGrid session sealed in the token can be signed out or its
+      // account removed after the token was issued. Ask the API (cached), so
+      // that reaches the client as a 401 within minutes, not a dead end. If
+      // the API cannot be asked, the token stands: the calls it would make
+      // fail on their own.
+      const live = await validatePlatformToken(v.grant);
+      if (!live.ok && !live.unavailable) return { ok: false, reason: "grant_revoked" };
+      // Tool calls use the scoped child token, not the session itself.
+      let platformToken = v.grant;
+      if (exchangeDownstream) {
+        const d = await exchangeDownstream(v.grant);
+        if (d.refused) return { ok: false, reason: "grant_revoked" };
+        if (d.token) platformToken = d.token;
+      }
+      return { ok: true, kind: "mcp", platformToken, sub: v.claims.sub, claims: v.claims };
+    }
     if (v.reason !== "not_ours") return { ok: false, reason: v.reason };
     // Only a JWT-shaped value is worth asking the API about.
     if (!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(String(token))) return { ok: false, reason: "malformed" };
+    // Only tokens from before 0.22 are legacy connections. `iat` is read before
+    // the API verifies the signature; a forged `iat` still fails there.
+    const iat = decodeJwt(String(token)).iat;
+    if (typeof iat !== "number" || iat >= legacyIssuedBefore) return { ok: false, reason: "legacy_too_new" };
     const legacy = await validatePlatformToken(String(token));
     if (legacy.unavailable) return { ok: false, reason: "unavailable" };
     if (!legacy.ok) return { ok: false, reason: "legacy_rejected" };
     log("[auth] accepted a CloudGrid session token issued before 0.22 (legacy connection)");
-    return { ok: true, kind: "legacy", platformToken: String(token), sub: legacy.sub };
+    let platformToken = String(token);
+    if (exchangeDownstream) {
+      const d = await exchangeDownstream(platformToken);
+      if (d.refused) return { ok: false, reason: "legacy_rejected" };
+      if (d.token) platformToken = d.token;
+    }
+    return { ok: true, kind: "legacy", platformToken, sub: legacy.sub };
   };
 }

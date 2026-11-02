@@ -25,6 +25,7 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { createHash, randomBytes } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
+import { TEST_SIGNING_SEED } from "./helpers/mcp-tokens.mjs";
 
 const SECRET = "test-oauth-hmac-secret-resource-indicators-000";
 const REDIRECT = "https://chatgpt.com/connector_platform_oauth_redirect";
@@ -67,6 +68,7 @@ async function startWeb(upstreamBase) {
       MCP_PUBLIC_URL: baseUrl,
       MCP_REQUIRE_AUTH: "1",
       MCP_OAUTH_HMAC_SECRET: SECRET,
+      MCP_TOKEN_SIGNING_KEYS: TEST_SIGNING_SEED,
       CLOUDGRID_API_URL: upstreamBase,
       CLOUDGRID_PUBLIC_API_URL: upstreamBase,
       MCP_TRUSTED_SERVER_SECRET: "",
