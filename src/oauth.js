@@ -207,6 +207,68 @@ function isHttpUrl(uri) {
   }
 }
 
+// --- Who the consent page names (#5785) ----------------------------------------
+// A registered client_name is self-asserted. It is shown only when the redirect
+// host is one of the AI tools that use this server, or loopback (a local
+// client); for any other host the page says "An application at <host>".
+const KNOWN_CLIENT_HOSTS = new Set(["claude.ai", "claude.com", "chatgpt.com"]);
+export function shownClientName(clientName, redirectUri) {
+  if (!clientName) return "";
+  try {
+    const host = new URL(String(redirectUri)).hostname.toLowerCase();
+    return KNOWN_CLIENT_HOSTS.has(host) || LOOPBACK_HOSTS.has(host) ? clientName : "";
+  } catch {
+    return "";
+  }
+}
+
+// --- Same-browser completion (#5785) ---------------------------------------------
+// The sign-in opens in a new tab of the browser that opened /oauth/authorize. On
+// completion the CloudGrid API sets that browser's `cloudgrid_session` cookie to
+// the same session it returns from /auth/status. The poll completes only when
+//   1. it carries this server's own binding cookie for the authorize session, and
+//   2. its `cloudgrid_session` equals the session /auth/status returned.
+// A sign-in finished in another browser (a forwarded link) therefore cannot
+// complete the flow. A browser already signed in to CloudGrid skips the sign-in
+// and approves with one click (POST /oauth/authorize/approve).
+const SESSION_COOKIE = "cloudgrid_session";
+// How long the poll waits for the cookie after the sign-in completed before it
+// says the sign-in was finished elsewhere.
+const OTHER_BROWSER_GRACE_MS = 15_000;
+// The poll reaches the API at most once a second per authorize session.
+const POLL_MIN_INTERVAL_MS = 1_000;
+
+// Host-only, and `__Host-` on https so a cookie set elsewhere on the domain
+// cannot stand in for it.
+function bindCookieName(base) {
+  return String(base).startsWith("https:") ? "__Host-cg_mcp_authorize" : "cg_mcp_authorize";
+}
+
+// Every value the browser sent for `name` (a tenant on the shared domain can
+// plant a second cookie of the same name), decoded on read. A value that does
+// not decode is skipped, so a cookie planted to break parsing cannot turn the
+// sign-in pages into a 500.
+function cookieValues(req, name) {
+  const out = [];
+  for (const part of String(req.headers.cookie || "").split(";")) {
+    const i = part.indexOf("=");
+    if (i <= 0 || part.slice(0, i).trim() !== name) continue;
+    try {
+      out.push(decodeURIComponent(part.slice(i + 1).trim()));
+    } catch {
+      /* skipped */
+    }
+  }
+  return out;
+}
+
+function sameSecret(a, b) {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  const ha = createHash("sha256").update(a).digest();
+  const hb = createHash("sha256").update(b).digest();
+  return timingSafeEqual(ha, hb) && a.length === b.length;
+}
+
 function signClientId(canonical, secret) {
   const payload = b64url(Buffer.from(canonical, "utf8"));
   const signingInput = `${CLIENT_ID_PREFIX}.${payload}`;
@@ -296,16 +358,25 @@ function oauthPageHeaders(res) {
   res.setHeader("Referrer-Policy", "no-referrer");
 }
 
-function sendOAuthError(res, message) {
+function sendOAuthError(res, message, status = 400) {
   oauthPageHeaders(res);
-  res.status(400).type("text/plain; charset=utf-8").send(message);
+  res.status(status).type("text/plain; charset=utf-8").send(message);
 }
 
 // The §23-voice interstitial. First a consent step naming the client and the
 // host the browser returns to; nothing starts until the user continues. Then it
 // opens the CloudGrid sign-in in a new tab and polls until it completes, and
 // returns the browser to the client app.
-function interstitialHtml({ sid, loginUrl, clientName, redirectHost }) {
+function interstitialHtml({ sid, loginUrl, clientName, redirectHost, signedInAs = null, formToken = "" }) {
+  const approve = signedInAs
+    ? `<p>Signed in to CloudGrid as <strong>${escapeHtml(signedInAs)}</strong>.</p>
+  <form method="post" action="/oauth/authorize/approve">
+    <input type="hidden" name="sid" value="${escapeHtml(sid)}">
+    <input type="hidden" name="form_token" value="${escapeHtml(formToken)}">
+    <button class="btn" type="submit">Allow</button>
+  </form>
+  <p class="status"><a id="go" href="${escapeHtml(loginUrl)}" target="_blank" rel="noopener noreferrer">Use a different account</a></p>`
+    : `<a class="btn" id="go" href="${escapeHtml(loginUrl)}" target="_blank" rel="noopener noreferrer">Continue to sign in</a>`;
   const who = clientName
     ? `<strong>${escapeHtml(clientName)}</strong> (<strong>${escapeHtml(redirectHost)}</strong>)`
     : `An application at <strong>${escapeHtml(redirectHost)}</strong>`;
@@ -320,8 +391,9 @@ function interstitialHtml({ sid, loginUrl, clientName, redirectHost }) {
          font-family: Inter, system-ui, sans-serif; background:#0d0d0f; color:#fafafa; }
   main { max-width:420px; padding:2.5rem; text-align:center; }
   p.host { margin-top:1rem; font-size:.95rem; }
-  a.btn { display:inline-block; margin-top:1.25rem; padding:.75rem 1.5rem; border-radius:8px;
-          background:#fafafa; color:#0d0d0f; text-decoration:none; font-weight:600; }
+  a.btn, button.btn { display:inline-block; margin-top:1.25rem; padding:.75rem 1.5rem; border-radius:8px; border:0;
+          background:#fafafa; color:#0d0d0f; text-decoration:none; font-weight:600; font-size:1rem; cursor:pointer; }
+  a { color:#fafafa; }
   p.status { margin-top:1.5rem; font-size:.9rem; opacity:.7; }
   [hidden] { display:none !important; }
 </style></head>
@@ -329,8 +401,8 @@ function interstitialHtml({ sid, loginUrl, clientName, redirectHost }) {
   <h1>Connect CloudGrid</h1>
   <p id="consent">${who} wants to connect to your CloudGrid account.</p>
   <p class="host">After sign-in you will be returned to <strong>${escapeHtml(redirectHost)}</strong>. If you did not start this, close this page.</p>
-  <a class="btn" id="go" href="${escapeHtml(loginUrl)}" target="_blank" rel="noopener noreferrer">Continue to sign in</a>
-  <p class="status" id="st" hidden>Waiting for sign-in.</p>
+  ${approve}
+  <p class="status" id="st" hidden>Waiting for sign-in. Finish it in this browser.</p>
 </main>
 <script>
   const POLL_URL = ${scriptJson(`/oauth/authorize/poll?sid=${sid}`)};
@@ -348,6 +420,7 @@ function interstitialHtml({ sid, loginUrl, clientName, redirectHost }) {
         return;
       }
       if (d.status === "expired") { st.textContent = "The sign-in window expired. Close this page and connect again."; return; }
+      if (d.status === "other_browser") { st.textContent = "This sign-in was finished in a different browser. Close this page, connect again, and finish the sign-in in this browser."; return; }
     } catch {}
     setTimeout(tick, 2000);
   }
@@ -375,6 +448,8 @@ export function createBaseResolver(bases) {
  * opts.bases — this server's public origins; the first is the primary one.
  * opts.tokens — the token service (src/mcp-tokens.js) that signs access tokens.
  * opts.accessTokenTtlSeconds — the access token lifetime.
+ * opts.refresh — the refresh-token store (src/refresh-store.js), or null: then
+ *   no refresh token is issued and the access token is the whole sign-in.
  * opts.isOriginAllowed — the browser Origin allow-list for CORS.
  */
 export function mountOAuth(app, opts) {
@@ -382,6 +457,7 @@ export function mountOAuth(app, opts) {
   const baseFor = createBaseResolver(bases);
   const tokens = opts.tokens;
   const accessTtl = opts.accessTokenTtlSeconds;
+  const refresh = opts.refresh ?? null;
   const isOriginAllowed = opts.isOriginAllowed ?? (() => false);
   const corsOk = (req, res) => corsAllowListed(req, res, isOriginAllowed);
   // Every resource identifier this server answers for, canonical form (#329).
@@ -421,7 +497,7 @@ export function mountOAuth(app, opts) {
     token_endpoint: `${base}/oauth/token`,
     registration_endpoint: `${base}/oauth/register`,
     response_types_supported: ["code"],
-    grant_types_supported: opts.grantTypes ?? ["authorization_code"],
+    grant_types_supported: refresh ? ["authorization_code", "refresh_token"] : ["authorization_code"],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none"],
     scopes_supported: [AUTH_SCOPE],
@@ -509,7 +585,7 @@ export function mountOAuth(app, opts) {
   });
 
   // Authorization endpoint — render the bridge interstitial.
-  app.get("/oauth/authorize", (req, res) => {
+  app.get("/oauth/authorize", async (req, res) => {
     sweep(authSessions);
     const { client_id, redirect_uri, state, code_challenge, code_challenge_method, response_type, resource } = req.query;
     // Observability (#345/#329): the request SHAPE the client actually sent,
@@ -579,8 +655,24 @@ export function mountOAuth(app, opts) {
     }
     const sid = randomUUID();
     const cgCode = newLoginCode();
+    const bind = randomBytes(18).toString("base64url");
+    const formToken = randomBytes(18).toString("base64url");
+    // Already signed in to CloudGrid in this browser: offer one-click Allow.
+    // The session is checked with the API, never trusted from the cookie.
+    let signedIn = null;
+    // The account must be named on the page: no email, no one-click path.
+    for (const existing of cookieValues(req, SESSION_COOKIE).slice(0, 3)) {
+      if (!opts.validatePlatformToken) break;
+      const v = await opts.validatePlatformToken(existing).catch(() => ({ ok: false }));
+      if (v.ok && v.email) {
+        signedIn = { email: v.email, session: existing };
+        break;
+      }
+    }
     authSessions.set(sid, {
       cgCode,
+      bind,
+      formToken,
       client_id: String(client_id),
       redirect_uri: String(redirect_uri),
       state: state ? String(state) : "",
@@ -588,65 +680,151 @@ export function mountOAuth(app, opts) {
       resource: boundResource,
       created: Date.now(),
     });
+    const base = baseFor(req);
+    res.cookie?.(bindCookieName(base), `${sid}.${bind}`, {
+      httpOnly: true,
+      secure: base.startsWith("https:"),
+      sameSite: "lax",
+      path: "/",
+      maxAge: CODE_TTL_MS,
+    });
     oauthPageHeaders(res);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(
       interstitialHtml({
         sid,
         loginUrl: buildLoginUrl(cgCode),
-        clientName: client.client_name,
+        clientName: shownClientName(client.client_name, redirect_uri),
         redirectHost: new URL(String(redirect_uri)).host,
+        signedInAs: signedIn?.email ?? null,
+        formToken,
       }),
     );
+  });
+
+  // The authorize session this browser holds, from its binding cookie.
+  function boundSession(req, sid) {
+    const sess = authSessions.get(String(sid));
+    if (!sess || Date.now() - sess.created > CODE_TTL_MS) return null;
+    const want = `${sid}.${sess.bind}`;
+    return cookieValues(req, bindCookieName(baseFor(req))).some((c) => sameSecret(c, want)) ? sess : null;
+  }
+
+  // Hand an authorization code for this session back to the client.
+  function issueCode(sid, sess, grant) {
+    const code = b64url(Buffer.from(randomUUID()));
+    authCodes.set(code, {
+      grant,
+      client_id: sess.client_id,
+      redirect_uri: sess.redirect_uri,
+      code_challenge: sess.code_challenge,
+      resource: sess.resource, // RFC 8707 binding carried from the authorize session (#329)
+      created: Date.now(),
+    });
+    authSessions.delete(String(sid));
+    // The sign-in half succeeded. Without this line a connector failure gives
+    // no way to tell whether the user ever got through sign-in at all.
+    console.error("[oauth] authorization code issued after sign-in; awaiting token exchange");
+    const sep = sess.redirect_uri.includes("?") ? "&" : "?";
+    // Observability (#345): we handed control back to the client, and to
+    // where. The host only — the full redirect carries the code and a
+    // per-install path.
+    console.error(`[oauth] redirect handed back to client; redirect_host=${hostOf(sess.redirect_uri)}`);
+    return `${sess.redirect_uri}${sep}code=${encodeURIComponent(code)}${sess.state ? `&state=${encodeURIComponent(sess.state)}` : ""}`;
+  }
+
+  // One-click Allow for a browser already signed in to CloudGrid. Same-origin
+  // form POST only: the binding cookie, the per-session form token, a
+  // same-origin Fetch Metadata / Origin, and a CloudGrid session the API accepts.
+  app.post("/oauth/authorize/approve", async (req, res) => {
+    const base = baseFor(req);
+    const site = req.headers["sec-fetch-site"];
+    const origin = req.headers.origin;
+    // Both headers are required (the platform cookie policy): current
+    // browsers send them on a same-origin form POST.
+    if (site !== "same-origin" || origin !== new URL(base).origin) {
+      sendOAuthError(res, "This approval must come from the CloudGrid connect page.", 403);
+      return;
+    }
+    const sid = String(req.body?.sid ?? "");
+    const sess = boundSession(req, sid);
+    if (!sess || !sameSecret(String(req.body?.form_token ?? ""), sess.formToken)) {
+      sendOAuthError(res, "This connection request has expired or was opened in another browser. Close this page and connect again.");
+      return;
+    }
+    // The session the approval is for: one the API accepts and names, checked again now.
+    let grant = null;
+    for (const c of cookieValues(req, SESSION_COOKIE).slice(0, 3)) {
+      if (!opts.validatePlatformToken) break;
+      const v = await opts.validatePlatformToken(c).catch(() => ({ ok: false }));
+      if (v.ok && v.email) {
+        grant = c;
+        break;
+      }
+    }
+    if (!grant || !isHttpUrl(sess.redirect_uri)) {
+      sendOAuthError(res, "You are not signed in to CloudGrid in this browser. Close this page and connect again.");
+      return;
+    }
+    console.error("[oauth] signed-in browser approved the connection");
+    res.redirect(302, issueCode(sid, sess, grant));
   });
 
   // The interstitial's poll — bridges to CloudGrid /auth/status.
   app.get("/oauth/authorize/poll", async (req, res) => {
     corsOk(req, res);
-    const sess = authSessions.get(String(req.query.sid));
-    if (!sess || Date.now() - sess.created > CODE_TTL_MS) {
+    const sid = String(req.query.sid);
+    // Only the browser that opened this authorize session may poll it.
+    const sess = boundSession(req, sid);
+    if (!sess) {
       res.json({ status: "expired" });
       return;
     }
-    let upstream;
-    try {
-      upstream = await pollStatusOnce(sess.cgCode);
-    } catch {
-      res.json({ status: "pending" });
-      return;
-    }
-    if (upstream.status === "authenticated" && upstream.jwt) {
-      if (!isHttpUrl(sess.redirect_uri)) {
-        // Unreachable while authorize enforces the redirect rules; kept so a
-        // code is never handed to a non-http(s) target.
-        authSessions.delete(String(req.query.sid));
+    // The sign-in result is read from the API once (it hands it out once) and
+    // kept here; it is released only to this same browser, below.
+    if (!sess.grant) {
+      const now = Date.now();
+      if (now - (sess.lastPoll ?? 0) < POLL_MIN_INTERVAL_MS) {
+        res.json({ status: "pending" });
+        return;
+      }
+      sess.lastPoll = now;
+      let upstream;
+      try {
+        upstream = await pollStatusOnce(sess.cgCode);
+      } catch {
+        res.json({ status: "pending" });
+        return;
+      }
+      if (upstream.status === "expired") {
+        authSessions.delete(sid);
         res.json({ status: "expired" });
         return;
       }
-      const code = b64url(Buffer.from(randomUUID()));
-      authCodes.set(code, {
-        grant: upstream.jwt,
-        client_id: sess.client_id,
-        redirect_uri: sess.redirect_uri,
-        code_challenge: sess.code_challenge,
-        resource: sess.resource, // RFC 8707 binding carried from the authorize session (#329)
-        created: Date.now(),
-      });
-      authSessions.delete(String(req.query.sid));
-      // The sign-in half succeeded. Without this line a connector failure gives
-      // no way to tell whether the user ever got through sign-in at all.
-      console.error("[oauth] authorization code issued after sign-in; awaiting token exchange");
-      const sep = sess.redirect_uri.includes("?") ? "&" : "?";
-      const redirect = `${sess.redirect_uri}${sep}code=${encodeURIComponent(code)}${sess.state ? `&state=${encodeURIComponent(sess.state)}` : ""}`;
-      // Observability (#345): we handed control back to the client, and to
-      // where. The host only — the full redirect carries the code and a
-      // per-install path.
-      console.error(`[oauth] redirect handed back to client; redirect_host=${hostOf(sess.redirect_uri)}`);
-      res.json({ status: "ready", redirect });
+      if (upstream.status !== "authenticated" || !upstream.jwt) {
+        res.json({ status: "pending" });
+        return;
+      }
+      sess.grant = upstream.jwt;
+      sess.grantAt = now;
+    }
+    if (!isHttpUrl(sess.redirect_uri)) {
+      // Unreachable while authorize enforces the redirect rules; kept so a
+      // code is never handed to a non-http(s) target.
+      authSessions.delete(sid);
+      res.json({ status: "expired" });
       return;
     }
-    if (upstream.status === "expired") {
-      res.json({ status: "expired" });
+    if (cookieValues(req, SESSION_COOKIE).some((c) => sameSecret(c, sess.grant))) {
+      res.json({ status: "ready", redirect: issueCode(sid, sess, sess.grant) });
+      return;
+    }
+    // Signed in, but not in this browser (yet: the cookie can trail the
+    // sign-in by a moment). After the grace period, end the attempt.
+    if (Date.now() - sess.grantAt > OTHER_BROWSER_GRACE_MS) {
+      authSessions.delete(sid);
+      console.error("[oauth] sign-in finished in a different browser; connection refused");
+      res.json({ status: "other_browser" });
       return;
     }
     res.json({ status: "pending" });
@@ -690,12 +868,22 @@ export function mountOAuth(app, opts) {
     res.status(400).json({ error, error_description: reason });
   };
 
-  app.post("/oauth/token", (req, res) => {
+  app.post("/oauth/token", async (req, res) => {
     corsOk(req, res);
+    res.setHeader("Cache-Control", "no-store");
     sweep(authCodes);
     const { grant_type, code, code_verifier, redirect_uri, client_id, resource } = req.body ?? {};
+    if (grant_type === "refresh_token" && refresh) {
+      await refreshGrant(req, res);
+      return;
+    }
     if (grant_type !== "authorization_code") {
-      denyToken(res, "unsupported_grant_type", "grant_type must be authorization_code", `(got ${JSON.stringify(grant_type ?? null)})`);
+      denyToken(
+        res,
+        "unsupported_grant_type",
+        refresh ? "grant_type must be authorization_code or refresh_token" : "grant_type must be authorization_code",
+        `(got ${JSON.stringify(grant_type ?? null)})`,
+      );
       return;
     }
     const codeKey = String(code);
@@ -748,21 +936,157 @@ export function mountOAuth(app, opts) {
       denyToken(res, "invalid_grant", "the sign-in did not produce an account");
       return;
     }
+    // A refresh family for this sign-in. A store failure here costs only the
+    // refresh token: the user still gets an access token now.
+    let family = null;
+    if (refresh) {
+      try {
+        const exp = decodeJwt(rec.grant).exp;
+        family = await refresh.start({
+          sub,
+          clientId: String(client_id),
+          aud: rec.resource,
+          grant: tokens.seal(rec.grant),
+          ...(typeof exp === "number" ? { expiresAt: exp * 1000 } : {}),
+        });
+      } catch (err) {
+        console.error(`[oauth] refresh store unavailable at sign-in; issuing an access token only (${String(err?.message || err).slice(0, 80)})`);
+      }
+    }
     const issued = tokens.issue({
       iss: baseFor(req),
       aud: rec.resource,
       sub,
       clientId: client_id,
       grant: rec.grant,
-      ttlSeconds: grantTtl(rec.grant, accessTtl),
+      ttlSeconds: grantTtl(rec.grant, family ? accessTtl : opts.accessTokenTtlNoRefreshSeconds ?? accessTtl),
+      family: family?.family,
     });
     // Observability (#345): the success path. Without this, a successful
     // exchange and total silence were the same observation. The token is never
     // logged; client_id is a prefix only.
-    console.error(`[oauth] token exchange succeeded; access token issued (client_id=${clientIdPrefix(client_id)})`);
-    res.setHeader("Cache-Control", "no-store");
-    res.json({ access_token: issued.token, token_type: "Bearer", expires_in: issued.expiresIn, scope: AUTH_SCOPE });
+    console.error(
+      `[oauth] token exchange succeeded; access token issued${family ? " with a refresh token" : ""} (client_id=${clientIdPrefix(client_id)})`,
+    );
+    res.json({
+      access_token: issued.token,
+      token_type: "Bearer",
+      expires_in: issued.expiresIn,
+      scope: AUTH_SCOPE,
+      ...(family ? { refresh_token: family.token } : {}),
+    });
   });
+
+  // RFC 6749 §6 — refresh. Each refresh token works once: it returns a new
+  // access token and a new refresh token. A refresh token presented a second
+  // time revokes its whole family (src/refresh-store.js).
+  async function refreshGrant(req, res) {
+    const { refresh_token, client_id, resource } = req.body ?? {};
+    if (typeof refresh_token !== "string" || refresh_token === "") {
+      denyToken(res, "invalid_request", "refresh_token is required");
+      return;
+    }
+    // A public client has only its client_id; the refresh token must have been
+    // issued to it (RFC 6749 §6), so it is required.
+    if (typeof client_id !== "string" || client_id === "") {
+      denyToken(res, "invalid_request", "client_id is required at the token endpoint");
+      return;
+    }
+    const unavailable = (err) => {
+      // The store or the API did not answer. Every check runs before the
+      // refresh token is used, so a failure here leaves it unused and the
+      // client's retry can still succeed. (A store failure after rotate() has
+      // used it cannot be undone; that retry gets invalid_grant.)
+      console.error(`[oauth] refresh unavailable (${String(err?.message || err).slice(0, 80)})`);
+      res.status(503);
+      res.setHeader("Retry-After", "5");
+      res.json({ error: "temporarily_unavailable", error_description: "Try again shortly." });
+    };
+    // Every check before the token is used: a wrong client, resource or a
+    // signed-out session must not consume it.
+    let peeked;
+    try {
+      peeked = await refresh.peek(refresh_token);
+    } catch (err) {
+      unavailable(err);
+      return;
+    }
+    if (peeked) {
+      const prec = peeked.record;
+      // Only the client that started the family may continue it.
+      if (String(client_id) !== prec.clientId) {
+        await refresh.revoke(peeked.family).catch(() => {});
+        denyToken(res, "invalid_grant", "refresh token was issued to another client");
+        return;
+      }
+      if (resource !== undefined && String(resource) !== "" && normalizeResource(resource) !== prec.aud) {
+        denyToken(res, "invalid_target", "resource does not match the sign-in");
+        return;
+      }
+      const g = tokens.unseal(prec.grant);
+      if (!g) {
+        await refresh.revoke(peeked.family).catch(() => {});
+        denyToken(res, "invalid_grant", "the sign-in can no longer be refreshed");
+        return;
+      }
+      // The CloudGrid session may have been signed out (or the account
+      // removed) since the sign-in. If so the whole sign-in ends.
+      if (opts.validatePlatformToken) {
+        const live = await opts.validatePlatformToken(g);
+        if (live.unavailable) {
+          unavailable("CloudGrid API");
+          return;
+        }
+        if (!live.ok) {
+          await refresh.revoke(peeked.family).catch(() => {});
+          console.error("[oauth] refresh refused: the CloudGrid session is signed out; its sign-in was revoked");
+          denyToken(res, "invalid_grant", "the CloudGrid session is signed out");
+          return;
+        }
+      }
+    }
+    let r;
+    try {
+      r = await refresh.rotate(refresh_token);
+    } catch (err) {
+      unavailable(err);
+      return;
+    }
+    if (!r.ok) {
+      if (r.reason === "reused") console.error("[oauth] refresh token reuse detected; its sign-in was revoked");
+      denyToken(res, "invalid_grant", "refresh token is unknown, expired or already used");
+      return;
+    }
+    const rec = r.record;
+    if (String(client_id) !== rec.clientId) {
+      await refresh.revoke(r.family).catch(() => {});
+      denyToken(res, "invalid_grant", "refresh token was issued to another client");
+      return;
+    }
+    const grant = tokens.unseal(rec.grant);
+    if (!grant) {
+      await refresh.revoke(r.family).catch(() => {});
+      denyToken(res, "invalid_grant", "the sign-in can no longer be refreshed");
+      return;
+    }
+    const issued = tokens.issue({
+      iss: baseFor(req),
+      aud: rec.aud,
+      sub: rec.sub,
+      clientId: rec.clientId,
+      grant,
+      ttlSeconds: grantTtl(grant, accessTtl),
+      family: r.family,
+    });
+    console.error(`[oauth] refresh succeeded; tokens rotated (client_id=${clientIdPrefix(rec.clientId)})`);
+    res.json({
+      access_token: issued.token,
+      token_type: "Bearer",
+      expires_in: issued.expiresIn,
+      scope: AUTH_SCOPE,
+      refresh_token: r.token,
+    });
+  }
 }
 
 // An access token never outlives the CloudGrid session sealed inside it.

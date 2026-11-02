@@ -41,6 +41,8 @@ import {
   signInRequiredResult,
 } from "./web-auth.js";
 import { API_BASE } from "./tools/constants.js";
+import { createRefreshStore, createMemoryBackend } from "./refresh-store.js";
+import { createRedisClient } from "./redis-client.js";
 import { mountLanding } from "./landing.js";
 import { createSessionLogger } from "./session-logger.js";
 import { createSink } from "./log-sink.js";
@@ -132,14 +134,70 @@ const resolveBearer = createBearerResolver({
   tokens,
   validatePlatformToken,
   exchangeDownstream,
+  isFamilyLive: (fam) => (refreshStore ? familyLive(fam) : true),
   legacyIssuedBefore: LEGACY_ISSUED_BEFORE,
 });
-// Access-token lifetime: MCP_ACCESS_TOKEN_TTL_S. Without a refresh store the
-// default is 30 days (founder decision on cloudgrid#5783, fallback B): a
-// sign-in lasts as long as the CloudGrid session sealed in it (never longer;
-// see grantTtl), and every call checks with the API, cached at most 30 s, that
-// the session is not signed out, so a sign-out takes effect on the next call.
-const ACCESS_TOKEN_TTL_S = envInt(process.env, "MCP_ACCESS_TOKEN_TTL_S", 30 * 24 * 3600);
+const REFRESH_TOKEN_TTL_S = envInt(process.env, "MCP_REFRESH_TOKEN_TTL_S", 30 * 24 * 3600);
+
+// The refresh-token store: Redis at MCP_REDIS_URL (password MCP_REDIS_PASSWORD,
+// from a Secret). MCP_REFRESH_STORE=memory keeps it in this process instead
+// (tests and local runs: it does not survive a restart and is not shared
+// between replicas). Neither: no refresh tokens.
+function createRefresh(env) {
+  let backend = null;
+  if (env.MCP_REDIS_URL) {
+    backend = createRedisClient({ url: env.MCP_REDIS_URL, password: env.MCP_REDIS_PASSWORD || undefined });
+    console.error(`cloudgrid-mcp: refresh tokens on, stored in Redis at ${new URL(env.MCP_REDIS_URL).host}`);
+  } else if (env.MCP_REFRESH_STORE === "memory") {
+    backend = createMemoryBackend();
+    console.warn("cloudgrid-mcp: refresh tokens on, stored in this process only (MCP_REFRESH_STORE=memory)");
+  } else {
+    console.error("cloudgrid-mcp: no refresh store configured; access tokens are issued without refresh tokens");
+    return null;
+  }
+  return createRefreshStore({ backend, refreshTtlSeconds: REFRESH_TOKEN_TTL_S, onRevoke: (fam) => familyLive.forget(fam) });
+}
+
+// Whether a refresh family is still live, for access tokens that name one.
+// Positive answers are cached for 30 s; a revocation in this process takes
+// effect at once (onRevoke above). Returns true | false | "unavailable".
+const familyLive = (() => {
+  const live = new Map(); // family -> until
+  const revoked = new Set();
+  const MAX = 5000;
+  async function check(fam) {
+    if (revoked.has(fam)) return false;
+    const until = live.get(fam);
+    if (until && until > Date.now()) return true;
+    let ok;
+    try {
+      ok = await refreshStore.isLive(fam);
+    } catch {
+      return "unavailable";
+    }
+    if (live.size >= MAX) live.delete(live.keys().next().value);
+    if (ok) live.set(fam, Date.now() + 30_000);
+    return ok;
+  }
+  check.forget = (fam) => {
+    live.delete(fam);
+    if (revoked.size >= MAX) revoked.delete(revoked.keys().next().value);
+    revoked.add(fam);
+  };
+  return check;
+})();
+const refreshStore = createRefresh(process.env);
+
+// Access-token lifetime: one setting, MCP_ACCESS_TOKEN_TTL_S. Its default
+// follows the refresh store:
+//   - store on: 1 hour, renewed by rotating refresh tokens;
+//   - no store (or a store failure at sign-in): 30 days (founder decision on
+//     cloudgrid#5783, fallback B), never past the CloudGrid session sealed in
+//     the token, and every call checks with the API, cached at most 30 s, that
+//     the session is not signed out, so a sign-out takes effect on the next call.
+// Turning the store on changes only what is issued; clients see no difference.
+const ACCESS_TOKEN_TTL_NO_REFRESH_S = envInt(process.env, "MCP_ACCESS_TOKEN_TTL_S", 30 * 24 * 3600);
+const ACCESS_TOKEN_TTL_S = refreshStore ? envInt(process.env, "MCP_ACCESS_TOKEN_TTL_S", 3600) : ACCESS_TOKEN_TTL_NO_REFRESH_S;
 
 // The trusted-server credential, if this host is provisioned as one. Sent on
 // anonymous drops so the platform keys the anon-drop cap on the per-user id rather
@@ -259,12 +317,16 @@ mountLanding(app, PUBLIC_BASE);
 // /oauth/authorize/poll is not limited here (it polls every two seconds).
 app.post("/oauth/register", limit.register);
 app.get("/oauth/authorize", limit.authorize);
+app.post("/oauth/authorize/approve", limit.authorize);
 app.post("/oauth/token", limit.token);
 
 mountOAuth(app, {
   bases: BASES,
   tokens,
   accessTokenTtlSeconds: ACCESS_TOKEN_TTL_S,
+  accessTokenTtlNoRefreshSeconds: ACCESS_TOKEN_TTL_NO_REFRESH_S,
+  refresh: refreshStore,
+  validatePlatformToken,
   isOriginAllowed,
 });
 

@@ -143,11 +143,38 @@ CloudGrid API; it is never returned to the client or accepted from it.
   (`POST /api/v2/auth/token/downstream`, authenticated as the trusted server),
   not the CloudGrid session itself. If the API does not offer it yet (404), the
   session itself is used; any other failure answers 503.
+- Refresh tokens rotate: each works once and returns a new access token and a
+  new refresh token. A refresh token presented a second time ends that sign-in
+  (every token in it stops working, access tokens included: an access token
+  names its sign-in, checked on each request with a 30 s cache). `client_id` is
+  required at refresh, and every check runs before the refresh token is used.
+  A sign-in slides on use and never outlives
+  the CloudGrid session sealed in it. Only SHA-256 hashes of refresh tokens are
+  stored, under `mcp:oauth:`; the store uses GET, SET, GETDEL, DEL and EXPIRE
+  only (no scripting, no transactions).
+- `MCP_REDIS_URL` (`redis://user@host:6379`) and `MCP_REDIS_PASSWORD` (from a
+  Secret) — the refresh-token store. `MCP_REFRESH_STORE=memory` keeps it in the
+  process instead (local runs; not shared between replicas, lost on restart).
+  Neither set: no refresh tokens.
+- `MCP_REFRESH_TOKEN_TTL_S` (default 2592000, sliding) applies with a store.
+  With a store, `MCP_ACCESS_TOKEN_TTL_S` defaults to 3600; turning the store on
+  or off changes only what is issued.
 - A CloudGrid session token presented directly as the Bearer (what releases before
   0.22 returned as the access token) is accepted while it lasts, if it was issued
   before `MCP_LEGACY_TOKENS_ISSUED_BEFORE` (epoch seconds; set it to the 0.22
   release time; unset accepts none), after the API confirms it is valid and
   not signed out.
+
+Sign-in finishes in the browser that started it: `/oauth/authorize` sets a
+host-only binding cookie, and the sign-in status poll completes only when it
+carries that cookie and the browser's `cloudgrid_session` equals the session the
+sign-in produced. A sign-in finished in another browser does not complete the
+flow. A browser already signed in to CloudGrid is offered one-click **Allow**
+(a same-origin form POST to `/oauth/authorize/approve` with the binding cookie
+and a per-session form token). The consent page names a client by its
+registered `client_name` only when its redirect host is `claude.ai`,
+`claude.com`, `chatgpt.com` or loopback; otherwise it says "An application at
+<host>".
 
 Endpoints: `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`,
 `/oauth/register`, `/oauth/authorize` (the sign-in interstitial), `/oauth/token`.

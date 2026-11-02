@@ -182,6 +182,15 @@ jobs:
       # (401 on the call / tool error / 401 at connect); host aliases; tokens from
       # before 0.22 accepted only while the API accepts them.
       - run: npm run test:web-signin
+      # Rotating refresh tokens (cloudgrid#5783): single use, reuse revokes the
+      # sign-in, sliding expiry capped by the CloudGrid session; the Redis client
+      # against a RESP server allowing only the store's ACL commands; the token
+      # endpoint end to end.
+      - run: npm run test:refresh-tokens
+      # Sign-in completes only in the browser that started it (cloudgrid#5785);
+      # a signed-in browser approves with one click (same-origin POST, binding
+      # cookie, form token); client names only for known AI-tool hosts.
+      - run: npm run test:oauth-same-browser
       # Restart-recovery (#292): a hosted session lives in process memory, so a
       # pod restart evicts it and the client keeps presenting a stale
       # mcp-session-id. This test does a REAL process restart — boots the web
