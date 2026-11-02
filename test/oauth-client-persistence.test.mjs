@@ -28,6 +28,7 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { createHash, randomBytes } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
+import { TEST_SIGNING_SEED } from "./helpers/mcp-tokens.mjs";
 
 const SECRET_A = "test-oauth-hmac-secret-alpha-0000000000000000";
 const SECRET_B = "test-oauth-hmac-secret-bravo-1111111111111111";
@@ -59,6 +60,7 @@ function childEnv(h) {
     MCP_PUBLIC_URL: h.baseUrl,
     MCP_REQUIRE_AUTH: "1",
     MCP_OAUTH_HMAC_SECRET: h.secret,
+    MCP_TOKEN_SIGNING_KEYS: TEST_SIGNING_SEED,
     // Point every upstream at a closed loopback port so no test touches prod.
     CLOUDGRID_API_URL: "http://127.0.0.1:1",
     CLOUDGRID_PUBLIC_API_URL: "http://127.0.0.1:1",

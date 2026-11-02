@@ -176,12 +176,21 @@ jobs:
       # missing, or undecodable token, true when a valid explicit login shadows an
       # expired transport Bearer.
       - run: npm run test:web-identity
-      # Web transport auth guard, connected + anonymous edges (#279/#286): the
-      # POST /mcp handler challenges (401 + WWW-Authenticate) an expired/invalid/
-      # missing Bearer that leaves no usable credential, but NOT when a valid
-      # explicit login shadows an expired Bearer (the #279 regression guard), and
-      # the anonymous edge is unaffected.
-      - run: npm run test:web-auth-integration
+      # Hosted sign-in (cloudgrid#5783): access tokens signed by this server and
+      # checked for signature, audience, issuer and expiry; the account credential
+      # never returned; browsing open, every other tool gated, per-client signal
+      # (401 on the call / tool error / 401 at connect); host aliases; tokens from
+      # before 0.22 accepted only while the API accepts them.
+      - run: npm run test:web-signin
+      # Rotating refresh tokens (cloudgrid#5783): single use, reuse revokes the
+      # sign-in, sliding expiry capped by the CloudGrid session; the Redis client
+      # against a RESP server allowing only the store's ACL commands; the token
+      # endpoint end to end.
+      - run: npm run test:refresh-tokens
+      # Sign-in completes only in the browser that started it (cloudgrid#5785);
+      # a signed-in browser approves with one click (same-origin POST, binding
+      # cookie, form token); client names only for known AI-tool hosts.
+      - run: npm run test:oauth-same-browser
       # Restart-recovery (#292): a hosted session lives in process memory, so a
       # pod restart evicts it and the client keeps presenting a stale
       # mcp-session-id. This test does a REAL process restart — boots the web

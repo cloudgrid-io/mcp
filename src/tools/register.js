@@ -12,13 +12,11 @@ import {
   GRID_PICKER_URI,
   LIVE_RESULT_HTML,
   GRID_PICKER_HTML,
-  GRID_LOGIN_APP_URI,
-  GRID_LOGIN_APP_HTML,
   previewOrigin,
   previewUrlFor,
   PREVIEW_META_KEY,
 } from "./constants.js";
-import { fail, okResult } from "./util.js";
+import { fail, okResult, signInHow, signInRef } from "./util.js";
 import { cliTool, tryOpenBrowser } from "./cli.js";
 import {
   fetchUserOrgs,
@@ -81,11 +79,18 @@ const escapeHtml = (s) =>
 // actually do, and route to the one recovery action (grid_login). §23 voice:
 // plain, no emoji, no exclamation; the model-directed step is quarantined in the
 // trailing (assistant: …) line so it is not read aloud.
-const AUTH_ASK_SIGNED_OUT =
-  "Plugging to a grid needs an account, so the page is saved to the user's CloudGrid " +
-  "account and belongs to them. Call grid_login to sign in, then re-call grid_plug.\n\n" +
-  "(assistant: call grid_login now; after they finish, retry grid_plug. Do not offer " +
-  "any sign-in-free path. Stop and wait for the sign-in to complete.)";
+function authAskSignedOut(ctx) {
+  return ctx?.edition === "web"
+    ? "Plugging to a grid needs an account, so the page is saved to the user's CloudGrid " +
+        "account and belongs to them. Sign in to CloudGrid when your AI tool asks, then plug again.\n\n" +
+        "(assistant: ask the user to sign in through the CloudGrid connector; if no sign-in " +
+        "prompt appears, ask them to reconnect it. Then retry grid_plug. Do not offer any " +
+        "sign-in-free path.)"
+    : "Plugging to a grid needs an account, so the page is saved to the user's CloudGrid " +
+        "account and belongs to them. Call grid_login to sign in, then re-call grid_plug.\n\n" +
+        "(assistant: call grid_login now; after they finish, retry grid_plug. Do not offer " +
+        "any sign-in-free path. Stop and wait for the sign-in to complete.)";
+}
 
 // ── Strict tool inputs (#400) ──────────────────────────────────────────────
 // Every tool's input is a z.strictObject, so `tools/list` advertises
@@ -211,23 +216,6 @@ export function registerTools(server, ctx) {
         mimeType: CHATGPT_WIDGET_MIME,
         text: GRID_PICKER_HTML,
         _meta: { "openai/widgetAccessible": true },
-      }],
-    }));
-
-    // grid_login MCP App (SEP-1865). Registered via the official ext-apps
-    // helper, which defaults the MIME type to RESOURCE_MIME_TYPE
-    // (text/html;profile=mcp-app) — the type Claude web looks for. NO csp
-    // domains: the card makes no network requests of its own (it only asks the
-    // host to open the sign-in URL and calls grid_login_status back over the
-    // bridge), so deny-by-default is exactly right. Independent of
-    // APPS_WIDGETS_ENABLED by design (see constants.js).
-    registerAppResource(server, "cloudgrid-grid-login", GRID_LOGIN_APP_URI, {
-      description: "CloudGrid sign-in card — opens the sign-in URL and confirms when you return.",
-    }, async () => ({
-      contents: [{
-        uri: GRID_LOGIN_APP_URI,
-        mimeType: RESOURCE_MIME_TYPE,
-        text: GRID_LOGIN_APP_HTML,
       }],
     }));
   }
@@ -371,7 +359,7 @@ export function registerTools(server, ctx) {
           slug: z.string().describe("The new grid's slug — pass it to grid_plug as `grid`."),
           name: z.string().optional().describe("Its display name."),
         }).optional(),
-        needs_auth: z.boolean().optional().describe("Sign-in required first (grid_login)."),
+        needs_auth: z.boolean().optional().describe(`Sign-in required first${signInRef(ctx)}.`),
         error: z.object({ code: z.string(), message: z.string().optional() }).optional(),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
@@ -403,7 +391,7 @@ export function registerTools(server, ctx) {
         inputSchema: { summary: z.string().describe("A short plain-language note on what was built and why. This text is sent.") },
         outputSchema: {
           status: z.enum(["recorded", "rate_limited", "unauthorized", "error", "skipped"]).describe("recorded = the team received it; anything else = nothing was sent, and the text says why."),
-          needs_auth: z.boolean().optional().describe("Sign-in required first (grid_login), then re-call grid_note."),
+          needs_auth: z.boolean().optional().describe(`Sign-in required first${signInRef(ctx)}, then re-call grid_note.`),
         },
         annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
       },
@@ -561,7 +549,7 @@ export function registerTools(server, ctx) {
         "\"give me a link\", \"share it with friends\", \"make it live\", \"put it online\", \"host this\". " +
         "Takes a single self-contained HTML page, or a full app: a multi-file, framework-, or database-backed app " +
         "runs as a runtime app with the services it declares (managed MongoDB, Redis, pgvector, disk, an AI gateway with no API key). " +
-        "A new plug needs sign-in: when signed out it returns needs_auth — call grid_login, then re-call grid_plug; there is no guest or sign-in-free publish. " +
+        `A new plug needs sign-in: when signed out it returns needs_auth — ${ctx.edition === "web" ? "the user signs in through the CloudGrid connector" : "call grid_login"}, then re-call grid_plug; there is no guest or sign-in-free publish. ` +
         "Create and update are the same call: without target_entity_id (or grid+slug) it CREATEs a new URL, with one it UPDATEs that URL in place. " +
         "Pass exactly one source: `html`" +
         (ctx.edition === "web"
@@ -592,7 +580,7 @@ export function registerTools(server, ctx) {
         // they validate: (1) the grid-picker "which grid?" ask (resolveGridOrAsk),
         // and (2) the signed-in CLI-fallback recovery.
         needs_grid: z.boolean().optional().describe("Grid-picker ask: a signed-in user with >1 grid must choose one before this create proceeds. Pass the chosen slug back in `grid`."),
-        needs_auth: z.boolean().optional().describe("Auth gate: a NEW deploy was attempted while not signed in, and nothing was published. Call grid_login so the user signs in, then re-call grid_plug. There is no guest or anonymous publish option — do not offer one."),
+        needs_auth: z.boolean().optional().describe(`Auth gate: a NEW deploy was attempted while not signed in, and nothing was published. ${ctx.edition === "web" ? "Ask the user to sign in to CloudGrid when their AI tool prompts them" : "Call grid_login so the user signs in"}, then re-call grid_plug. There is no guest or anonymous publish option — do not offer one.`),
         needs_org: z.boolean().optional().describe("Alias of needs_grid (legacy picker alias)."),
         grids: z.array(z.object({
           slug: z.string(),
@@ -676,7 +664,7 @@ export function registerTools(server, ctx) {
           if (!token) {
             if (ctx.state) ctx.state.authChoiceOffered = true;
             return okResult({
-              text: AUTH_ASK_SIGNED_OUT,
+              text: authAskSignedOut(ctx),
               structured: { needs_auth: true },
             });
           }
@@ -774,100 +762,102 @@ export function registerTools(server, ctx) {
     },
   );
 
-  // Login — both editions. Local opens a browser and saves to the credentials
-  // file; web returns the URL and saves to the session.
-  reg(
-    "grid_login",
-    {
-      title: "Sign in to CloudGrid",
-      description: "Start a CLI-free CloudGrid sign-in. Use when the user wants to log in, sign in, or authenticate, or when a plug returned needs_auth. Returns a URL to open in the browser; then call grid_login_status to finish. Uses CloudGrid's existing OAuth.",
-      inputSchema: {},
-      outputSchema: {
-        login_url: z.string().describe("URL to open in a browser to complete sign-in."),
+  // Login — local edition only. It opens a browser and saves to the credentials
+  // file. The hosted edition has no sign-in tool: the AI tool's connector signs
+  // the user in (OAuth) when a tool needs an account (src/web-auth.js).
+  if (ctx.edition !== "web") {
+    reg(
+      "grid_login",
+      {
+        title: "Sign in to CloudGrid",
+        description: "Start a CLI-free CloudGrid sign-in. Use when the user wants to log in, sign in, or authenticate, or when a plug returned needs_auth. Returns a URL to open in the browser; then call grid_login_status to finish. Uses CloudGrid's existing OAuth.",
+        inputSchema: {},
+        outputSchema: {
+          login_url: z.string().describe("URL to open in a browser to complete sign-in."),
+        },
+        annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+        // Bind the SEP-1865 sign-in card on the web edition (Claude web) via the
+        // standard `_meta.ui.resourceUri` key. It carries NO openai/outputTemplate
+        // and is not gated by MCP_APPS_WIDGETS, so it is the Claude sign-in card;
+        // a client without the UI extension ignores _meta.ui and gets the
+        // text-first result below. NOT gated behind MCP_APPS_WIDGETS — a
+        // second, independent mechanism (see constants.js). The result shape is
+        // unchanged: content[0] stays the sign-in URL text so the link is never
+        // unreachable if the card does not render.
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
-      // Bind the SEP-1865 sign-in card on the web edition (Claude web) via the
-      // standard `_meta.ui.resourceUri` key. It carries NO openai/outputTemplate
-      // and is not gated by MCP_APPS_WIDGETS, so it is the Claude sign-in card;
-      // a client without the UI extension ignores _meta.ui and gets the
-      // text-first result below. NOT gated behind MCP_APPS_WIDGETS — a
-      // second, independent mechanism (see constants.js). The result shape is
-      // unchanged: content[0] stays the sign-in URL text so the link is never
-      // unreachable if the card does not render.
-      ...(ctx.edition === "web" ? { _meta: { ui: { resourceUri: GRID_LOGIN_APP_URI } } } : {}),
-    },
-    async () => {
-      try {
-        await checkApiConnectivity();
-      } catch (err) {
-        if (err.certError) return fail(err.message);
-      }
-      const code = newLoginCode();
-      ctx.state.pendingLoginCode = code;
-      const url = buildLoginUrl(code);
-      if (ctx.canOpenBrowser) tryOpenBrowser(url);
-      return {
-        content: [{ type: "text", text:
-          // #298: the sign-in link on its own line, unadorned, so every client
-          // linkifies it and the eye lands on it; the model-directed follow-up is
-          // quarantined in the trailing (assistant: …) line.
-          `Open this link to sign in, then finish in your browser:\n\n${url}\n\n` +
-          `(assistant: after they complete it, call grid_login_status to finish.)`,
-        }],
-        structuredContent: { login_url: url },
-      };
-    },
-  );
-
-  reg(
-    "grid_login_status",
-    {
-      title: "Check sign-in status",
-      description: "Finish a sign-in started by grid_login. Polls once: if you have completed the browser sign-in, it saves your session; otherwise it tells you to finish and try again.",
-      inputSchema: {
-        code: z.string().optional().describe("The sign-in code. Defaults to the most recent grid_login."),
-      },
-      outputSchema: {
-        status: z.enum(["authenticated", "pending"]).describe("Current sign-in state."),
-        email: z.string().optional().describe("Signed-in email, when authenticated."),
-      },
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
-    },
-    async (input) => {
-      const code = input?.code || ctx.state.pendingLoginCode;
-      if (!code) return fail("No sign-in is in progress. Run grid_login first.");
-      let status;
-      try {
-        status = await pollStatusOnce(code);
-      } catch (err) {
-        return fail(err.message);
-      }
-      if (status.status === "authenticated" && status.jwt) {
-        let info;
+      async () => {
         try {
-          info = await ctx.saveToken(status.jwt);
+          await checkApiConnectivity();
         } catch (err) {
-          return fail(`Signed in, but could not save credentials: ${err.message}`);
+          if (err.certError) return fail(err.message);
         }
-        ctx.state.pendingLoginCode = null;
-        const who = info?.email ? ` as ${info.email}` : "";
-        return {
-          content: [{ type: "text", text: `Signed in${who}. ${ctx.savedLocationNote()}` }],
-          structuredContent: { status: "authenticated", ...(info?.email ? { email: info.email } : {}) },
-        };
-      }
-      if (status.status === "pending" || status.status === "not_started") {
+        const code = newLoginCode();
+        ctx.state.pendingLoginCode = code;
+        const url = buildLoginUrl(code);
+        if (ctx.canOpenBrowser) tryOpenBrowser(url);
         return {
           content: [{ type: "text", text:
-            "Still waiting for you to finish signing in. Open the URL from grid_login " +
-            "in your browser, complete it with Google, then run grid_login_status again.",
+            // #298: the sign-in link on its own line, unadorned, so every client
+            // linkifies it and the eye lands on it; the model-directed follow-up is
+            // quarantined in the trailing (assistant: …) line.
+            `Open this link to sign in, then finish in your browser:\n\n${url}\n\n` +
+            `(assistant: after they complete it, call grid_login_status to finish.)`,
           }],
-          structuredContent: { status: "pending" },
+          structuredContent: { login_url: url },
         };
-      }
-      return fail("The sign-in window expired (5 minutes). Run grid_login to start again.");
-    },
-  );
+      },
+    );
+
+    reg(
+      "grid_login_status",
+      {
+        title: "Check sign-in status",
+        description: "Finish a sign-in started by grid_login. Polls once: if you have completed the browser sign-in, it saves your session; otherwise it tells you to finish and try again.",
+        inputSchema: {
+          code: z.string().optional().describe("The sign-in code. Defaults to the most recent grid_login."),
+        },
+        outputSchema: {
+          status: z.enum(["authenticated", "pending"]).describe("Current sign-in state."),
+          email: z.string().optional().describe("Signed-in email, when authenticated."),
+        },
+        annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+      },
+      async (input) => {
+        const code = input?.code || ctx.state.pendingLoginCode;
+        if (!code) return fail("No sign-in is in progress. Run grid_login first.");
+        let status;
+        try {
+          status = await pollStatusOnce(code);
+        } catch (err) {
+          return fail(err.message);
+        }
+        if (status.status === "authenticated" && status.jwt) {
+          let info;
+          try {
+            info = await ctx.saveToken(status.jwt);
+          } catch (err) {
+            return fail(`Signed in, but could not save credentials: ${err.message}`);
+          }
+          ctx.state.pendingLoginCode = null;
+          const who = info?.email ? ` as ${info.email}` : "";
+          return {
+            content: [{ type: "text", text: `Signed in${who}. ${ctx.savedLocationNote()}` }],
+            structuredContent: { status: "authenticated", ...(info?.email ? { email: info.email } : {}) },
+          };
+        }
+        if (status.status === "pending" || status.status === "not_started") {
+          return {
+            content: [{ type: "text", text:
+              "Still waiting for you to finish signing in. Open the URL from grid_login " +
+              "in your browser, complete it with Google, then run grid_login_status again.",
+            }],
+            structuredContent: { status: "pending" },
+          };
+        }
+        return fail("The sign-in window expired (5 minutes). Run grid_login to start again.");
+      },
+    );
+  }
 
   reg(
     "grid_visibility",
@@ -980,7 +970,7 @@ export function registerTools(server, ctx) {
     async () => {
       const token = await ctx.getToken();
       if (!token) {
-        return fail("You are not signed in. Run grid_login first.");
+        return fail(ctx.edition === "web" ? `You are not signed in. ${signInHow(ctx)} first.` : "You are not signed in. Run grid_login first.");
       }
       let grids;
       try {
@@ -1047,7 +1037,7 @@ export function registerTools(server, ctx) {
             active_grid: z.string().nullable().describe("The user's active grid/org slug, or null."),
             signed_in: z.boolean().describe("Whether the current session is signed in."),
             email: z.string().optional().describe("The signed-in user's email — the CloudGrid account this session is authenticated as. Present whenever signed_in is true and the session token carries an email claim (the normal case). Absent only if signed_in is false, or on the rare token that lacks the claim; the identity line in this tool's text content states which case applies. Use this to answer 'which account/user am I?'."),
-            session_expired: z.boolean().optional().describe("True when credentials exist but the JWT has expired. Run grid_login to sign in again."),
+            session_expired: z.boolean().optional().describe(`True when credentials exist but the JWT has expired. ${ctx.edition === "web" ? "The user signs in to CloudGrid again through their AI tool." : "Run grid_login to sign in again."}`),
             identity_changed: z.boolean().optional().describe("True when the session's identity changed via a different transport Bearer. Session state was reset."),
             update_available: z
               .object({
@@ -1139,14 +1129,18 @@ export function registerTools(server, ctx) {
         ? signedInEmail
           ? `You are signed in to CloudGrid as ${signedInEmail}${gridSuffix}. If the user asks which CloudGrid account, user, or email they are connected to, that is the answer.`
           : `You are signed in to CloudGrid${gridSuffix}, but this session's token carries no email claim, so the account address is not available here. Do not guess it from grid memberships or the CLI (its session may be a different account).`
-        : `You are not signed in to CloudGrid. Run grid_login to sign in.`;
+        : ctx.edition === "web"
+          ? "You are not signed in to CloudGrid. Browsing templates and app sources works signed out; creating or changing anything needs an account, and the user's AI tool asks them to sign in when a tool needs one."
+          : "You are not signed in to CloudGrid. Run grid_login to sign in.";
       let text =
         `${identityLine}\n\n${ORIENTATION}\n\nAvailable workflows:\n${wfLines}\n\n` +
         `Next: match the intent to a workflow and call grid_get_template({kind:"workflow", name}); ` +
         `to match in detail, grid_get_template({kind:"doc", name:"capability-map"}).` +
         (stale ? `\n\n${stale}` : "");
       if (sessionExpired) {
-        text += "\n\nYour CloudGrid sign-in has expired. Run grid_login to sign in again.";
+        text += ctx.edition === "web"
+          ? "\n\nYour CloudGrid sign-in has expired. Sign in again when your AI tool asks."
+          : "\n\nYour CloudGrid sign-in has expired. Run grid_login to sign in again.";
       }
       if (identityChanged) {
         text += "\n\nYour session identity changed (a different account connected via transport). Session state has been reset.";
@@ -1299,12 +1293,12 @@ export function registerTools(server, ctx) {
         //    a result the model acts on by running grid_login.
         const token = await ctx.getToken();
         if (!token) {
-          // NOT the shared AUTH_ASK_SIGNED_OUT: that tells the model to re-call
+          // NOT the shared authAskSignedOut: that tells the model to re-call
           // grid_plug, which would send it to a different tool with no source.
           // Say only what grid_hello can actually do.
           return okResult({
             text:
-              "Plugging a hello page needs an account. Call grid_login to sign in, "
+              `Plugging a hello page needs an account. ${signInHow(ctx)}, `
               + "then re-call grid_hello.",
             structured: { needs_auth: true },
           });
@@ -1379,7 +1373,7 @@ export function registerTools(server, ctx) {
           const token = await ctx.getToken();
           if (!token) {
             return okResult({
-              text: "Deleting an inspiration needs an account. Call grid_login to sign in, then re-call grid_delete.",
+              text: `Deleting an inspiration needs an account. ${signInHow(ctx)}, then re-call grid_delete.`,
               structured: { needs_auth: true },
             });
           }

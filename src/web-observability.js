@@ -62,8 +62,10 @@ export function keyShape(value, depth = 0) {
 }
 
 // The 401 auth challenge on /mcp (REQUIRE_AUTH && no usable Bearer).
-export function logAuthChallenge(req, emit = defaultEmit) {
-  emit(`cloudgrid-mcp: /mcp 401 auth-challenge authorization=${authHeaderState(req)}`);
+// `reason` is a fixed word from the gate (connect, protected-tool, or a token
+// check result such as expired / wrong_audience), never client text.
+export function logAuthChallenge(req, emit = defaultEmit, reason = "") {
+  emit(`cloudgrid-mcp: /mcp 401 auth-challenge authorization=${authHeaderState(req)}${reason ? ` reason=${logSafe(reason, 32)}` : ""}`);
 }
 
 // The first 400 branch: a request with no session id that is not an initialize.

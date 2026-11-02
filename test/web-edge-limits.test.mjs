@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { setTimeout as sleep } from "node:timers/promises";
+import { TEST_SIGNING_SEED } from "./helpers/mcp-tokens.mjs";
 import {
   createOriginMatcher,
   createSessionIds,
@@ -154,6 +155,9 @@ function baseEnv(port, extra) {
     CLOUDGRID_PUBLIC_API_URL: "http://127.0.0.1:1",
     CLOUDGRID_QA_SLACK_WEBHOOK: "",
     MCP_TRUSTED_SERVER_SECRET: "",
+    // This file tests session and rate limits, not sign-in: its client gets the
+    // per-call signal, so it can open sessions and browse without a token.
+    MCP_AUTH_MODE_OVERRIDES: "edge-limits=call",
     HTTPS_PROXY: "", HTTP_PROXY: "", ALL_PROXY: "",
     https_proxy: "", http_proxy: "", all_proxy: "",
     NO_PROXY: "localhost,127.0.0.1", no_proxy: "localhost,127.0.0.1",
@@ -313,8 +317,8 @@ describe("web edition: rate limits", () => {
   before(async () => {
     h = await startWeb({
       MCP_SESSION_SECRET: "edge-test",
-      MCP_REQUIRE_AUTH: "1",
       MCP_OAUTH_HMAC_SECRET: "edge-test-oauth-secret-edge-test-oauth",
+      MCP_TOKEN_SIGNING_KEYS: TEST_SIGNING_SEED,
       MCP_RATE_OAUTH_REGISTER: "2",
       MCP_RATE_OAUTH_AUTHORIZE: "2",
       MCP_RATE_OAUTH_TOKEN: "2",
@@ -366,11 +370,10 @@ describe("web edition: rate limits", () => {
   });
 
   test("initialize on /mcp is limited per client IP with a JSON-RPC 429", async () => {
-    const auth = "Bearer x.eyJzdWIiOiJ1In0.";
     const init = (xff) =>
       fetch(`${h.base}/mcp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", Authorization: auth, "X-Forwarded-For": xff },
+        headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", "X-Forwarded-For": xff },
         body: JSON.stringify(INITIALIZE_BODY),
       });
     assert.equal((await init("198.51.100.4")).status, 200);

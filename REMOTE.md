@@ -53,15 +53,25 @@ sticky-session ingress for more.
 
 ## Identity on the web
 
-A hosted server cannot read a local credentials file, so each session signs in
-through the server:
+A hosted server cannot read a local credentials file. The user signs in through
+their AI tool's connector (the OAuth connect below); the hosted edition has no
+sign-in tool. Browsing tools (`grid_start`, `grid_get_template`,
+`grid_get_app_source`) work signed out; every other tool needs an account.
 
-1. `grid_login` returns the sign-in URL (no browser auto-open on a server).
-2. The user completes Google sign-in.
-3. `grid_login_status` polls and holds the token in the session.
+How each AI tool is asked to sign in depends on the client (`authMode` in
+`src/web-auth.js`, chosen from `clientInfo` at initialize):
 
-Publishing needs sign-in: a signed-out `grid_plug` create returns `needs_auth` and
-publishes nothing. A signed-in user may plug an entity outside their grid; later,
+- Claude (web, desktop, mobile) and ChatGPT: HTTP 401 with a `WWW-Authenticate`
+  challenge on the first tool call that needs an account.
+- Claude Code, Gemini CLI, VS Code, Cursor, Copilot Studio and any other client:
+  HTTP 401 on `initialize`, so sign-in happens when the server is added.
+- `MCP_AUTH_MODE_OVERRIDES` (`name=mode`, comma separated; modes `call`,
+  `tool-error`, `connect`) changes one client's signal without a release. In
+  `tool-error` mode the call is answered with a tool error carrying
+  `_meta["mcp/www_authenticate"]`.
+
+`clientInfo` only picks the signal: a protected call without a valid token is
+refused in every mode, so nothing is published signed out. A signed-in user may plug an entity outside their grid; later,
 only its owner can claim it into a grid of their choosing (`grid_pull` with its
 `claim_token`), and it can be re-plugged in place with its `owner_token`.
 
@@ -97,17 +107,74 @@ the platform keys the cap on the per-user id instead:
 
 The web edition implements the MCP authorization spec — metadata discovery,
 dynamic client registration, and the PKCE authorization-code flow — as a bridge
-over CloudGrid's existing sign-in. A client that completes the connect sends a
-Bearer on its MCP requests, and that token becomes the session's identity (drops
-publish into the user's grid; claims work). The in-tool `grid_login` remains
-as the fallback.
+over CloudGrid's existing sign-in, on every host. The token endpoint returns an
+access token this server signs for itself (`alg: EdDSA`, `typ: at+jwt`, `aud` =
+the resource URL). Every request that presents one is checked for signature,
+audience, issuer and expiry; an invalid token gets a 401 with
+`error="invalid_token"`. The CloudGrid session the sign-in produced is sealed
+inside the token (AES-256-GCM) and used only for this server's own calls to the
+CloudGrid API; it is never returned to the client or accepted from it.
 
 - `MCP_PUBLIC_URL` — this server's public origin (default `https://mcp.cloudgrid.io`),
   used in the OAuth metadata.
-- `MCP_REQUIRE_AUTH=1` — make the connect mandatory: unauthenticated `/mcp` requests
-  get a 401 challenge, which is what triggers a client's native connect flow.
-  Default off: the session starts without a credential and signs in from the
-  conversation (`grid_login`); a Bearer is honored when presented.
+- `MCP_ALIAS_URLS` — other public origins served by the same server (comma
+  separated). Each is answered for its own origin, and a token issued on any of
+  them is accepted on all.
+- `MCP_TOKEN_SIGNING_KEYS` — the access-token signing keys, from a Kubernetes
+  Secret: base64url 32-byte Ed25519 seeds, comma separated. The first signs, all
+  verify; each key's `kid` is its RFC 7638 thumbprint. Rotate by appending the new
+  key, then moving it to the front, then (after the longest token lifetime)
+  dropping the old one. Unset: a per-process key, and clients sign in again after
+  a restart.
+  A server that has `MCP_OAUTH_HMAC_SECRET`, or a public (non-loopback)
+  `MCP_PUBLIC_URL`, but no signing key refuses to start.
+- `MCP_TOKEN_SEAL_KEYS` — optional keys that seal the CloudGrid session inside
+  the token (same list format). Unset: derived from each signing key.
+- `MCP_ACCESS_TOKEN_TTL_S` — access-token lifetime. Default without a refresh
+  store: 30 days (never past the CloudGrid session sealed in the token).
+- Signing out of CloudGrid reaches the AI tool: the server checks the sealed
+  session with the API on every call (cached for at most 30 s), and any API call refused as
+  signed out marks it, so the next request gets a 401 and the AI tool signs in
+  again. If the API cannot be asked, the request gets 503 (fail closed).
+- A session belongs to one account: a token for another account on the same
+  `mcp-session-id` gets 404, and the client starts a new session; a request with
+  no token on a session that has an account gets 401.
+- Tool calls send the API a short-lived token scoped for a connected AI tool
+  (`POST /api/v2/auth/token/downstream`, authenticated as the trusted server),
+  not the CloudGrid session itself. If the API does not offer it yet (404), the
+  session itself is used; any other failure answers 503.
+- Refresh tokens rotate: each works once and returns a new access token and a
+  new refresh token. A refresh token presented a second time ends that sign-in
+  (every token in it stops working, access tokens included: an access token
+  names its sign-in, checked on each request with a 30 s cache). `client_id` is
+  required at refresh, and every check runs before the refresh token is used.
+  A sign-in slides on use and never outlives
+  the CloudGrid session sealed in it. Only SHA-256 hashes of refresh tokens are
+  stored, under `mcp:oauth:`; the store uses GET, SET, GETDEL, DEL and EXPIRE
+  only (no scripting, no transactions).
+- `MCP_REDIS_URL` (`redis://user@host:6379`) and `MCP_REDIS_PASSWORD` (from a
+  Secret) — the refresh-token store. `MCP_REFRESH_STORE=memory` keeps it in the
+  process instead (local runs; not shared between replicas, lost on restart).
+  Neither set: no refresh tokens.
+- `MCP_REFRESH_TOKEN_TTL_S` (default 2592000, sliding) applies with a store.
+  With a store, `MCP_ACCESS_TOKEN_TTL_S` defaults to 3600; turning the store on
+  or off changes only what is issued.
+- A CloudGrid session token presented directly as the Bearer (what releases before
+  0.22 returned as the access token) is accepted while it lasts, if it was issued
+  before `MCP_LEGACY_TOKENS_ISSUED_BEFORE` (epoch seconds; set it to the 0.22
+  release time; unset accepts none), after the API confirms it is valid and
+  not signed out.
+
+Sign-in finishes in the browser that started it: `/oauth/authorize` sets a
+host-only binding cookie, and the sign-in status poll completes only when it
+carries that cookie and the browser's `cloudgrid_session` equals the session the
+sign-in produced. A sign-in finished in another browser does not complete the
+flow. A browser already signed in to CloudGrid is offered one-click **Allow**
+(a same-origin form POST to `/oauth/authorize/approve` with the binding cookie
+and a per-session form token). The consent page names a client by its
+registered `client_name` only when its redirect host is `claude.ai`,
+`claude.com`, `chatgpt.com` or loopback; otherwise it says "An application at
+<host>".
 
 Endpoints: `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`,
 `/oauth/register`, `/oauth/authorize` (the sign-in interstitial), `/oauth/token`.
@@ -126,8 +193,7 @@ registration is not actually in effect.
 - Set `MCP_OAUTH_HMAC_SECRET` in the deployment env, sourced from a Kubernetes
   **Secret** (NEVER a ConfigMap; the key must not be logged). It is a
   whitespace/comma-separated list: the first entry signs, all entries verify.
-  Mount it on the connected and staging deployments; the anonymous edge does not
-  mount OAuth and does not need it.
+  Every host serves OAuth, so every deployment mounts it.
 - **Unlike `MCP_TRUSTED_SERVER_SECRET`, this is NOT safe to omit.** With no secret
   set, each process falls back to its own per-process ephemeral key: within one
   process the flow works, but across a restart or multiple replicas a `client_id`

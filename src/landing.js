@@ -1,15 +1,9 @@
 // The root index page and favicon for the hosted web edition.
 //
-// Nothing in the MCP spec lives at "/" — clients discover this server at /mcp and,
-// on the sign-in-required host, through the OAuth metadata under /.well-known. So
-// this page exists purely for the human who pastes the hostname into a browser: it
-// says what the endpoint is, which URL to give an MCP client, and which auth
-// posture THIS host is on. Both hosts run the same image and are otherwise
-// indistinguishable from the outside, so the posture line is the point.
-//
-// One template, both postures. The auth line is derived from the same
-// requireAuth flag that gates the OAuth routes and the 401 challenge, so the page
-// cannot drift from the behaviour it describes.
+// Nothing in the MCP spec lives at "/" — clients discover this server at /mcp and
+// through the OAuth metadata under /.well-known. So this page exists purely for
+// the human who pastes the hostname into a browser: it says what the endpoint
+// is, which URL to give an MCP client, and when sign-in is asked for.
 //
 // Self-contained by design: no third-party scripts, no external fonts, no
 // analytics. This origin also serves the OAuth interstitial, and an auth surface
@@ -38,12 +32,12 @@ const DESCRIPTION =
   "Model Context Protocol endpoint for CloudGrid. Connect an MCP client to build, " +
   "plug and publish apps from the conversation you are already in.";
 
-export function landingHtml({ base, requireAuth }) {
+export function landingHtml({ base }) {
   const b = esc(base);
-  // The two postures. Each says only what is true of the host serving it.
-  const posture = requireAuth
-    ? "This endpoint requires sign-in. Your client prompts you to connect the first time you add it."
-    : "Sign in with your CloudGrid account from the conversation the first time you plug something in; a client that supports OAuth can also connect with sign-in when you add it.";
+  // One posture for every host: browsing is open, the rest asks the AI tool
+  // to sign in.
+  const posture =
+    "Browsing templates and app sources works without an account. Your AI tool asks you to sign in to CloudGrid the first time a tool needs one.";
 
   return `<!doctype html>
 <html lang="en">
@@ -94,18 +88,16 @@ export function landingHtml({ base, requireAuth }) {
 /**
  * Mounts the index page and favicon routes.
  *
- * These are unauthenticated static reads on both postures, alongside the existing
- * /healthz. The sign-in-required host's 401 challenge lives inside the POST /mcp
+ * These are unauthenticated static reads, alongside the existing
+ * /healthz. The sign-in challenge lives inside the POST /mcp
  * handler rather than in middleware, so serving a page here does not weaken it and
  * does not interfere with a client's OAuth connect.
  *
  * publicBase — this server's public origin, used for the absolute Open Graph URLs.
- * opts.requireAuth — mirrors the MCP_REQUIRE_AUTH posture; selects the auth line.
  */
-export function mountLanding(app, publicBase, opts = {}) {
+export function mountLanding(app, publicBase) {
   const base = String(publicBase).replace(/\/+$/, "");
-  const requireAuth = Boolean(opts.requireAuth);
-  const html = landingHtml({ base, requireAuth });
+  const html = landingHtml({ base });
 
   app.get("/", (_req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");

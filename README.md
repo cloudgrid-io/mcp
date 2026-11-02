@@ -86,7 +86,7 @@ posted). `CLOUDGRID_QA_IDLE_MS` overrides the abandoned-idle window (default
 <!-- gen:tools -->
 ## Tools
 
-38 tools registered (17 shared across both editions, 21 local-only). No deprecated aliases. MIN_CLI_VERSION: 0.15.26.
+38 tools registered (15 shared across both editions, 23 local-only). No deprecated aliases. MIN_CLI_VERSION: 0.15.26.
 
 ### Direct-API tools (both editions)
 
@@ -99,8 +99,6 @@ posted). `CLOUDGRID_QA_IDLE_MS` overrides the abandoned-idle window (default
 | `grid_note` | API | Leave a one-paragraph summary of what you built this session and why, for the local edition's optional QA session log... |
 | `grid_plug` | API | Plug an app, website, game, or single HTML page into CloudGrid and get a live public URL in seconds. |
 | `grid_get_app_source` | API | Retrieve the CURRENT deployed HTML of an inspiration/drop inline as text, so you can edit it and re-plug the SAME URL... |
-| `grid_login` | API | Start a CLI-free CloudGrid sign-in. |
-| `grid_login_status` | API | Finish a sign-in started by grid_login. |
 | `grid_visibility` | API | Change who can see a CloudGrid inspiration OR runtime app/agent. |
 | `grid_check_deploy` | API | Check whether an async runtime-app build has finished and the app is live. |
 | `grid_list_grids` | API | List the signed-in user's grids, each with slug, name, role, and provisioning status. |
@@ -118,6 +116,8 @@ CLI uses, so the two share one identity.
 
 | Tool | Wraps | Summary |
 |---|---|---|
+| `grid_login` | API | Start a CLI-free CloudGrid sign-in. |
+| `grid_login_status` | API | Finish a sign-in started by grid_login. |
 | `grid_create_project` | `grid new` | Scaffold a new CloudGrid app or agent folder (cloudgrid.yaml + a web service), optionally pre-declaring resources. |
 | `grid_view_logs` | `grid logs` | Tail recent logs for an entity. |
 | `grid_share` | `grid visibility set` | Set an entity's visibility and print its URL. |
@@ -195,8 +195,10 @@ Full policy: <https://cloudgrid.io/privacy>
 **Authentication.** `grid_login` opens a browser-based Google sign-in flow via
 CloudGrid's API (`/auth/login`). The returned JWT is stored at
 `~/.cloudgrid/credentials` with `0600` permissions — the CLI and the MCP share
-one credential file by design (`auth.js:7-8`). The web edition holds the JWT in
-memory only for the session duration.
+one credential file by design (`auth.js:7-8`). The web edition has no sign-in
+tool: the AI tool's connector signs in with OAuth, and this server issues its own
+short-lived access token, with the CloudGrid session sealed inside it, so the
+session is never handed to the AI tool.
 
 **Deploying.** `grid_plug` uploads your app files (HTML, source, assets) to
 `https://api.cloudgrid.io/api/v2/plug`. Before upload, inline sources are
