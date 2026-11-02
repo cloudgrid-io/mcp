@@ -86,6 +86,10 @@ export const VISIBILITY_LABELS = {
 //
 // The flag stays where the platform sets it; this only makes the resource the
 // type ChatGPT now expects. Done is a card seen rendering in real ChatGPT.
+//
+// #434: the flag now governs ONLY the grid-picker widget. The live-result card
+// was rebuilt as an MCP App on the standard bridge (src/widgets/live-result/)
+// and is bound on the web edition for both hosts, like the sign-in card.
 export const APPS_WIDGETS_ENABLED = process.env.MCP_APPS_WIDGETS === "1";
 // The mimeType ChatGPT's Apps-SDK renderer requires for a ui:// widget resource.
 // Since SEP-1865 (2026-01-26) this EQUALS RESOURCE_MIME_TYPE (`text/html;profile=
@@ -101,7 +105,46 @@ export const LIVE_RESULT_URI = "ui://cloudgrid/live-result.html";
 // URI/resource-name/filename stay `org-picker` — that's the stable contract the
 // web card is registered under; only the JS identifier moves toward grid.
 export const GRID_PICKER_URI = "ui://cloudgrid/org-picker.html";
+// The live-result card (#434) is an MCP App built from src/widgets/live-result/
+// by scripts/build-widgets.mjs. It speaks the standard MCP Apps bridge, so one
+// card serves Claude (`_meta.ui.resourceUri`) and ChatGPT (which reads the same
+// key, and `openai/outputTemplate` as its alias).
 export const LIVE_RESULT_HTML = readFileSync(new URL("../widgets/live-result.html", import.meta.url), "utf-8");
+
+// ── Live preview origin (#434) ───────────────────────────────────────────────
+// The card can frame a live preview of the app, but only from ONE origin that
+// the resource CSP (`_meta.ui.csp.frameDomains`) and the directories'
+// allowed-domain lists can name. That origin is configured, not derived:
+// MCP_PREVIEW_ORIGIN=https://preview.example.com. Unset (the default) the card
+// shows the URL and its actions with no frame, and the CSP admits nothing.
+// Anything that is not a bare https origin is ignored, so a typo never widens
+// the CSP. Read at call time so a test can set it per case.
+export function previewOrigin() {
+  const raw = process.env.MCP_PREVIEW_ORIGIN;
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "https:" || u.username || u.password) return null;
+    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(u.hostname)) return null;
+    if ((u.pathname && u.pathname !== "/") || u.search || u.hash) return null;
+    
+    return u.origin;
+  } catch {
+    return null;
+  }
+}
+
+// The preview URL for an entity: <origin>/<entity_id>. Null when no preview
+// origin is configured or the id is not a plain identifier.
+export function previewUrlFor(entityId) {
+  const origin = previewOrigin();
+  if (!origin || typeof entityId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(entityId)) return null;
+  return `${origin}/${entityId}`;
+}
+
+// The result `_meta` key that carries the preview URL to the card. Result
+// `_meta` reaches the widget and is not part of the model's tool output.
+export const PREVIEW_META_KEY = "cloudgrid/preview_url";
 export const GRID_PICKER_HTML = readFileSync(new URL("../widgets/org-picker.html", import.meta.url), "utf-8");
 
 // ── grid_login MCP App (SEP-1865, Claude web) ────────────────────────────────
@@ -112,7 +155,7 @@ export const GRID_PICKER_HTML = readFileSync(new URL("../widgets/org-picker.html
 // which ChatGPT ignores — so shipping it does not touch the ChatGPT path. A
 // client without the UI extension ignores _meta.ui and still gets the text-first
 // sign-in URL. The HTML is the self-contained bundle from
-// scripts/build-login-widget.mjs (App class + card inlined; deny-by-default CSP).
+// scripts/build-widgets.mjs (App class + card inlined; deny-by-default CSP).
 export const GRID_LOGIN_APP_URI = "ui://grid-login/mcp-app.html";
 export const GRID_LOGIN_APP_HTML = readFileSync(new URL("../widgets/grid-login.html", import.meta.url), "utf-8");
 

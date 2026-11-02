@@ -142,6 +142,22 @@ registration is not actually in effect.
   key later. Prepending straight away makes new pods sign under a key the
   not-yet-updated pods cannot verify, causing transient 400s.
 
+## App card after a plug
+
+On the web edition, `grid_plug` and `grid_hello` bind the live-result card
+(`ui://cloudgrid/live-result.html`) through `_meta.ui.resourceUri`, the MCP Apps
+key, and `openai/outputTemplate`, ChatGPT's alias for it. The card shows the
+app URL with Open, Copy link, Update, and who can open it, and calls
+`grid_visibility` and `grid_check_deploy` over the host bridge. Clients without
+the UI extension get the text result, which starts with the URL.
+
+The card's CSP admits no outside origin. A live preview frame is off by
+default; set `MCP_PREVIEW_ORIGIN` to a bare https origin (for example
+`https://preview.example.com`) to turn it on. The resource CSP then names that
+one origin in `frameDomains`, and each plug result carries
+`<origin>/<entity_id>` in its `_meta` for the card to frame. Any other value is
+ignored.
+
 ## Launch follow-ups
 - **CORS / DNS-rebinding / allowed hosts.** Configure at deploy time for the public
   host.

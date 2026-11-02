@@ -328,11 +328,16 @@ jobs:
       # stops on success, at the wall-clock ceiling, and after a run of errors —
       # never polls before start, and skips round-trips while the tab is hidden.
       - run: npm run test:login-poller
-      # The served card (src/widgets/grid-login.html) is a built artifact: the
-      # ext-apps App class bundled inline by scripts/build-login-widget.mjs. Fail
-      # if it drifts from src/widgets/grid-login/ so the committed resource can
-      # never fall out of sync with its source.
-      - run: npm run build:login-widget -- --check
+      # live-result MCP App (#434): the app card after a plug, on Claude and
+      # ChatGPT. Asserts the tool bindings, the resource CSP (deny-by-default,
+      # one preview origin only when configured), the result _meta preview URL,
+      # the text-first URL fallback, and the card's pure view logic.
+      - run: npm run test:live-result
+      # The served cards (src/widgets/grid-login.html, live-result.html) are
+      # built artifacts: the ext-apps App class bundled inline by
+      # scripts/build-widgets.mjs. Fail if either drifts from its source folder
+      # so a committed resource can never fall out of sync with its source.
+      - run: npm run build:widgets -- --check
       # Tool titles (#201) + targeting-vocabulary convergence (#198): every tool
       # has a non-empty title, canonical entity_id/grid params work alongside
       # legacy aliases, org is absent from the published visibility enum.
