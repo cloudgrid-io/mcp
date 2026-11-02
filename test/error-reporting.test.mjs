@@ -6,13 +6,16 @@
 //      node_version, platform:"<platform> <arch>" } to /api/v2/errors (0.8.2:
 //      was /errors/feedback). Source attribution (source/client/platform/
 //      mcp_version) is sent BOTH top-level AND mirrored in context.origin.
-//      Authed → Bearer; anon+web → trusted-server headers. include_conversation
-//      defaults false. CLOUDGRID_TELEMETRY=off suppresses the POST. 429/401/error
+//      Authed → Bearer; anon+web → trusted-server headers. No conversation
+//      field is ever sent (#456). CLOUDGRID_TELEMETRY=off suppresses the POST. 429/401/error
 //      → friendly text, never throws. Secrets in context are scrubbed client-side.
 //   2. scrubReportContext() — redacts secret-looking KEYS, leaves the rest.
 //   3. errorGuidance() report offer — appended on 5xx / INTERNAL_ERROR /
 //      build-deploy failures ONLY; NOT on 429 / needs_grid / 409 EDIT_REJECTED /
 //      401 / 403.
+//   4. The registered grid_report tool, both editions (#456): no
+//      include_conversation parameter (the strict schema rejects it), and the
+//      description says only the message and context the user agreed to are sent.
 //
 // Run: node test/error-reporting.test.mjs
 
@@ -22,7 +25,10 @@ import {
   errorGuidance,
   REPORT_OFFER,
   MCP_VERSION,
+  registerTools,
 } from "../src/tools.js";
+import { readFileSync } from "node:fs";
+import { INSTRUCTIONS_WEB, INSTRUCTIONS_LOCAL } from "../src/playbook.js";
 
 let failures = 0;
 function check(label, cond) {
@@ -250,20 +256,14 @@ try {
     check("missing clientInfo → context.origin.client 'unknown'", c.body.context.origin.client === "unknown");
   }
 
-  // ═══ 2b. include_conversation only when explicitly true ════════════════════
-  {
+  // ═══ 2b. no conversation field on the wire, whatever the caller passes ═════
+  for (const edition of ["local", "web"]) {
     calls = [];
     replies = [{ status: 201, body: { status: "recorded" } }];
-    const ctx = makeCtx({ token: "jwt", edition: "local" });
+    const ctx = makeCtx({ token: "jwt", edition });
     await runReport(ctx, { message: "x", include_conversation: true });
-    check("include_conversation:true forwarded on the wire", calls[0].body.include_conversation === true);
-  }
-  {
-    calls = [];
-    replies = [{ status: 201, body: { status: "recorded" } }];
-    const ctx = makeCtx({ token: "jwt", edition: "local" });
-    await runReport(ctx, { message: "x", include_conversation: false });
-    check("include_conversation:false NOT sent on the wire", calls[0].body.include_conversation === undefined);
+    check(`${edition}: include_conversation is never sent on the wire`,
+      calls.length === 1 && !("include_conversation" in calls[0].body));
   }
 
   // ═══ 2c. anon + web → trusted-server headers, graceful 401 degrade ═════════
@@ -425,7 +425,8 @@ try {
   check("DEPLOY_FAILED → report offer appended", errorGuidance({ status: 422, code: "DEPLOY_FAILED" }) === REPORT_OFFER);
   check("report offer asks for permission first", /ASK the user for permission/.test(REPORT_OFFER));
   check("report offer names grid_report", /grid_report/.test(REPORT_OFFER));
-  check("report offer forbids sending the full conversation without a yes", /do NOT include the full conversation/.test(REPORT_OFFER));
+  check("report offer says only the error and failed request are sent", /send only the error and the failed request, never the conversation/.test(REPORT_OFFER));
+  check("report offer does not suggest the conversation can be sent", !/include the (full|whole) conversation/i.test(REPORT_OFFER));
 
   // ═══ 3b. errorGuidance report offer — EXPECTED conditions do NOT get it ════
   check("429 → NO report offer", errorGuidance({ status: 429 }) !== REPORT_OFFER && !/grid_report/.test(errorGuidance({ status: 429 }) || ""));
@@ -437,6 +438,40 @@ try {
   // shape a needs_grid-adjacent 400 would take) must NOT get the offer either.
   check("unmapped 4xx (no code) → NO report offer", errorGuidance({ status: 400 }) === null);
   check("unmapped 4xx (unknown code) → NO report offer", errorGuidance({ status: 400, code: "SOME_NEW_ERROR" }) === null);
+
+  // ═══ 4. the registered grid_report tool, both editions (#456) ══════════════
+  for (const edition of ["local", "web"]) {
+    const configs = {};
+    const handlers = {};
+    const server = {
+      registerTool: (n, c, h) => { configs[n] = c; handlers[n] = h; },
+      tool: () => {},
+      registerResource: () => {},
+    };
+    registerTools(server, { ...makeCtx({ token: "jwt", edition }), canOpenBrowser: false, saveToken: async () => ({}), savedLocationNote: () => "", logger: null });
+    const cfg = configs.grid_report;
+    check(`${edition}: grid_report is registered`, !!cfg);
+    const shape = cfg.inputSchema?.shape ?? cfg.inputSchema?._def?.shape ?? {};
+    const keys = Object.keys(typeof shape === "function" ? shape() : shape);
+    check(`${edition}: grid_report has no include_conversation parameter`, keys.length > 0 && !keys.includes("include_conversation"));
+    check(`${edition}: grid_report keeps message and context`, keys.includes("message") && keys.includes("context"));
+    check(`${edition}: grid_report schema rejects include_conversation`,
+      cfg.inputSchema.safeParse({ message: "x" }).success &&
+      !cfg.inputSchema.safeParse({ message: "x", include_conversation: true }).success);
+    check(`${edition}: grid_report description does not mention include_conversation`, !/include_conversation/.test(cfg.description));
+    check(`${edition}: grid_report description says only the agreed message and context are sent`,
+      /only the message and context the user agreed to send/.test(cfg.description));
+    // Through the registered handler too: an extra key never reaches the wire.
+    calls = [];
+    replies = [{ status: 201, body: { status: "recorded" } }];
+    await handlers.grid_report({ message: "x", include_conversation: true });
+    check(`${edition}: grid_report handler sends no conversation field`, calls.length === 1 && !("include_conversation" in calls[0].body));
+  }
+  // No served guidance names the removed parameter.
+  const playbookMd = readFileSync(new URL("../src/corpus/playbook.md", import.meta.url), "utf8");
+  for (const [name, text] of [["INSTRUCTIONS_WEB", INSTRUCTIONS_WEB], ["INSTRUCTIONS_LOCAL", INSTRUCTIONS_LOCAL], ["playbook.md", playbookMd]]) {
+    check(`${name} does not mention include_conversation`, !/include_conversation/.test(text));
+  }
 } catch (err) {
   console.error("test harness error:", err);
   failures++;
