@@ -166,7 +166,7 @@ check("web: HTML carries the card actions", ["Open", "Copy link", "Update", "Who
   check("fallback: preview on → result _meta carries the preview URL", on?._meta?.[PREVIEW_META_KEY] === `${ORIGIN}/ent-h`);
   check("fallback: text identical with preview on or off", on?.content?.[0]?.text === off?.content?.[0]?.text);
   check("fallback: preview URL never in the text or structured output",
-    !JSON.stringify(on?.content).includes(ORIGIN) && !JSON.stringify(on?.structuredContent).includes(ORIGIN));
+    !/preview\.example\.com/.test(JSON.stringify(on?.content)) && !/preview\.example\.com/.test(JSON.stringify(on?.structuredContent)));
 }
 
 // ── 6. card view logic ───────────────────────────────────────────────────────
@@ -212,7 +212,7 @@ check("web: HTML carries the card actions", ["Open", "Copy link", "Update", "Who
 
   const msg = updateMessage(m, "make the header blue");
   check("view: update message names the URL, the change, and target_entity_id",
-    msg.includes("https://g.example/x") && msg.includes("make the header blue") && msg.includes("target_entity_id ent-1"));
+    msg.startsWith("Update my app at https://g.example/x: make the header blue.") && msg.endsWith("target_entity_id ent-1."));
   check("view: update request ends as a sentence before the re-plug instruction", msg.includes("make the header blue. Re-plug"));
   check("view: empty update asks what to change", /Ask me what to change/.test(updateMessage(m, "  ")));
   check("view: visibility args scoped to this entity",
