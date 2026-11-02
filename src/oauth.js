@@ -250,7 +250,12 @@ function readCookies(req) {
     const i = part.indexOf("=");
     if (i <= 0) continue;
     const k = part.slice(0, i).trim();
-    if (!out.has(k)) out.set(k, decodeURIComponent(part.slice(i + 1).trim()));
+    if (out.has(k)) continue;
+    try {
+      out.set(k, decodeURIComponent(part.slice(i + 1).trim()));
+    } catch {
+      /* a malformed value is skipped, not a 500 */
+    }
   }
   return out;
 }

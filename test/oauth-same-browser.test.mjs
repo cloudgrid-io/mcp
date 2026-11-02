@@ -182,3 +182,9 @@ test("a client's own name is shown only for known AI-tool hosts", async () => {
   assert.doesNotMatch(page.html, /<strong>Claude<\/strong>/);
   assert.match(page.html, /An application at <strong>claude\.ai\.evil\.example<\/strong>/);
 });
+
+test("a malformed cookie is skipped, not a server error", async () => {
+  const client_id = await register();
+  const r = await fetch(`${BASE}/oauth/authorize?response_type=code&client_id=${encodeURIComponent(client_id)}&redirect_uri=${encodeURIComponent(REDIRECT)}&code_challenge=${b64url(randomBytes(32))}&code_challenge_method=S256`, { headers: { Cookie: "cloudgrid_session=%E0%A4%A; other=1" } });
+  assert.equal(r.status, 200);
+});
