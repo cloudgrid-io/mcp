@@ -158,6 +158,11 @@ jobs:
       # annotations.
       - run: npm run test:auth-strictness
       # #400: the emitted tools/list contract (schemas snapshot + strict inputs).
+      # #410: every tool description is at most 1,000 characters on both
+      # editions, and grid_plug's keeps its routing phrases and the clauses a
+      # model needs (sign-in, needs_grid, needs_grid_create, no keys, polling,
+      # end with the URL).
+      - run: npm run test:tool-description-length
       - run: npm run test:tools-list-contract
       - run: npm run test:auth
       # OAuth-route gating (M14): anon host 404s OAuth discovery + registration;
