@@ -116,13 +116,15 @@ export function signInRequiredResult(base) {
 
 /**
  * Asks the API whether a CloudGrid session token is valid and not signed out
- * (GET /api/v2/users/me). Answers are cached briefly by the token's hash, so a
- * busy connection costs one API call every few minutes.
+ * (GET /api/v2/users/me). Answers are cached for at most 30 s by the token's
+ * hash, so a busy connection costs about two API calls a minute.
  * Returns { ok: true, sub, email } | { ok: false } | { ok: false, unavailable: true }.
  */
 export function createPlatformValidator({ apiBase, fetchImpl = (...a) => fetch(...a), now = () => Date.now() }) {
   const cache = new Map(); // sha256(token) -> { ok, sub, email, until }
-  const OK_MS = 5 * 60 * 1000;
+  // At most 30 s: with long access tokens this cache is how long a sign-out
+  // can take to reach a connection (founder decision, cloudgrid#5783).
+  const OK_MS = 30 * 1000;
   const BAD_MS = 60 * 1000;
   const REFUSED_MS = 15 * 60 * 1000;
   const MAX = 2000;

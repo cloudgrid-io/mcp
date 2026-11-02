@@ -349,7 +349,8 @@ test("the token endpoint returns this server's token, never the account credenti
   const header = JSON.parse(Buffer.from(tok.access_token.split(".")[0], "base64url").toString());
   assert.equal(header.alg, "EdDSA");
   assert.equal(tok.token_type, "Bearer");
-  assert.ok(tok.expires_in > 0 && tok.expires_in <= 24 * 3600);
+  // No refresh store: a 30-day token, never past the session sealed in it.
+  assert.ok(tok.expires_in > 29 * 86400 && tok.expires_in <= 30 * 86400, `expires_in=${tok.expires_in}`);
 
   const session = await open("claude-code", tok.access_token);
   const before = seenAuth.length;
@@ -577,4 +578,50 @@ test("a server with a public MCP_PUBLIC_URL and no signing key refuses to start"
   });
   const code = await new Promise((r) => c.on("exit", r));
   assert.equal(code, 1);
+});
+
+test("a 30-day access token is honoured late in its life", async () => {
+  const grant = platformJwt("long-user"); // session valid for 30 days from now
+  const issuedAgo = 29 * 86400 * 1000;
+  const old = createTokenService({
+    keys: resolveSigningKeys({ MCP_TOKEN_SIGNING_KEYS: SEED }).keys,
+    issuers: [BASE], audiences: [`${BASE}/mcp`], now: () => Date.now() - issuedAgo,
+  }).issue({ iss: BASE, aud: `${BASE}/mcp`, sub: "long-user", clientId: "c", grant, ttlSeconds: 30 * 86400 }).token;
+  const session = await open("claude-code", old);
+  assert.equal((await rpc(call("grid_list_grids"), { token: old, session })).status, 200, "day 29 of a 30-day token");
+});
+
+test("a Console sign-out reaches a 30-day token on the next call, within 30 s, with no tool error needed", async () => {
+  const grant = platformJwt("signout-30d");
+  const token = clientSideTokens.issue({ iss: BASE, aud: `${BASE}/mcp`, sub: "signout-30d", clientId: "c", grant, ttlSeconds: 30 * 86400 }).token;
+  const session = await open("claude-code", token);
+  assert.equal((await rpc(call("grid_start"), { token, session })).status, 200);
+  signedOut.add(grant); // signed out in the Console; nothing on this server saw it
+  await sleep(31_000); // the per-call check is cached for at most 30 s
+  const next = await rpc(call("grid_start", {}, 9), { token, session });
+  assert.equal(next.status, 401);
+  assert.match(next.headers.get("www-authenticate"), /error="invalid_token"/);
+});
+
+test("MCP_ACCESS_TOKEN_TTL_S changes the lifetime of issued tokens", async () => {
+  const reservation3 = createServer();
+  const p3 = await listen(reservation3);
+  await new Promise((r) => reservation3.close(r));
+  const base3 = `http://127.0.0.1:${p3}`;
+  const c3 = spawn(process.execPath, ["src/web.js"], {
+    env: {
+      PATH: process.env.PATH, PORT: String(p3), MCP_PUBLIC_URL: base3, MCP_TOKEN_SIGNING_KEYS: SEED,
+      MCP_OAUTH_HMAC_SECRET: "ttl-test-hmac-secret-000000000000000000", MCP_ACCESS_TOKEN_TTL_S: "3600",
+      CLOUDGRID_API_URL: apiBase, CLOUDGRID_PUBLIC_API_URL: apiBase, MCP_TRUSTED_SERVER_SECRET: "",
+      NO_PROXY: "localhost,127.0.0.1", no_proxy: "localhost,127.0.0.1", HTTPS_PROXY: "", HTTP_PROXY: "",
+    },
+    stdio: ["ignore", "ignore", "ignore"],
+  });
+  try {
+    for (let i = 0; i < 100; i++) { try { if ((await fetch(`${base3}/healthz`)).ok) break; } catch { /* starting */ } await sleep(50); }
+    const tok = await signIn({ base: base3 });
+    assert.equal(tok.expires_in, 3600);
+  } finally {
+    c3.kill("SIGTERM");
+  }
 });

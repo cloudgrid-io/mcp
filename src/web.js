@@ -134,8 +134,12 @@ const resolveBearer = createBearerResolver({
   exchangeDownstream,
   legacyIssuedBefore: LEGACY_ISSUED_BEFORE,
 });
-// Access-token lifetime while no refresh store is configured: 24 hours.
-const ACCESS_TOKEN_TTL_NO_REFRESH_S = 24 * 3600;
+// Access-token lifetime: MCP_ACCESS_TOKEN_TTL_S. Without a refresh store the
+// default is 30 days (founder decision on cloudgrid#5783, fallback B): a
+// sign-in lasts as long as the CloudGrid session sealed in it (never longer;
+// see grantTtl), and every call checks with the API, cached at most 30 s, that
+// the session is not signed out, so a sign-out takes effect on the next call.
+const ACCESS_TOKEN_TTL_S = envInt(process.env, "MCP_ACCESS_TOKEN_TTL_S", 30 * 24 * 3600);
 
 // The trusted-server credential, if this host is provisioned as one. Sent on
 // anonymous drops so the platform keys the anon-drop cap on the per-user id rather
@@ -260,7 +264,7 @@ app.post("/oauth/token", limit.token);
 mountOAuth(app, {
   bases: BASES,
   tokens,
-  accessTokenTtlSeconds: ACCESS_TOKEN_TTL_NO_REFRESH_S,
+  accessTokenTtlSeconds: ACCESS_TOKEN_TTL_S,
   isOriginAllowed,
 });
 

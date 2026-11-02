@@ -130,9 +130,10 @@ CloudGrid API; it is never returned to the client or accepted from it.
   `MCP_PUBLIC_URL`, but no signing key refuses to start.
 - `MCP_TOKEN_SEAL_KEYS` — optional keys that seal the CloudGrid session inside
   the token (same list format). Unset: derived from each signing key.
-- Access tokens last 24 hours while no refresh store is configured.
+- `MCP_ACCESS_TOKEN_TTL_S` — access-token lifetime. Default without a refresh
+  store: 30 days (never past the CloudGrid session sealed in the token).
 - Signing out of CloudGrid reaches the AI tool: the server checks the sealed
-  session with the API (cached for a few minutes), and any API call refused as
+  session with the API on every call (cached for at most 30 s), and any API call refused as
   signed out marks it, so the next request gets a 401 and the AI tool signs in
   again. If the API cannot be asked, the request gets 503 (fail closed).
 - A session belongs to one account: a token for another account on the same
