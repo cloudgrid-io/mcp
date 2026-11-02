@@ -244,17 +244,19 @@ function bindCookieName(base) {
   return String(base).startsWith("https:") ? "__Host-cg_mcp_authorize" : "cg_mcp_authorize";
 }
 
-function readCookies(req) {
-  const out = new Map();
+// Every value the browser sent for `name` (a tenant on the shared domain can
+// plant a second cookie of the same name), decoded on read. A value that does
+// not decode is skipped, so a cookie planted to break parsing cannot turn the
+// sign-in pages into a 500.
+function cookieValues(req, name) {
+  const out = [];
   for (const part of String(req.headers.cookie || "").split(";")) {
     const i = part.indexOf("=");
-    if (i <= 0) continue;
-    const k = part.slice(0, i).trim();
-    if (out.has(k)) continue;
+    if (i <= 0 || part.slice(0, i).trim() !== name) continue;
     try {
-      out.set(k, decodeURIComponent(part.slice(i + 1).trim()));
+      out.push(decodeURIComponent(part.slice(i + 1).trim()));
     } catch {
-      /* a malformed value is skipped, not a 500 */
+      /* skipped */
     }
   }
   return out;
@@ -658,10 +660,14 @@ export function mountOAuth(app, opts) {
     // Already signed in to CloudGrid in this browser: offer one-click Allow.
     // The session is checked with the API, never trusted from the cookie.
     let signedIn = null;
-    const existing = readCookies(req).get(SESSION_COOKIE);
-    if (existing && opts.validatePlatformToken) {
+    // The account must be named on the page: no email, no one-click path.
+    for (const existing of cookieValues(req, SESSION_COOKIE).slice(0, 3)) {
+      if (!opts.validatePlatformToken) break;
       const v = await opts.validatePlatformToken(existing).catch(() => ({ ok: false }));
-      if (v.ok) signedIn = { email: v.email || "your account" };
+      if (v.ok && v.email) {
+        signedIn = { email: v.email, session: existing };
+        break;
+      }
     }
     authSessions.set(sid, {
       cgCode,
@@ -700,8 +706,8 @@ export function mountOAuth(app, opts) {
   function boundSession(req, sid) {
     const sess = authSessions.get(String(sid));
     if (!sess || Date.now() - sess.created > CODE_TTL_MS) return null;
-    const cookie = readCookies(req).get(bindCookieName(baseFor(req)));
-    return sameSecret(cookie, `${sid}.${sess.bind}`) ? sess : null;
+    const want = `${sid}.${sess.bind}`;
+    return cookieValues(req, bindCookieName(baseFor(req))).some((c) => sameSecret(c, want)) ? sess : null;
   }
 
   // Hand an authorization code for this session back to the client.
@@ -734,7 +740,9 @@ export function mountOAuth(app, opts) {
     const base = baseFor(req);
     const site = req.headers["sec-fetch-site"];
     const origin = req.headers.origin;
-    if ((site !== undefined && site !== "same-origin") || (origin !== undefined && origin !== new URL(base).origin)) {
+    // Both headers are required (decision 033, 2026-11-02 amendment): current
+    // browsers send them on a same-origin form POST.
+    if (site !== "same-origin" || origin !== new URL(base).origin) {
       sendOAuthError(res, "This approval must come from the CloudGrid connect page.", 403);
       return;
     }
@@ -744,9 +752,17 @@ export function mountOAuth(app, opts) {
       sendOAuthError(res, "This connection request has expired or was opened in another browser. Close this page and connect again.");
       return;
     }
-    const grant = readCookies(req).get(SESSION_COOKIE);
-    const v = grant && opts.validatePlatformToken ? await opts.validatePlatformToken(grant).catch(() => ({ ok: false })) : { ok: false };
-    if (!v.ok || !isHttpUrl(sess.redirect_uri)) {
+    // The session the approval is for: one the API accepts and names, checked again now.
+    let grant = null;
+    for (const c of cookieValues(req, SESSION_COOKIE).slice(0, 3)) {
+      if (!opts.validatePlatformToken) break;
+      const v = await opts.validatePlatformToken(c).catch(() => ({ ok: false }));
+      if (v.ok && v.email) {
+        grant = c;
+        break;
+      }
+    }
+    if (!grant || !isHttpUrl(sess.redirect_uri)) {
       sendOAuthError(res, "You are not signed in to CloudGrid in this browser. Close this page and connect again.");
       return;
     }
@@ -799,7 +815,7 @@ export function mountOAuth(app, opts) {
       res.json({ status: "expired" });
       return;
     }
-    if (sameSecret(readCookies(req).get(SESSION_COOKIE), sess.grant)) {
+    if (cookieValues(req, SESSION_COOKIE).some((c) => sameSecret(c, sess.grant))) {
       res.json({ status: "ready", redirect: issueCode(sid, sess, sess.grant) });
       return;
     }

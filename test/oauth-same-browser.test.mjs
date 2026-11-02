@@ -25,6 +25,7 @@ function platformJwt(sub) {
 let nextSignIn = platformJwt("victim");
 let statusCalls = 0;
 const valid = new Set();
+const noEmail = new Set(); // sessions the API answers for without an email
 const api = createServer((req, res) => {
   const json = (s, b) => { res.writeHead(s, { "Content-Type": "application/json" }); res.end(JSON.stringify(b)); };
   if (req.url.startsWith("/auth/status")) {
@@ -36,7 +37,7 @@ const api = createServer((req, res) => {
   if (req.url === "/api/v2/users/me") {
     if (!valid.has(bearer)) return json(401, { code: "AUTH_INVALID" });
     const sub = JSON.parse(Buffer.from(bearer.split(".")[1], "base64url").toString()).sub;
-    return json(200, { user_id: sub, email: `${sub}@example.com` });
+    return json(200, { user_id: sub, ...(noEmail.has(bearer) ? {} : { email: `${sub}@example.com` }) });
   }
   json(404, {});
 });
@@ -98,6 +99,7 @@ test("the binding cookie is host-only and HttpOnly", async () => {
   const a = await openAuthorize();
   assert.match(a.setCookie, /cg_mcp_authorize=/);
   assert.match(a.setCookie, /HttpOnly/i);
+  assert.match(a.setCookie, /SameSite=Lax/i);
   assert.doesNotMatch(a.setCookie, /Domain=/i);
 });
 
@@ -151,11 +153,16 @@ test("a browser already signed in approves with one click", async () => {
       body: new URLSearchParams(body),
     });
   const cookie = `${a.bind}; cloudgrid_session=${session}`;
-  // Refused: from another site, without the form token, without the binding cookie.
+  // Refused: from another site, without the form token, without the binding
+  // cookie, and without either Fetch Metadata or Origin.
+  assert.equal((await approve({ Cookie: cookie }, { sid: a.sid, form_token: a.formToken })).status, 403, "no Sec-Fetch-Site, no Origin");
+  assert.equal((await approve({ Cookie: cookie, "Sec-Fetch-Site": "same-origin" }, { sid: a.sid, form_token: a.formToken })).status, 403, "no Origin");
+  assert.equal((await approve({ Cookie: cookie, Origin: BASE }, { sid: a.sid, form_token: a.formToken })).status, 403, "no Sec-Fetch-Site");
   assert.equal((await approve({ Cookie: cookie, "Sec-Fetch-Site": "cross-site" }, { sid: a.sid, form_token: a.formToken })).status, 403);
   assert.equal((await approve({ Cookie: cookie, Origin: "https://evil.example" }, { sid: a.sid, form_token: a.formToken })).status, 403);
-  assert.equal((await approve({ Cookie: cookie, "Sec-Fetch-Site": "same-origin" }, { sid: a.sid, form_token: "wrong" })).status, 400);
-  assert.equal((await approve({ Cookie: `cloudgrid_session=${session}`, "Sec-Fetch-Site": "same-origin" }, { sid: a.sid, form_token: a.formToken })).status, 400);
+  const same = { "Sec-Fetch-Site": "same-origin", Origin: BASE };
+  assert.equal((await approve({ Cookie: cookie, ...same }, { sid: a.sid, form_token: "wrong" })).status, 400);
+  assert.equal((await approve({ Cookie: `cloudgrid_session=${session}`, ...same }, { sid: a.sid, form_token: a.formToken })).status, 400);
   // Accepted: same origin, binding cookie, form token, a session the API accepts.
   const ok = await approve({ Cookie: cookie, "Sec-Fetch-Site": "same-origin", Origin: BASE }, { sid: a.sid, form_token: a.formToken });
   assert.equal(ok.status, 302);
@@ -187,4 +194,36 @@ test("a malformed cookie is skipped, not a server error", async () => {
   const client_id = await register();
   const r = await fetch(`${BASE}/oauth/authorize?response_type=code&client_id=${encodeURIComponent(client_id)}&redirect_uri=${encodeURIComponent(REDIRECT)}&code_challenge=${b64url(randomBytes(32))}&code_challenge_method=S256`, { headers: { Cookie: "cloudgrid_session=%E0%A4%A; other=1" } });
   assert.equal(r.status, 200);
+});
+
+test("Allow re-checks the session with the API at approval time", async () => {
+  const session = platformJwt("revoked-before-allow");
+  valid.add(session);
+  const a = await openAuthorize({ session });
+  assert.match(a.html, /Allow/);
+  valid.delete(session); // signed out between the page and the click
+  await sleep(31_000); // past the validator's 30 s cache
+  const r = await fetch(`${BASE}/oauth/authorize/approve`, {
+    method: "POST", redirect: "manual",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Cookie: `${a.bind}; cloudgrid_session=${session}`, "Sec-Fetch-Site": "same-origin", Origin: BASE },
+    body: new URLSearchParams({ sid: a.sid, form_token: a.formToken }),
+  });
+  assert.equal(r.status, 400);
+});
+
+test("a planted second cloudgrid_session neither blocks the poll nor names the wrong account silently", async () => {
+  nextSignIn = platformJwt("real-user");
+  const a = await openAuthorize();
+  const planted = platformJwt("planter");
+  const r = await poll(a.sid, `${a.bind}; cloudgrid_session=${planted}; cloudgrid_session=${nextSignIn}`);
+  assert.equal(r.status, "ready", "any cloudgrid_session equal to the sign-in completes it");
+});
+
+test("no email from the API means no one-click Allow", async () => {
+  const session = platformJwt("noemail");
+  valid.add(session);
+  noEmail.add(session);
+  const a = await openAuthorize({ session });
+  assert.doesNotMatch(a.html, /Allow/);
+  assert.match(a.html, /Continue to sign in/);
 });
