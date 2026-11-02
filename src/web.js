@@ -44,6 +44,7 @@ import { API_BASE } from "./tools/constants.js";
 import { createRefreshStore, createMemoryBackend } from "./refresh-store.js";
 import { createRedisClient } from "./redis-client.js";
 import { mountLanding } from "./landing.js";
+import { mountOpenAiChallenge } from "./openai-challenge.js";
 import { createSessionLogger } from "./session-logger.js";
 import { createSink } from "./log-sink.js";
 import { INSTRUCTIONS_WEB } from "./playbook.js";
@@ -312,6 +313,9 @@ app.get("/healthz", (_req, res) => res.json({ ok: true, edition: "web" }));
 
 // The human-facing root page and favicon.
 mountLanding(app, PUBLIC_BASE);
+
+// OpenAI app-directory domain verification (404 unless the token is set).
+mountOpenAiChallenge(app, process.env.MCP_OPENAI_APPS_CHALLENGE);
 
 // Rate limits run before the OAuth handlers. Exact paths: the interstitial's
 // /oauth/authorize/poll is not limited here (it polls every two seconds).
