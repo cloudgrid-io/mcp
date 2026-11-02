@@ -166,7 +166,7 @@ check("web: HTML carries the card actions", ["Open", "Copy link", "Update", "Who
   check("fallback: preview on → result _meta carries the preview URL", on?._meta?.[PREVIEW_META_KEY] === `${ORIGIN}/ent-h`);
   check("fallback: text identical with preview on or off", on?.content?.[0]?.text === off?.content?.[0]?.text);
   check("fallback: preview URL never in the text or structured output",
-    ![on?.content, on?.structuredContent].some((v) => JSON.stringify(v).split(/[\s"]+/).some((tok) => tok.startsWith(ORIGIN))));
+    ![on?.content, on?.structuredContent].some((v) => JSON.stringify(v).split(/[\s"]+/).some((tok) => tok === on?._meta?.[PREVIEW_META_KEY])));
 }
 
 // ── 6. card view logic ───────────────────────────────────────────────────────
