@@ -3095,6 +3095,31 @@ export function gridFromCloudgridUrl(input) {
   return grid;
 }
 
+// The entity slug a CloudGrid URL names. Apps and inspirations share the host
+// `<slug>--<grid>.cloudgrid.io`: there the slug is the label before `--` and the
+// path is a file path, never the slug. On the old inspiration path address
+// `<grid>.cloudgrid.io/<slug>` (which redirects to the host form) it is the first
+// path segment. Null for anything else: a foreign host, a label with more than
+// one `--`, an apex root, a malformed URL. Same host guards as
+// gridFromCloudgridUrl.
+export function slugFromCloudgridUrl(input) {
+  const raw = String(input ?? "").trim();
+  if (!raw) return null;
+  let parsed;
+  try {
+    parsed = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`);
+  } catch {
+    return null;
+  }
+  if (!isCloudgridHost(parsed.hostname)) return null;
+  const labels = parsed.hostname.toLowerCase().split(".");
+  if (labels.length !== 3) return null;
+  const parts = labels[0].split("--");
+  if (parts.length === 2) return parts[0] || null;
+  if (parts.length > 2) return null;
+  return parsed.pathname.replace(/^\/+/, "").split("/")[0] || null;
+}
+
 // Shape an HTML string into the grid_get_app_source result (shared by the API-read
 // and the public-fetch paths). Caps the body at SOURCE_MAX_BYTES. `extra` carries
 // optional edition metadata resolved from the pickup contract (kind, single_html,
@@ -3244,11 +3269,12 @@ export async function runSource(ctx, { entity_id, url, grid, slug } = {}) {
   const resolvedUrl = parsed.toString();
   let eid = entity_id ?? (last && (!entity_id || last.entity_id === entity_id) ? last.entity_id : null);
 
-  // Derive the grid/slug hint from the URL. gridFromCloudgridUrl is the single
-  // host→grid parser (it also handles the flat `<slug>--<grid>` form the old
-  // inline check missed); the slug is the first path segment.
+  // Derive the grid/slug hint from the URL. gridFromCloudgridUrl and
+  // slugFromCloudgridUrl are the single parsers: both read the `<slug>--<grid>`
+  // host, and the slug falls back to the first path segment only on the old
+  // `<grid>.cloudgrid.io/<slug>` path address.
   const gridHint = grid ?? gridFromCloudgridUrl(resolvedUrl);
-  const slugHint = slug ?? (parsed.pathname.replace(/^\/+/, "").split("/")[0] || null);
+  const slugHint = slug ?? slugFromCloudgridUrl(resolvedUrl);
 
   // ── URL → entity_id (fresh chat, no session) via the pickup contract ──────
   // When a bare URL/slug arrived with no known entity_id, resolve a REAL

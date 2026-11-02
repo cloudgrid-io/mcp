@@ -29,7 +29,7 @@
 //
 // Run: node test/plug-grid-derive.test.mjs
 
-import { runPlug, runPull, runCollab, runVisibility, runPickup, rewriteGridHeaderError, isGridHeaderError, gridFromCloudgridUrl } from "../src/tools/deploy.js";
+import { runPlug, runPull, runCollab, runVisibility, runPickup, rewriteGridHeaderError, isGridHeaderError, gridFromCloudgridUrl, slugFromCloudgridUrl } from "../src/tools/deploy.js";
 
 let failures = 0;
 function check(label, cond) {
@@ -320,6 +320,18 @@ try {
   check("helper: malformed → null (no throw)", gridFromCloudgridUrl("::: not a url %%%") === null);
   check("helper: empty/nullish → null", gridFromCloudgridUrl("") === null && gridFromCloudgridUrl(null) === null && gridFromCloudgridUrl(undefined) === null);
   check("helper: deep host (extra label) → null", gridFromCloudgridUrl("https://a.b.cloudgrid.io/s") === null);
+
+  // ── 11. slugFromCloudgridUrl — the entity slug a CloudGrid URL names ────────
+  // Apps and inspirations share the `<slug>--<grid>` host; there the path is a
+  // file path, never the slug.
+  check("slug: flat host root → slug before `--`", slugFromCloudgridUrl("https://deck--acme.cloudgrid.io/") === "deck");
+  check("slug: flat host with a file path → still the host's slug", slugFromCloudgridUrl("https://deck--acme.cloudgrid.io/css/a.css") === "deck");
+  check("slug: old path address → first path segment", slugFromCloudgridUrl("https://acme.cloudgrid.io/deck/a.png") === "deck");
+  check("slug: old path address at the apex root → null", slugFromCloudgridUrl("https://acme.cloudgrid.io/") === null);
+  check("slug: guest drop on its own host", slugFromCloudgridUrl("https://notes-x7k2--guest.cloudgrid.io/") === "notes-x7k2");
+  check("slug: a--b--c is not a flat host → null", slugFromCloudgridUrl("https://a--b--c.cloudgrid.io/") === null);
+  check("slug: foreign host → null", slugFromCloudgridUrl("https://deck--acme.example.com/") === null);
+  check("slug: malformed / empty → null", slugFromCloudgridUrl("::: %%%") === null && slugFromCloudgridUrl("") === null);
 } finally {
   restoreFetch();
 }
