@@ -68,16 +68,14 @@ try {
     check(`${name} / makes no external requests`, !/(src|href)="https?:\/\/(?!docs\.cloudgrid\.io)/.test(html));
   }
 
-  // ── The auth line is posture-driven ──────────────────────────────────────────
+  // ── One posture on every host (#5783) ───────────────────────────────────────
   const anonHtml = await (await fetch(`${ANON_BASE}/`)).text();
   const authHtml = await (await fetch(`${AUTH_BASE}/`)).text();
-  check("anon / says sign-in happens from the conversation", anonHtml.includes("Sign in with your CloudGrid account from the conversation"));
-  // Vocabulary canon on user-facing copy: "plug", never publish/deploy/upload/ship.
-  const anonLine = anonHtml.match(/Sign in with your CloudGrid account[^<]*/)?.[0] || "";
-  check("anon / the sign-in line says plug, not publish", /the first time you plug something in/.test(anonLine) && !/publish|deploy|upload|ship/i.test(anonLine));
-  check("anon / does not claim sign-in is required", !anonHtml.includes("requires sign-in"));
-  check("auth / says sign-in is required", authHtml.includes("requires sign-in"));
-  check("auth / does not carry the in-conversation sign-in line", !authHtml.includes("from the conversation the first time you plug"));
+  for (const [name, html] of [["anon", anonHtml], ["auth", authHtml]]) {
+    check(`${name} / says browsing works without an account`, html.includes("works without an account"));
+    check(`${name} / says the AI tool asks for sign-in`, html.includes("Your AI tool asks you to sign in to CloudGrid"));
+    check(`${name} / does not name a sign-in tool`, !html.includes("grid_login"));
+  }
 
   // ── The favicon, both postures ───────────────────────────────────────────────
   const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
@@ -137,9 +135,9 @@ try {
   check("auth POST /mcp still 401", mcp401.status === 401);
   check("auth POST /mcp still challenges", (mcp401.headers.get("www-authenticate") || "").startsWith("Bearer"));
 
-  // The anon host still has no OAuth discovery surface.
+  // Every host serves OAuth discovery now (#5783).
   const disc = await fetch(`${ANON_BASE}/.well-known/oauth-authorization-server`);
-  check("anon OAuth discovery still 404", disc.status === 404);
+  check("anon OAuth discovery 200", disc.status === 200);
 
   // Unknown paths still 404 — the index route must not become a catch-all.
   const missing = await fetch(`${ANON_BASE}/not-a-real-path`);

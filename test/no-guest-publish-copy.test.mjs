@@ -41,7 +41,10 @@ const noGuest = (label, text) => {
 // ── Server instructions ─────────────────────────────────────────────────────
 noGuest("INSTRUCTIONS_WEB", INSTRUCTIONS_WEB);
 noGuest("INSTRUCTIONS_LOCAL", INSTRUCTIONS_LOCAL);
-check("INSTRUCTIONS_WEB names grid_login as the signed-out step", /grid_login/.test(INSTRUCTIONS_WEB));
+// The hosted edition has no sign-in tool (#5783): its copy names the AI tool's
+// sign-in, and never a tool the hosted server does not register.
+check("INSTRUCTIONS_WEB names the AI tool's sign-in as the signed-out step", /AI tool asks them to sign in/.test(INSTRUCTIONS_WEB));
+check("INSTRUCTIONS_WEB does not name grid_login", !/grid_login/.test(INSTRUCTIONS_WEB));
 
 // ── Tool descriptions and schema ────────────────────────────────────────────
 for (const edition of ["web", "local"]) {
@@ -67,7 +70,10 @@ for (const edition of ["web", "local"]) {
   if (!plug) continue;
 
   noGuest(`[${edition}] grid_plug description`, plug.description);
-  check(`[${edition}] grid_plug description names grid_login for the signed-out case`, /grid_login/.test(plug.description));
+  check(
+    `[${edition}] grid_plug description names the ${edition === "web" ? "connector sign-in" : "grid_login"} step for the signed-out case`,
+    edition === "web" ? /signs in through the CloudGrid connector/.test(plug.description) && !/grid_login/.test(plug.description) : /grid_login/.test(plug.description),
+  );
 
   // Every input + output field description.
   for (const [field, schema] of Object.entries(plug.inputSchema || {})) {
@@ -82,7 +88,10 @@ for (const edition of ["web", "local"]) {
     check(`[${edition}] anon field says it does not publish`, /does not publish/i.test(anonDesc));
   }
   const needsAuth = plug.outputSchema?.needs_auth?.description || "";
-  check(`[${edition}] needs_auth description routes to grid_login`, /grid_login/.test(needsAuth));
+  check(
+    `[${edition}] needs_auth description routes to ${edition === "web" ? "the connector sign-in" : "grid_login"}`,
+    edition === "web" ? /sign in to CloudGrid/.test(needsAuth) && !/grid_login/.test(needsAuth) : /grid_login/.test(needsAuth),
+  );
   check(`[${edition}] needs_auth description does not mention anon: true`, !/anon:\s*true/i.test(needsAuth));
 
   // Every other tool's description, too.
@@ -97,7 +106,10 @@ for (const edition of ["web", "local"]) {
     const text = res?.content?.[0]?.text ?? "";
     const tag = input.anon ? " (anon: true)" : "";
     check(`[${edition}] signed-out plug${tag} returns needs_auth`, res?.structuredContent?.needs_auth === true);
-    check(`[${edition}] signed-out prompt${tag} names grid_login`, /grid_login/.test(text));
+    check(
+      `[${edition}] signed-out prompt${tag} names ${edition === "web" ? "the connector sign-in" : "grid_login"}`,
+      edition === "web" ? /CloudGrid connector/.test(text) && !/grid_login/.test(text) : /grid_login/.test(text),
+    );
     check(`[${edition}] signed-out prompt${tag} does not mention guest or anon`, !/guest|anon/i.test(text));
     noGuest(`[${edition}] signed-out prompt${tag}`, text);
   }

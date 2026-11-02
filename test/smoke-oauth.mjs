@@ -125,15 +125,18 @@ try {
   const verifier = b64url(randomBytes(32));
   const challenge = b64url(createHash("sha256").update(verifier).digest());
   const authUrl = `${BASE}/oauth/authorize?response_type=code&client_id=${reg.client_id}&redirect_uri=${encodeURIComponent("http://localhost:9/cb")}&state=st1&code_challenge=${challenge}&code_challenge_method=S256`;
-  const page = await (await fetch(authUrl)).text();
+  const pageRes = await fetch(authUrl);
+  const page = await pageRes.text();
   const sid = page.match(/poll\?sid=([0-9a-f-]+)/)?.[1];
+  // The browser that opened authorize, after finishing the sign-in in it.
+  const cookie = [...(pageRes.headers.getSetCookie?.() ?? []).map((c) => c.split(";")[0]), `cloudgrid_session=${FAKE_JWT}`].join("; ");
   check("authorize renders the interstitial with a poll sid", !!sid);
 
   let redirect = null;
-  for (let i = 0; i < 6 && !redirect; i++) {
-    const p = await (await fetch(`${BASE}/oauth/authorize/poll?sid=${sid}`)).json();
+  for (let i = 0; i < 8 && !redirect; i++) {
+    const p = await (await fetch(`${BASE}/oauth/authorize/poll?sid=${sid}`, { headers: { Cookie: cookie } })).json();
     if (p.status === "ready") redirect = p.redirect;
-    else await sleep(150);
+    else await sleep(1100);
   }
   check("poll bridges CloudGrid sign-in to a redirect with code+state", !!redirect && redirect.includes("code=") && redirect.includes("state=st1"));
   const code = new URL(redirect).searchParams.get("code");
@@ -153,7 +156,7 @@ try {
       body: new URLSearchParams({ grant_type: "authorization_code", code, code_verifier: verifier, redirect_uri: "http://localhost:9/cb", client_id: reg.client_id }),
     })
   ).json();
-  check("token exchange returns the CloudGrid JWT as access_token", tok.access_token === FAKE_JWT && tok.token_type === "Bearer");
+  check("token exchange returns this server's own access token, never the CloudGrid JWT", typeof tok.access_token === "string" && tok.access_token !== FAKE_JWT && !JSON.stringify(tok).includes(FAKE_JWT) && tok.token_type === "Bearer");
 
   // 5. The Bearer becomes the MCP session identity: drop must carry it upstream.
   client = new Client({ name: "oauth-smoke", version: "0.0.0" });
@@ -165,7 +168,7 @@ try {
   const drop = await client.callTool({ name: "grid_plug", arguments: { html: "<h1>authed</h1>" } });
   check("authed plug reports Your app is live (web edition)", (drop.content?.[0]?.text ?? "").includes("Your app is live"));
   check("authed plug composed the live URL from slug + grid", (drop.content?.[0]?.text ?? "").includes("https://e2e-bot.cloudgrid.io/mock-1"));
-  check("upstream plug received the OAuth Bearer", dropAuthHeader === `Bearer ${FAKE_JWT}`);
+  check("upstream plug received the CloudGrid session, not the MCP token", dropAuthHeader === `Bearer ${FAKE_JWT}`);
 
   // Each `/plug` create is a fresh create (no in-place redrop / `previous_id` on
   // this path), so a second create never sends a `previous_id` part. The artifact

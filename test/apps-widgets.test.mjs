@@ -1,5 +1,10 @@
 // Offline unit test for the Apps-SDK widget gate (0.16.1).
 //
+// #434: the live-result card was rebuilt as an MCP App on the standard bridge
+// and is bound on the web edition for BOTH hosts, independent of the flag. The
+// flag now governs only the grid picker. The card's own contract is pinned in
+// test/live-result-app.test.mjs; this file keeps the MIME and flag checks.
+//
 // The ChatGPT Apps-SDK UI widgets (openai/outputTemplate → a ui:// html
 // resource) render as a broken black frame in ChatGPT, hiding the plain-text
 // result. They are gated behind MCP_APPS_WIDGETS (DEFAULT OFF), so:
@@ -52,11 +57,13 @@ function inspect(ctxEdition = "web") {
 }
 const resByUri = (resources, uri) => resources.find((r) => r.uri === uri);
 
-// 1 + 2: default (flag unset in this process) → no outputTemplate, resources still registered.
+// 1 + 2: default (flag unset in this process) → the live-result card is bound
+// for both hosts anyway (#434); resources registered.
 const { configs, resources } = inspect("web");
 const plugTpl = configs["grid_plug"]?._meta?.["openai/outputTemplate"];
-check("default: grid_plug has NO openai/outputTemplate (text-first, no black square)", plugTpl == null);
-check("default: grid_hello has NO openai/outputTemplate (text-first)", configs["grid_hello"]?._meta?.["openai/outputTemplate"] == null);
+check("#434 default: grid_plug binds the live-result card (ChatGPT alias)", plugTpl === LIVE_RESULT_URI);
+check("#434 default: grid_plug binds the live-result card (MCP Apps key)", configs["grid_plug"]?._meta?.ui?.resourceUri === LIVE_RESULT_URI);
+check("#434 default: grid_hello binds the live-result card", configs["grid_hello"]?._meta?.ui?.resourceUri === LIVE_RESULT_URI);
 check("default: live-result widget resource is still registered", !!resByUri(resources, LIVE_RESULT_URI));
 
 // #308 contract: BOTH ChatGPT widgets declare the standard MCP-Apps MIME at
@@ -86,14 +93,14 @@ process.stdout.write(JSON.stringify({ tpl: m["openai/outputTemplate"] ?? null, u
 const out = execFileSync(process.execPath, ["--input-type=module", "-e", child],
   { env: { ...process.env, MCP_APPS_WIDGETS: "1" }, encoding: "utf-8" }).trim();
 const flagOn = JSON.parse(out);
-check("MCP_APPS_WIDGETS=1: grid_plug outputTemplate is restored", flagOn.tpl === LIVE_RESULT_URI);
+check("MCP_APPS_WIDGETS=1: grid_plug outputTemplate is unchanged", flagOn.tpl === LIVE_RESULT_URI);
 // #308: grid_hello returns a runPlug result, so it carries the SAME live-result
 // binding — without it a grid_hello success renders no card even with the MIME fixed.
 check("MCP_APPS_WIDGETS=1: grid_hello carries the live-result outputTemplate too", flagOn.helloTpl === LIVE_RESULT_URI);
-// #308/#303 independence is by BINDING, not MIME: even with the flag ON,
-// grid_plug must NOT carry the Claude `ui.resourceUri` key — ChatGPT reads
-// Claude cannot render it; carrying it would regress the Claude path.
-check("MCP_APPS_WIDGETS=1: grid_plug carries NO Claude ui.resourceUri (independence)", flagOn.ui == null);
+// #434: the old window.openai-only card could not render in Claude, so it was
+// kept off `ui.resourceUri`. The rebuilt card speaks the standard bridge, so it
+// is bound there for both hosts, with or without the flag.
+check("MCP_APPS_WIDGETS=1: grid_plug carries ui.resourceUri (#434, both hosts)", flagOn.ui?.resourceUri === LIVE_RESULT_URI);
 
 console.log(failures ? `\n${failures} FAIL` : "\nAll apps-widgets gate checks passed.");
 process.exit(failures ? 1 : 0);

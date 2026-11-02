@@ -19,6 +19,8 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { createHash, randomBytes } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
+import { TEST_SIGNING_SEED } from "./helpers/mcp-tokens.mjs";
+import { browserCookies } from "./helpers/browser.mjs";
 
 // A known secret and a known redirect, so the redaction test can assert the
 // secret literal never reaches stderr.
@@ -63,6 +65,7 @@ async function startWeb(upstreamBase) {
       MCP_PUBLIC_URL: baseUrl,
       MCP_REQUIRE_AUTH: "1",
       MCP_OAUTH_HMAC_SECRET: SECRET,
+      MCP_TOKEN_SIGNING_KEYS: TEST_SIGNING_SEED,
       CLOUDGRID_API_URL: upstreamBase,
       CLOUDGRID_PUBLIC_API_URL: upstreamBase,
       MCP_TRUSTED_SERVER_SECRET: "",
@@ -110,7 +113,7 @@ async function fullFlow() {
   const sid = (await page.text()).match(/sid=([0-9a-f-]{36})/)?.[1];
   assert.ok(sid, "interstitial should carry a poll sid");
 
-  const poll = await (await fetch(`${web.baseUrl}/oauth/authorize/poll?sid=${sid}`)).json();
+  const poll = await (await fetch(`${web.baseUrl}/oauth/authorize/poll?sid=${sid}`, { headers: { Cookie: browserCookies(page, upstream.jwt) } })).json();
   assert.equal(poll.status, "ready", `poll should be ready once signed in: ${JSON.stringify(poll)}`);
   const code = new URL(poll.redirect).searchParams.get("code");
   assert.ok(code, "the redirect should carry an authorization code");

@@ -107,7 +107,14 @@ for (const [name, text] of [["INSTRUCTIONS_WEB", INSTRUCTIONS_WEB], ["INSTRUCTIO
   check(`${name} leads with what CloudGrid does`, /^CloudGrid runs the user's web apps/.test(text));
   check(`${name} states what CloudGrid does not do`, /What it does not do/.test(text));
   check(`${name} maps user phrasings to grid_plug`, /make it live/.test(text) && /give me a link|share it with friends/.test(text));
-  check(`${name} names the sign-in contract`, /needs_auth/.test(text) && /grid_login/.test(text));
+  // Local signs in with grid_login; hosted through the AI tool (#5783) and never
+  // names a tool it does not register.
+  check(
+    `${name} names the sign-in contract`,
+    name === "INSTRUCTIONS_WEB"
+      ? /AI tool asks them to sign in/.test(text) && !/grid_login/.test(text)
+      : /needs_auth/.test(text) && /grid_login/.test(text),
+  );
   check(`${name} says a key never goes in page source`, /API key/.test(text) && /needs: \{ ai: true \}/.test(text));
 }
 check("INSTRUCTIONS_WEB says nothing leaves the conversation except grid_note / grid_report",
@@ -162,7 +169,8 @@ for (const edition of ["web", "local"]) {
   const { configs, handlers } = capture(edition);
   captured[edition] = { configs, handlers };
   const names = Object.keys(configs);
-  check(`[${edition}] tools registered (${names.length})`, names.length >= 17);
+  // The hosted edition dropped grid_login and grid_login_status (#5783).
+  check(`[${edition}] tools registered (${names.length})`, names.length >= (edition === "web" ? 15 : 17));
   let fields = 0;
   for (const [name, cfg] of Object.entries(configs)) {
     clean(`[${edition}] ${name} title`, cfg.title || "");

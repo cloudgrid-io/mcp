@@ -16,6 +16,7 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
+import { TEST_SIGNING_SEED } from "./helpers/mcp-tokens.mjs";
 
 const SECRET = "test-oauth-hmac-secret-redirect-consent-00000";
 const CLAUDE_CALLBACK = "https://claude.ai/api/mcp/auth_callback";
@@ -39,6 +40,7 @@ async function startWeb() {
       MCP_PUBLIC_URL: baseUrl,
       MCP_REQUIRE_AUTH: "1",
       MCP_OAUTH_HMAC_SECRET: SECRET,
+      MCP_TOKEN_SIGNING_KEYS: TEST_SIGNING_SEED,
       CLOUDGRID_API_URL: "http://127.0.0.1:1",
       CLOUDGRID_PUBLIC_API_URL: "http://127.0.0.1:1",
       MCP_TRUSTED_SERVER_SECRET: "",

@@ -79,7 +79,8 @@ before(async () => {
     env: {
       PORT: String(mcpPort),
       MCP_PUBLIC_URL: handle.baseUrl,
-      MCP_REQUIRE_AUTH: "0",
+      // Signed-out initialize, so this client gets the per-call signal.
+      MCP_AUTH_MODE_OVERRIDES: "capabilities-probe=call",
       CLOUDGRID_API_URL: loopback,
       CLOUDGRID_PUBLIC_API_URL: loopback,
       CLOUDGRID_QA_SLACK_WEBHOOK: "",
