@@ -88,10 +88,12 @@ const signing = resolveSigningKeys(process.env);
 // Fail closed: a hosted server that holds the OAuth registration secret is a
 // real deployment, and a per-process signing key there would issue tokens no
 // other pod (and no later pod) can verify.
-if (signing.ephemeral && process.env.MCP_OAUTH_HMAC_SECRET) {
+const LOCAL_PUBLIC_URL = /^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/.test(PUBLIC_BASE);
+if (signing.ephemeral && (process.env.MCP_OAUTH_HMAC_SECRET || !LOCAL_PUBLIC_URL)) {
   console.error(
-    "cloudgrid-mcp: MCP_OAUTH_HMAC_SECRET is set but MCP_TOKEN_SIGNING_KEYS is not. Refusing to start: " +
-      "access tokens need a stable signing key.",
+    "cloudgrid-mcp: MCP_TOKEN_SIGNING_KEYS is not set. Refusing to start: a hosted server " +
+      "(OAuth secret set, or a public MCP_PUBLIC_URL) needs a stable access-token signing key. " +
+      "Local runs on http://127.0.0.1 or http://localhost may leave it unset.",
   );
   process.exit(1);
 }
@@ -114,9 +116,10 @@ const modeOf = (clientInfo) => authMode(clientInfo, AUTH_MODE_OVERRIDES);
 // CloudGrid session tokens presented directly as the Bearer (what releases
 // before 0.22 returned as the access token) are accepted only if they were
 // issued before MCP_LEGACY_TOKENS_ISSUED_BEFORE (epoch seconds; set to the 0.22
-// release time). Unset: this process's start time. No 0.22 server hands out a
-// session token, so a newer one is not a pre-0.22 connection.
-const LEGACY_ISSUED_BEFORE = envInt(process.env, "MCP_LEGACY_TOKENS_ISSUED_BEFORE", Math.floor(Date.now() / 1000));
+// release time). Unset: 0, so none is accepted; a restart can never move the
+// cutoff. No 0.22 server hands out a session token, so a newer one is not a
+// pre-0.22 connection.
+const LEGACY_ISSUED_BEFORE = envInt(process.env, "MCP_LEGACY_TOKENS_ISSUED_BEFORE", 0);
 const validatePlatformToken = createPlatformValidator({ apiBase: API_BASE });
 // A tool call the API refuses as signed out marks that session refused, so the
 // client's next request gets a 401 and it signs in again (src/web-auth.js).
@@ -374,10 +377,18 @@ function sendSignInToolError(req, res) {
 // session ends that session: the request gets 404 and the client starts a new
 // one, so nothing a session remembers crosses to a different account.
 // Returns false when it has answered the request.
-function bindRequestIdentity(sessionId, principal, res) {
-  if (!principal) return true;
+// A request with no token on a bound session never runs as that account: the
+// client lost its token, so it gets the challenge and signs in again. A session
+// id is not proof of identity.
+function bindRequestIdentity(req, sessionId, principal, res) {
   const ctx = sessionContexts.get(sessionId);
   if (!ctx) return true;
+  if (!principal) {
+    if (!ctx.boundSub) return true;
+    logAuthChallenge(req, undefined, "bound-session-no-token");
+    sendAuthChallenge(req, res, { error: "invalid_token" });
+    return false;
+  }
   if (ctx.boundSub && principal.sub !== ctx.boundSub) {
     const transport = transports.get(sessionId);
     dropSession(sessionId);
@@ -531,7 +542,7 @@ app.post("/mcp", limit.mcp, limit.initialize, async (req, res) => {
 
   if (transport) {
     // The verified account of this request becomes the session identity.
-    if (!bindRequestIdentity(sessionId, principal, res)) return;
+    if (!bindRequestIdentity(req, sessionId, principal, res)) return;
     touchSession(sessionId);
     await transport.handleRequest(req, res, req.body);
     return;
@@ -625,7 +636,7 @@ async function handleSessionRequest(req, res) {
   }
   const principal = await requestPrincipal(req, res);
   if (principal === undefined) return;
-  if (!bindRequestIdentity(sessionId, principal, res)) return;
+  if (!bindRequestIdentity(req, sessionId, principal, res)) return;
   touchSession(sessionId);
   await transport.handleRequest(req, res);
 }

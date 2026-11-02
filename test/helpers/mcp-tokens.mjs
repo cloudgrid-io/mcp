@@ -23,3 +23,23 @@ export function mcpToken(baseUrl, { sub, email, ttlSeconds = 3600, seed = TEST_S
   const grant = fakePlatformJwt({ sub, email, iat: now, exp: now + 30 * 86400 });
   return svc.issue({ iss: base, aud: `${base}/mcp`, sub, clientId: "test", grant, ttlSeconds }).token;
 }
+
+// A stand-in CloudGrid API that accepts every session (GET /api/v2/users/me
+// answers 200 with the token's sub), for tests about something other than
+// sign-out. Returns { base, close }.
+export async function startAcceptingApi() {
+  const { createServer } = await import("node:http");
+  const server = createServer((req, res) => {
+    const bearer = String(req.headers.authorization || "").replace(/^Bearer /, "");
+    let sub = null;
+    try { sub = JSON.parse(Buffer.from(bearer.split(".")[1], "base64url").toString()).sub; } catch { /* not a JWT */ }
+    if (req.url === "/api/v2/users/me" && sub) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ user_id: sub }));
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  return { base: `http://127.0.0.1:${server.address().port}`, close: () => new Promise((r) => server.close(r)) };
+}

@@ -19,7 +19,7 @@ function check(label, cond) {
 const child = spawn("node", ["src/web.js"], {
   // This client gets the per-call sign-in signal, so it can list tools and
   // browse signed out (#5783).
-  env: { ...process.env, PORT: String(PORT), MCP_AUTH_MODE_OVERRIDES: "cloudgrid-mcp-web-smoke=call" },
+  env: { ...process.env, PORT: String(PORT), MCP_PUBLIC_URL: BASE, MCP_AUTH_MODE_OVERRIDES: "cloudgrid-mcp-web-smoke=call" },
   stdio: ["ignore", "ignore", "inherit"],
 });
 

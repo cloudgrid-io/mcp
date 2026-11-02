@@ -151,7 +151,8 @@ const LEGACY_SIGNED_OUT = platformJwt("legacy-signed-out");
 const SIGNIN_JWT = platformJwt("user-1");
 const signedOut = new Set([LEGACY_SIGNED_OUT]); // sessions the API treats as signed out
 const children = new Map(); // downstream child token -> parent session
-const downstream = { enabled: true };
+const downstream = { enabled: true, status: 200 }; // status: what the exchange answers when enabled
+const apiDown = { on: false }; // /users/me answers 500
 const TRUSTED = "trusted-server-secret-for-tests";
 // A session token minted after the 0.22 cutoff (a fresh CLI login, say).
 function platformJwtIssuedAt(sub, iat) {
@@ -181,12 +182,14 @@ const api = createServer((req, res) => {
   const valid = sub && !signedOut.has(bearer);
   if (req.url === "/api/v2/auth/token/downstream" && req.method === "POST") {
     if (!downstream.enabled) return json(404, {});
+    if (downstream.status !== 200) return json(downstream.status, {});
     if (req.headers["x-cloudgrid-trusted-server-auth"] !== TRUSTED) return json(403, {});
     if (!valid || children.has(raw)) return json(401, { code: "AUTH_INVALID" });
     const child = `${b64url(JSON.stringify({ alg: "HS256" }))}.${b64url(JSON.stringify({ sub, email: `${sub}@example.com`, azp: "hosted-mcp", n: children.size }))}.${b64url(randomBytes(16))}`;
     children.set(child, bearer);
     return json(200, { access_token: child, expires_in: 3600 });
   }
+  if (req.url === "/api/v2/users/me" && apiDown.on) return json(500, {});
   if (req.url === "/api/v2/users/me") {
     return valid ? json(200, { user_id: sub, email: `${sub}@example.com` }) : json(401, { error: "AUTH_INVALID" });
   }
@@ -499,4 +502,79 @@ test("a separate seal key, when configured, seals the session; the signing key a
   assert.equal(withSeal.verify(token).grant, grant);
   assert.equal(derivedOnly.verify(token).reason, "bad_grant", "the signing seed does not open it");
   assert.throws(() => resolveSealKeys({ MCP_TOKEN_SEAL_KEYS: "short" }, keys), /entry 1/);
+});
+
+test("a request with no token on a bound session does not run as that account", async () => {
+  const grant = platformJwt("bound-user");
+  const token = clientSideTokens.issue({ iss: BASE, aud: `${BASE}/mcp`, sub: "bound-user", clientId: "c", grant, ttlSeconds: 600 }).token;
+  const session = await open("claude-code", token);
+  assert.equal((await rpc(call("grid_start"), { token, session })).status, 200);
+  const before = seenAuth.length;
+  const anon = await rpc(call("grid_start", {}, 5), { session });
+  assert.equal(anon.status, 401, "no token on a bound session is a 401, not the bound account");
+  assert.match(anon.headers.get("www-authenticate"), /error="invalid_token"/);
+  const prot = await rpc(call("grid_list_grids", {}, 6), { session });
+  assert.equal(prot.status, 401);
+  assert.equal(seenAuth.slice(before).filter((x) => x.auth).length, 0, "no API call carried a credential");
+  const del = await fetch(`${BASE}/mcp`, { method: "DELETE", headers: { "mcp-session-id": session } });
+  assert.equal(del.status, 401, "a token-less DELETE cannot end the session");
+  assert.equal((await rpc(call("grid_start", {}, 7), { token, session })).status, 200, "the session is still there for its owner");
+});
+
+test("a failing downstream exchange (403/5xx) answers 503 and never sends the session", async () => {
+  for (const status of [403, 500]) {
+    downstream.status = status;
+    try {
+      const grant = platformJwt(`exchange-${status}`);
+      const token = clientSideTokens.issue({ iss: BASE, aud: `${BASE}/mcp`, sub: `exchange-${status}`, clientId: "c", grant, ttlSeconds: 600 }).token;
+      const before = seenAuth.length;
+      const r = await rpc(init("claude-code"), { token });
+      assert.equal(r.status, 503, `exchange ${status} -> 503`);
+      assert.ok(!seenAuth.slice(before).some((x) => x.path.startsWith("/api/v2/grids")));
+    } finally {
+      downstream.status = 200;
+    }
+  }
+});
+
+test("when the API cannot check the session, an MCP token gets 503 like a legacy one (fail closed)", async () => {
+  apiDown.on = true;
+  try {
+    const grant = platformJwt("outage-user");
+    const token = clientSideTokens.issue({ iss: BASE, aud: `${BASE}/mcp`, sub: "outage-user", clientId: "c", grant, ttlSeconds: 600 }).token;
+    assert.equal((await rpc(init("claude-code"), { token })).status, 503);
+  } finally {
+    apiDown.on = false;
+  }
+});
+
+test("with no cutoff configured, no earlier session token is accepted (a restart cannot reopen it)", async () => {
+  const reservation2 = createServer();
+  const p2 = await listen(reservation2);
+  await new Promise((r) => reservation2.close(r));
+  const base2 = `http://127.0.0.1:${p2}`;
+  const c2 = spawn(process.execPath, ["src/web.js"], {
+    env: {
+      PATH: process.env.PATH, PORT: String(p2), MCP_PUBLIC_URL: base2, MCP_TOKEN_SIGNING_KEYS: SEED,
+      CLOUDGRID_API_URL: apiBase, CLOUDGRID_PUBLIC_API_URL: apiBase, MCP_TRUSTED_SERVER_SECRET: "",
+      NO_PROXY: "localhost,127.0.0.1", no_proxy: "localhost,127.0.0.1", HTTPS_PROXY: "", HTTP_PROXY: "",
+    },
+    stdio: ["ignore", "ignore", "ignore"],
+  });
+  try {
+    for (let i = 0; i < 100; i++) { try { if ((await fetch(`${base2}/healthz`)).ok) break; } catch { /* starting */ } await sleep(50); }
+    const r = await rpc(init("claude-code"), { token: LEGACY_GOOD, base: base2 });
+    assert.equal(r.status, 401, "LEGACY_GOOD is valid at the API, but no cutoff means no legacy acceptance");
+  } finally {
+    c2.kill("SIGTERM");
+  }
+});
+
+test("a server with a public MCP_PUBLIC_URL and no signing key refuses to start", async () => {
+  const c = spawn(process.execPath, ["src/web.js"], {
+    env: { PATH: process.env.PATH, PORT: "0", MCP_PUBLIC_URL: "https://mcp.example.test", MCP_TOKEN_SIGNING_KEYS: "" },
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  const code = await new Promise((r) => c.on("exit", r));
+  assert.equal(code, 1);
 });

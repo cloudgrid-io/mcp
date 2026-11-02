@@ -23,7 +23,8 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import net from "node:net";
 import { setTimeout as sleep } from "node:timers/promises";
-import { TEST_SIGNING_SEED, mcpToken } from "./helpers/mcp-tokens.mjs";
+import { TEST_SIGNING_SEED, mcpToken, startAcceptingApi } from "./helpers/mcp-tokens.mjs";
+let acceptingApi;
 
 import {
   authHeaderState,
@@ -246,7 +247,9 @@ before(async () => {
   const mcpPort = await reservePort();
   handle.baseUrl = `http://127.0.0.1:${mcpPort}`;
   KNOWN_BEARER = mcpToken(handle.baseUrl, { sub: "obs-user", email: "obs@example.com" });
-  const loopback = `http://127.0.0.1:${await reservePort()}`; // not listening; initialize never calls it
+  // The API only has to accept the session behind KNOWN_BEARER (0.22 checks it).
+  acceptingApi = await startAcceptingApi();
+  const loopback = acceptingApi.base;
   handle.child = spawn(process.execPath, ["src/web.js"], {
     env: {
       PORT: String(mcpPort),
@@ -277,6 +280,7 @@ before(async () => {
 after(async () => {
   if (handle.child && handle.child.exitCode === null) handle.child.kill("SIGTERM");
   await handle.closed;
+  await acceptingApi?.close();
 });
 
 test("EXIT 401: a missing / malformed / empty Bearer each logs its own distinct authorization state", async () => {

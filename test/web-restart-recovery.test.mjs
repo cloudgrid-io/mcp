@@ -26,7 +26,8 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { setTimeout as sleep } from "node:timers/promises";
-import { TEST_SIGNING_SEED, mcpToken } from "./helpers/mcp-tokens.mjs";
+import { TEST_SIGNING_SEED, mcpToken, startAcceptingApi } from "./helpers/mcp-tokens.mjs";
+let acceptingApi;
 
 let userA;
 let userB;
@@ -79,8 +80,10 @@ function childEnv(h) {
     // This file's client gets the per-call sign-in signal, so it can open a
     // session without a token and browse.
     MCP_AUTH_MODE_OVERRIDES: "restart-recovery=call",
-    CLOUDGRID_API_URL: "http://127.0.0.1:1",
-    CLOUDGRID_PUBLIC_API_URL: "http://127.0.0.1:1",
+    // A stand-in API that accepts every session: the server checks the
+    // session behind each token. Nothing here reaches production.
+    CLOUDGRID_API_URL: acceptingApi.base,
+    CLOUDGRID_PUBLIC_API_URL: acceptingApi.base,
     CLOUDGRID_QA_SLACK_WEBHOOK: "",
     MCP_TRUSTED_SERVER_SECRET: "",
     // Session ids are signed; a stable key is what lets a restarted process
@@ -213,6 +216,7 @@ function toolCall(id, name, args = {}) {
 const anon = makeHandle();
 
 before(async () => {
+  acceptingApi = await startAcceptingApi();
   anon.port = await reservePort();
   anon.baseUrl = `http://127.0.0.1:${anon.port}`;
   userA = mcpToken(anon.baseUrl, { sub: "user-a", email: "alice@example.com" });
@@ -223,6 +227,7 @@ before(async () => {
 
 after(async () => {
   await stopChild(anon);
+  await acceptingApi.close();
 });
 
 test("stale session id from before a restart completes a tool call (the #292 acceptance test)", async () => {

@@ -126,24 +126,27 @@ CloudGrid API; it is never returned to the client or accepted from it.
   key, then moving it to the front, then (after the longest token lifetime)
   dropping the old one. Unset: a per-process key, and clients sign in again after
   a restart.
-  A server that has `MCP_OAUTH_HMAC_SECRET` but no signing key refuses to start.
+  A server that has `MCP_OAUTH_HMAC_SECRET`, or a public (non-loopback)
+  `MCP_PUBLIC_URL`, but no signing key refuses to start.
 - `MCP_TOKEN_SEAL_KEYS` — optional keys that seal the CloudGrid session inside
   the token (same list format). Unset: derived from each signing key.
 - Access tokens last 24 hours while no refresh store is configured.
 - Signing out of CloudGrid reaches the AI tool: the server checks the sealed
   session with the API (cached for a few minutes), and any API call refused as
   signed out marks it, so the next request gets a 401 and the AI tool signs in
-  again.
+  again. If the API cannot be asked, the request gets 503 (fail closed).
 - A session belongs to one account: a token for another account on the same
-  `mcp-session-id` gets 404, and the client starts a new session.
+  `mcp-session-id` gets 404, and the client starts a new session; a request with
+  no token on a session that has an account gets 401.
 - Tool calls send the API a short-lived token scoped for a connected AI tool
   (`POST /api/v2/auth/token/downstream`, authenticated as the trusted server),
-  not the CloudGrid session itself. If the API does not offer it yet, the
-  session itself is used.
+  not the CloudGrid session itself. If the API does not offer it yet (404), the
+  session itself is used; any other failure answers 503.
 - A CloudGrid session token presented directly as the Bearer (what releases before
   0.22 returned as the access token) is accepted while it lasts, if it was issued
-  before `MCP_LEGACY_TOKENS_ISSUED_BEFORE` (epoch seconds; default: this
-  process's start), after the API confirms it is valid and not signed out.
+  before `MCP_LEGACY_TOKENS_ISSUED_BEFORE` (epoch seconds; set it to the 0.22
+  release time; unset accepts none), after the API confirms it is valid and
+  not signed out.
 
 Endpoints: `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`,
 `/oauth/register`, `/oauth/authorize` (the sign-in interstitial), `/oauth/token`.

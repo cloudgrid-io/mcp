@@ -18,7 +18,11 @@
 import { createHash } from "node:crypto";
 import { decodeJwt } from "./auth.js";
 
-/** Tools that work without an account. Everything else needs one. */
+/**
+ * Tools that work without an account. Everything else needs one. Resources and
+ * prompts are not gated: today they are only the widget HTML templates. A
+ * resource or prompt that returns account data must be added to the gate.
+ */
 export const PUBLIC_TOOLS = new Set(["grid_start", "grid_get_template", "grid_get_app_source"]);
 
 export const AUTH_SCOPE = "cloudgrid";
@@ -199,8 +203,10 @@ export function observeApiRefusals({ apiBase, onRefused, target = globalThis }) 
  * until shortly before they expire.
  *
  * Returns { token, expiresAt } | { refused: true } (the session is signed out)
- * | { unavailable: true } (the API did not answer, or does not offer the
- * exchange yet: the caller then uses the session itself, as before 0.22).
+ * | { notOffered: true } (404: the API does not offer the exchange yet; the
+ * caller then uses the session itself, as before 0.22; remove once the
+ * endpoint is deployed everywhere) | { failed: true } (anything else: the
+ * caller answers 503 and never falls back to the session).
  */
 export function createDownstreamExchanger({
   apiBase,
@@ -210,13 +216,13 @@ export function createDownstreamExchanger({
   log = console.error,
 }) {
   const cache = new Map(); // sha256(parent) -> { token, expiresAt }
-  const parents = new Map(); // child token -> parent token
+  const parents = new Map(); // child token -> parent session (in memory only; FIFO-capped at 2 * MAX)
   const MAX = 2000;
   const keyOf = (t) => createHash("sha256").update(String(t)).digest("base64url");
   let warned = false;
 
   async function exchange(parent, endUserId = "hosted-mcp") {
-    if (!trustedSecret) return { unavailable: true };
+    if (!trustedSecret) return { notOffered: true };
     const key = keyOf(parent);
     const hit = cache.get(key);
     if (hit && hit.expiresAt - 60_000 > now()) return hit;
@@ -232,21 +238,25 @@ export function createDownstreamExchanger({
         signal: AbortSignal.timeout(5000),
       });
     } catch {
-      return { unavailable: true };
+      return { failed: true };
     }
     if (res.status === 401) {
       cache.delete(key);
       return { refused: true };
     }
-    if (!res.ok) {
+    if (res.status === 404) {
       if (!warned) {
         warned = true;
-        log(`[auth] the API's downstream token exchange answered ${res.status}; using the session itself`);
+        log("[auth] the API does not offer the downstream token exchange yet; using the session itself");
       }
-      return { unavailable: true };
+      return { notOffered: true };
+    }
+    if (!res.ok) {
+      log(`[auth] downstream token exchange failed (HTTP ${res.status}); request refused`);
+      return { failed: true };
     }
     const body = await res.json().catch(() => null);
-    if (typeof body?.access_token !== "string") return { unavailable: true };
+    if (typeof body?.access_token !== "string") return { failed: true };
     const entry = { token: body.access_token, expiresAt: now() + Math.max(60, Number(body.expires_in) || 0) * 1000 };
     if (cache.size >= MAX) {
       const [oldKey, old] = cache.entries().next().value;
@@ -289,15 +299,17 @@ export function createBearerResolver({
       // The CloudGrid session sealed in the token can be signed out or its
       // account removed after the token was issued. Ask the API (cached), so
       // that reaches the client as a 401 within minutes, not a dead end. If
-      // the API cannot be asked, the token stands: the calls it would make
-      // fail on their own.
+      // the API cannot be asked, the request gets 503 (fail closed), the same
+      // as for a legacy token.
       const live = await validatePlatformToken(v.grant);
-      if (!live.ok && !live.unavailable) return { ok: false, reason: "grant_revoked" };
+      if (live.unavailable) return { ok: false, reason: "unavailable" };
+      if (!live.ok) return { ok: false, reason: "grant_revoked" };
       // Tool calls use the scoped child token, not the session itself.
       let platformToken = v.grant;
       if (exchangeDownstream) {
         const d = await exchangeDownstream(v.grant);
         if (d.refused) return { ok: false, reason: "grant_revoked" };
+        if (d.failed) return { ok: false, reason: "unavailable" };
         if (d.token) platformToken = d.token;
       }
       return { ok: true, kind: "mcp", platformToken, sub: v.claims.sub, claims: v.claims };
@@ -317,6 +329,7 @@ export function createBearerResolver({
     if (exchangeDownstream) {
       const d = await exchangeDownstream(platformToken);
       if (d.refused) return { ok: false, reason: "legacy_rejected" };
+      if (d.failed) return { ok: false, reason: "unavailable" };
       if (d.token) platformToken = d.token;
     }
     return { ok: true, kind: "legacy", platformToken, sub: legacy.sub };
