@@ -163,6 +163,10 @@ jobs:
       # model needs (sign-in, needs_grid, needs_grid_create, no keys, polling,
       # end with the URL).
       - run: npm run test:tool-description-length
+      # #457: server.json (official MCP Registry entry) validates against the
+      # vendored registry schema it names, lists the hosted streamable-http
+      # remote, and carries the same version as package.json.
+      - run: npm run test:registry-server-json
       - run: npm run test:tools-list-contract
       - run: npm run test:auth
       # OAuth-route gating (M14): anon host 404s OAuth discovery + registration;

@@ -55,6 +55,7 @@
     "test:auth": "node test/auth.test.mjs",
     "test:tools-list-contract": "node test/tools-list-contract.test.mjs",
     "test:tool-description-length": "node test/tool-description-length.test.mjs",
+    "test:registry-server-json": "node test/registry-server-json.test.mjs",
     "test:auth-strictness": "node test/auth-strictness.test.mjs",
     "test:win-cli": "node test/windows-cli-resolution.test.mjs",
     "test:electron-env": "node test/electron-spawn-env.test.mjs",
@@ -108,6 +109,8 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
     "esbuild": "^0.25.0"
   },
   "license": "MIT",

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.cloudgrid-io/mcp",
+  "title": "CloudGrid",
+  "description": "Plug apps, sites and HTML pages into CloudGrid and get a live URL, with databases and AI built in.",
+  "version": "0.21.26",
+  "websiteUrl": "https://docs.cloudgrid.io/mcp/tools/",
+  "repository": {
+    "url": "https://github.com/cloudgrid-io/mcp",
+    "source": "github",
+    "id": "1277079708"
+  },
+  "icons": [
+    {
+      "src": "https://mcp.cloudgrid.io/favicon.png",
+      "mimeType": "image/png",
+      "sizes": ["80x80"]
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.cloudgrid.io/mcp"
+    }
+  ]
+}

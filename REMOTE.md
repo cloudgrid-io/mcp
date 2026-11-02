@@ -223,6 +223,32 @@ The route needs no sign-in and no MCP session. The token is public once served,
 so it can be a plain env value; it is per deployment, so it stays out of the
 source.
 
+## MCP Registry listing
+
+`server.json` at the repo root lists the hosted server in the official MCP
+Registry (`registry.modelcontextprotocol.io`) as `io.github.cloudgrid-io/mcp`,
+one remote `streamable-http` endpoint at `https://mcp.cloudgrid.io/mcp`. The
+GitHub MCP Registry, which the VS Code / GitHub Copilot gallery reads, is fed
+from it. `npm run test:registry-server-json` validates it against the schema it
+names and checks that its `version` matches `package.json`, so a release bump
+updates both files.
+
+Publishing is a release step, run after the release is tagged:
+
+```
+mcp-publisher login github --token <token>   # an owner of the cloudgrid-io org
+mcp-publisher publish                        # from the repo root
+```
+
+The `io.github.cloudgrid-io/*` namespace is granted only to owners of the
+`cloudgrid-io` GitHub organization. The interactive `mcp-publisher login github`
+device flow cannot read organization roles, so it grants only a personal
+namespace; sign in with a personal access token that can read organization
+membership (classic: `read:org`; fine-grained: Organization > Members >
+Read-only, no repository scopes), or publish from GitHub Actions with
+`mcp-publisher login github-oidc`. A published version cannot be changed; metadata
+changes need a new version.
+
 ## App card after a plug
 
 On the web edition, `grid_plug` and `grid_hello` bind the live-result card
