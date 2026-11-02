@@ -26,6 +26,7 @@ import { createServer } from "node:http";
 import { createHash, randomBytes } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { TEST_SIGNING_SEED } from "./helpers/mcp-tokens.mjs";
+import { browserCookies } from "./helpers/browser.mjs";
 
 const SECRET = "test-oauth-hmac-secret-resource-indicators-000";
 const REDIRECT = "https://chatgpt.com/connector_platform_oauth_redirect";
@@ -123,7 +124,7 @@ async function authorize(resource) {
   const text = await page.text();
   if (page.status !== 200) return { client_id, verifier, status: page.status, body: text };
   const sid = text.match(/sid=([0-9a-f-]{36})/)?.[1];
-  const poll = await (await fetch(`${web.baseUrl}/oauth/authorize/poll?sid=${sid}`)).json();
+  const poll = await (await fetch(`${web.baseUrl}/oauth/authorize/poll?sid=${sid}`, { headers: { Cookie: browserCookies(page, upstream.jwt) } })).json();
   const code = poll.status === "ready" ? new URL(poll.redirect).searchParams.get("code") : null;
   return { client_id, verifier, status: page.status, sid, code };
 }

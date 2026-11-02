@@ -165,6 +165,17 @@ CloudGrid API; it is never returned to the client or accepted from it.
   release time; unset accepts none), after the API confirms it is valid and
   not signed out.
 
+Sign-in finishes in the browser that started it: `/oauth/authorize` sets a
+host-only binding cookie, and the sign-in status poll completes only when it
+carries that cookie and the browser's `cloudgrid_session` equals the session the
+sign-in produced. A sign-in finished in another browser does not complete the
+flow. A browser already signed in to CloudGrid is offered one-click **Allow**
+(a same-origin form POST to `/oauth/authorize/approve` with the binding cookie
+and a per-session form token). The consent page names a client by its
+registered `client_name` only when its redirect host is `claude.ai`,
+`claude.com`, `chatgpt.com` or loopback; otherwise it says "An application at
+<host>".
+
 Endpoints: `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`,
 `/oauth/register`, `/oauth/authorize` (the sign-in interstitial), `/oauth/token`.
 

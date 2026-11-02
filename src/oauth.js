@@ -207,6 +207,61 @@ function isHttpUrl(uri) {
   }
 }
 
+// --- Who the consent page names (#5785) ----------------------------------------
+// A registered client_name is self-asserted. It is shown only when the redirect
+// host is one of the AI tools that use this server, or loopback (a local
+// client); for any other host the page says "An application at <host>".
+const KNOWN_CLIENT_HOSTS = new Set(["claude.ai", "claude.com", "chatgpt.com"]);
+export function shownClientName(clientName, redirectUri) {
+  if (!clientName) return "";
+  try {
+    const host = new URL(String(redirectUri)).hostname.toLowerCase();
+    return KNOWN_CLIENT_HOSTS.has(host) || LOOPBACK_HOSTS.has(host) ? clientName : "";
+  } catch {
+    return "";
+  }
+}
+
+// --- Same-browser completion (#5785) ---------------------------------------------
+// The sign-in opens in a new tab of the browser that opened /oauth/authorize. On
+// completion the CloudGrid API sets that browser's `cloudgrid_session` cookie to
+// the same session it returns from /auth/status. The poll completes only when
+//   1. it carries this server's own binding cookie for the authorize session, and
+//   2. its `cloudgrid_session` equals the session /auth/status returned.
+// A sign-in finished in another browser (a forwarded link) therefore cannot
+// complete the flow. A browser already signed in to CloudGrid skips the sign-in
+// and approves with one click (POST /oauth/authorize/approve).
+const SESSION_COOKIE = "cloudgrid_session";
+// How long the poll waits for the cookie after the sign-in completed before it
+// says the sign-in was finished elsewhere.
+const OTHER_BROWSER_GRACE_MS = 15_000;
+// The poll reaches the API at most once a second per authorize session.
+const POLL_MIN_INTERVAL_MS = 1_000;
+
+// Host-only, and `__Host-` on https so a cookie set elsewhere on the domain
+// cannot stand in for it.
+function bindCookieName(base) {
+  return String(base).startsWith("https:") ? "__Host-cg_mcp_authorize" : "cg_mcp_authorize";
+}
+
+function readCookies(req) {
+  const out = new Map();
+  for (const part of String(req.headers.cookie || "").split(";")) {
+    const i = part.indexOf("=");
+    if (i <= 0) continue;
+    const k = part.slice(0, i).trim();
+    if (!out.has(k)) out.set(k, decodeURIComponent(part.slice(i + 1).trim()));
+  }
+  return out;
+}
+
+function sameSecret(a, b) {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  const ha = createHash("sha256").update(a).digest();
+  const hb = createHash("sha256").update(b).digest();
+  return timingSafeEqual(ha, hb) && a.length === b.length;
+}
+
 function signClientId(canonical, secret) {
   const payload = b64url(Buffer.from(canonical, "utf8"));
   const signingInput = `${CLIENT_ID_PREFIX}.${payload}`;
@@ -296,16 +351,25 @@ function oauthPageHeaders(res) {
   res.setHeader("Referrer-Policy", "no-referrer");
 }
 
-function sendOAuthError(res, message) {
+function sendOAuthError(res, message, status = 400) {
   oauthPageHeaders(res);
-  res.status(400).type("text/plain; charset=utf-8").send(message);
+  res.status(status).type("text/plain; charset=utf-8").send(message);
 }
 
 // The §23-voice interstitial. First a consent step naming the client and the
 // host the browser returns to; nothing starts until the user continues. Then it
 // opens the CloudGrid sign-in in a new tab and polls until it completes, and
 // returns the browser to the client app.
-function interstitialHtml({ sid, loginUrl, clientName, redirectHost }) {
+function interstitialHtml({ sid, loginUrl, clientName, redirectHost, signedInAs = null, formToken = "" }) {
+  const approve = signedInAs
+    ? `<p>Signed in to CloudGrid as <strong>${escapeHtml(signedInAs)}</strong>.</p>
+  <form method="post" action="/oauth/authorize/approve">
+    <input type="hidden" name="sid" value="${escapeHtml(sid)}">
+    <input type="hidden" name="form_token" value="${escapeHtml(formToken)}">
+    <button class="btn" type="submit">Allow</button>
+  </form>
+  <p class="status"><a id="go" href="${escapeHtml(loginUrl)}" target="_blank" rel="noopener noreferrer">Use a different account</a></p>`
+    : `<a class="btn" id="go" href="${escapeHtml(loginUrl)}" target="_blank" rel="noopener noreferrer">Continue to sign in</a>`;
   const who = clientName
     ? `<strong>${escapeHtml(clientName)}</strong> (<strong>${escapeHtml(redirectHost)}</strong>)`
     : `An application at <strong>${escapeHtml(redirectHost)}</strong>`;
@@ -320,8 +384,9 @@ function interstitialHtml({ sid, loginUrl, clientName, redirectHost }) {
          font-family: Inter, system-ui, sans-serif; background:#0d0d0f; color:#fafafa; }
   main { max-width:420px; padding:2.5rem; text-align:center; }
   p.host { margin-top:1rem; font-size:.95rem; }
-  a.btn { display:inline-block; margin-top:1.25rem; padding:.75rem 1.5rem; border-radius:8px;
-          background:#fafafa; color:#0d0d0f; text-decoration:none; font-weight:600; }
+  a.btn, button.btn { display:inline-block; margin-top:1.25rem; padding:.75rem 1.5rem; border-radius:8px; border:0;
+          background:#fafafa; color:#0d0d0f; text-decoration:none; font-weight:600; font-size:1rem; cursor:pointer; }
+  a { color:#fafafa; }
   p.status { margin-top:1.5rem; font-size:.9rem; opacity:.7; }
   [hidden] { display:none !important; }
 </style></head>
@@ -329,8 +394,8 @@ function interstitialHtml({ sid, loginUrl, clientName, redirectHost }) {
   <h1>Connect CloudGrid</h1>
   <p id="consent">${who} wants to connect to your CloudGrid account.</p>
   <p class="host">After sign-in you will be returned to <strong>${escapeHtml(redirectHost)}</strong>. If you did not start this, close this page.</p>
-  <a class="btn" id="go" href="${escapeHtml(loginUrl)}" target="_blank" rel="noopener noreferrer">Continue to sign in</a>
-  <p class="status" id="st" hidden>Waiting for sign-in.</p>
+  ${approve}
+  <p class="status" id="st" hidden>Waiting for sign-in. Finish it in this browser.</p>
 </main>
 <script>
   const POLL_URL = ${scriptJson(`/oauth/authorize/poll?sid=${sid}`)};
@@ -348,6 +413,7 @@ function interstitialHtml({ sid, loginUrl, clientName, redirectHost }) {
         return;
       }
       if (d.status === "expired") { st.textContent = "The sign-in window expired. Close this page and connect again."; return; }
+      if (d.status === "other_browser") { st.textContent = "This sign-in was finished in a different browser. Close this page, connect again, and finish the sign-in in this browser."; return; }
     } catch {}
     setTimeout(tick, 2000);
   }
@@ -512,7 +578,7 @@ export function mountOAuth(app, opts) {
   });
 
   // Authorization endpoint — render the bridge interstitial.
-  app.get("/oauth/authorize", (req, res) => {
+  app.get("/oauth/authorize", async (req, res) => {
     sweep(authSessions);
     const { client_id, redirect_uri, state, code_challenge, code_challenge_method, response_type, resource } = req.query;
     // Observability (#345/#329): the request SHAPE the client actually sent,
@@ -582,8 +648,20 @@ export function mountOAuth(app, opts) {
     }
     const sid = randomUUID();
     const cgCode = newLoginCode();
+    const bind = randomBytes(18).toString("base64url");
+    const formToken = randomBytes(18).toString("base64url");
+    // Already signed in to CloudGrid in this browser: offer one-click Allow.
+    // The session is checked with the API, never trusted from the cookie.
+    let signedIn = null;
+    const existing = readCookies(req).get(SESSION_COOKIE);
+    if (existing && opts.validatePlatformToken) {
+      const v = await opts.validatePlatformToken(existing).catch(() => ({ ok: false }));
+      if (v.ok) signedIn = { email: v.email || "your account" };
+    }
     authSessions.set(sid, {
       cgCode,
+      bind,
+      formToken,
       client_id: String(client_id),
       redirect_uri: String(redirect_uri),
       state: state ? String(state) : "",
@@ -591,65 +669,141 @@ export function mountOAuth(app, opts) {
       resource: boundResource,
       created: Date.now(),
     });
+    const base = baseFor(req);
+    res.cookie?.(bindCookieName(base), `${sid}.${bind}`, {
+      httpOnly: true,
+      secure: base.startsWith("https:"),
+      sameSite: "lax",
+      path: "/",
+      maxAge: CODE_TTL_MS,
+    });
     oauthPageHeaders(res);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(
       interstitialHtml({
         sid,
         loginUrl: buildLoginUrl(cgCode),
-        clientName: client.client_name,
+        clientName: shownClientName(client.client_name, redirect_uri),
         redirectHost: new URL(String(redirect_uri)).host,
+        signedInAs: signedIn?.email ?? null,
+        formToken,
       }),
     );
+  });
+
+  // The authorize session this browser holds, from its binding cookie.
+  function boundSession(req, sid) {
+    const sess = authSessions.get(String(sid));
+    if (!sess || Date.now() - sess.created > CODE_TTL_MS) return null;
+    const cookie = readCookies(req).get(bindCookieName(baseFor(req)));
+    return sameSecret(cookie, `${sid}.${sess.bind}`) ? sess : null;
+  }
+
+  // Hand an authorization code for this session back to the client.
+  function issueCode(sid, sess, grant) {
+    const code = b64url(Buffer.from(randomUUID()));
+    authCodes.set(code, {
+      grant,
+      client_id: sess.client_id,
+      redirect_uri: sess.redirect_uri,
+      code_challenge: sess.code_challenge,
+      resource: sess.resource, // RFC 8707 binding carried from the authorize session (#329)
+      created: Date.now(),
+    });
+    authSessions.delete(String(sid));
+    // The sign-in half succeeded. Without this line a connector failure gives
+    // no way to tell whether the user ever got through sign-in at all.
+    console.error("[oauth] authorization code issued after sign-in; awaiting token exchange");
+    const sep = sess.redirect_uri.includes("?") ? "&" : "?";
+    // Observability (#345): we handed control back to the client, and to
+    // where. The host only — the full redirect carries the code and a
+    // per-install path.
+    console.error(`[oauth] redirect handed back to client; redirect_host=${hostOf(sess.redirect_uri)}`);
+    return `${sess.redirect_uri}${sep}code=${encodeURIComponent(code)}${sess.state ? `&state=${encodeURIComponent(sess.state)}` : ""}`;
+  }
+
+  // One-click Allow for a browser already signed in to CloudGrid. Same-origin
+  // form POST only: the binding cookie, the per-session form token, a
+  // same-origin Fetch Metadata / Origin, and a CloudGrid session the API accepts.
+  app.post("/oauth/authorize/approve", async (req, res) => {
+    const base = baseFor(req);
+    const site = req.headers["sec-fetch-site"];
+    const origin = req.headers.origin;
+    if ((site !== undefined && site !== "same-origin") || (origin !== undefined && origin !== new URL(base).origin)) {
+      sendOAuthError(res, "This approval must come from the CloudGrid connect page.", 403);
+      return;
+    }
+    const sid = String(req.body?.sid ?? "");
+    const sess = boundSession(req, sid);
+    if (!sess || !sameSecret(String(req.body?.form_token ?? ""), sess.formToken)) {
+      sendOAuthError(res, "This connection request has expired or was opened in another browser. Close this page and connect again.");
+      return;
+    }
+    const grant = readCookies(req).get(SESSION_COOKIE);
+    const v = grant && opts.validatePlatformToken ? await opts.validatePlatformToken(grant).catch(() => ({ ok: false })) : { ok: false };
+    if (!v.ok || !isHttpUrl(sess.redirect_uri)) {
+      sendOAuthError(res, "You are not signed in to CloudGrid in this browser. Close this page and connect again.");
+      return;
+    }
+    console.error("[oauth] signed-in browser approved the connection");
+    res.redirect(302, issueCode(sid, sess, grant));
   });
 
   // The interstitial's poll — bridges to CloudGrid /auth/status.
   app.get("/oauth/authorize/poll", async (req, res) => {
     corsOk(req, res);
-    const sess = authSessions.get(String(req.query.sid));
-    if (!sess || Date.now() - sess.created > CODE_TTL_MS) {
+    const sid = String(req.query.sid);
+    // Only the browser that opened this authorize session may poll it.
+    const sess = boundSession(req, sid);
+    if (!sess) {
       res.json({ status: "expired" });
       return;
     }
-    let upstream;
-    try {
-      upstream = await pollStatusOnce(sess.cgCode);
-    } catch {
-      res.json({ status: "pending" });
-      return;
-    }
-    if (upstream.status === "authenticated" && upstream.jwt) {
-      if (!isHttpUrl(sess.redirect_uri)) {
-        // Unreachable while authorize enforces the redirect rules; kept so a
-        // code is never handed to a non-http(s) target.
-        authSessions.delete(String(req.query.sid));
+    // The sign-in result is read from the API once (it hands it out once) and
+    // kept here; it is released only to this same browser, below.
+    if (!sess.grant) {
+      const now = Date.now();
+      if (now - (sess.lastPoll ?? 0) < POLL_MIN_INTERVAL_MS) {
+        res.json({ status: "pending" });
+        return;
+      }
+      sess.lastPoll = now;
+      let upstream;
+      try {
+        upstream = await pollStatusOnce(sess.cgCode);
+      } catch {
+        res.json({ status: "pending" });
+        return;
+      }
+      if (upstream.status === "expired") {
+        authSessions.delete(sid);
         res.json({ status: "expired" });
         return;
       }
-      const code = b64url(Buffer.from(randomUUID()));
-      authCodes.set(code, {
-        grant: upstream.jwt,
-        client_id: sess.client_id,
-        redirect_uri: sess.redirect_uri,
-        code_challenge: sess.code_challenge,
-        resource: sess.resource, // RFC 8707 binding carried from the authorize session (#329)
-        created: Date.now(),
-      });
-      authSessions.delete(String(req.query.sid));
-      // The sign-in half succeeded. Without this line a connector failure gives
-      // no way to tell whether the user ever got through sign-in at all.
-      console.error("[oauth] authorization code issued after sign-in; awaiting token exchange");
-      const sep = sess.redirect_uri.includes("?") ? "&" : "?";
-      const redirect = `${sess.redirect_uri}${sep}code=${encodeURIComponent(code)}${sess.state ? `&state=${encodeURIComponent(sess.state)}` : ""}`;
-      // Observability (#345): we handed control back to the client, and to
-      // where. The host only — the full redirect carries the code and a
-      // per-install path.
-      console.error(`[oauth] redirect handed back to client; redirect_host=${hostOf(sess.redirect_uri)}`);
-      res.json({ status: "ready", redirect });
+      if (upstream.status !== "authenticated" || !upstream.jwt) {
+        res.json({ status: "pending" });
+        return;
+      }
+      sess.grant = upstream.jwt;
+      sess.grantAt = now;
+    }
+    if (!isHttpUrl(sess.redirect_uri)) {
+      // Unreachable while authorize enforces the redirect rules; kept so a
+      // code is never handed to a non-http(s) target.
+      authSessions.delete(sid);
+      res.json({ status: "expired" });
       return;
     }
-    if (upstream.status === "expired") {
-      res.json({ status: "expired" });
+    if (sameSecret(readCookies(req).get(SESSION_COOKIE), sess.grant)) {
+      res.json({ status: "ready", redirect: issueCode(sid, sess, sess.grant) });
+      return;
+    }
+    // Signed in, but not in this browser (yet: the cookie can trail the
+    // sign-in by a moment). After the grace period, end the attempt.
+    if (Date.now() - sess.grantAt > OTHER_BROWSER_GRACE_MS) {
+      authSessions.delete(sid);
+      console.error("[oauth] sign-in finished in a different browser; connection refused");
+      res.json({ status: "other_browser" });
       return;
     }
     res.json({ status: "pending" });

@@ -17,6 +17,7 @@ import { createServer } from "node:http";
 import { createHash, randomBytes } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { createTokenService, resolveSealKeys, resolveSigningKeys, generateSigningSeed } from "../src/mcp-tokens.js";
+import { browserCookies } from "./helpers/browser.mjs";
 import {
   authMode,
   callsProtectedTool,
@@ -281,7 +282,7 @@ async function signIn({ base = BASE } = {}) {
   const page = await fetch(`${base}/oauth/authorize?response_type=code&client_id=${encodeURIComponent(client_id)}&redirect_uri=${encodeURIComponent(REDIRECT)}&code_challenge=${challenge}&code_challenge_method=S256&state=s1`);
   assert.equal(page.status, 200);
   const sid = (await page.text()).match(/sid=([0-9a-f-]{36})/)?.[1];
-  const poll = await (await fetch(`${base}/oauth/authorize/poll?sid=${sid}`)).json();
+  const poll = await (await fetch(`${base}/oauth/authorize/poll?sid=${sid}`, { headers: { Cookie: browserCookies(page, SIGNIN_JWT) } })).json();
   assert.equal(poll.status, "ready");
   const code = new URL(poll.redirect).searchParams.get("code");
   const tok = await fetch(`${base}/oauth/token`, {
