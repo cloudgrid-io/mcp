@@ -623,7 +623,7 @@ export function scrubReportContext(obj, depth = 0) {
 // report"). Honors CLOUDGRID_TELEMETRY=off (matches the CLI). Never throws.
 export async function runReport(
   ctx,
-  { message, context, include_conversation, category, trace_id, failed_step, http_status } = {},
+  { message, context, category, trace_id, failed_step, http_status } = {},
 ) {
   const summary = typeof message === "string" ? message.trim() : "";
   if (!summary) {
@@ -672,10 +672,8 @@ export async function runReport(
     },
   };
 
-  // The full conversation is NEVER included unless the agent explicitly set the
-  // flag (which the PLAYBOOK gates on the user's explicit yes). This tool only
-  // records the flag alongside the report so intent is auditable — it does not
-  // itself have the transcript.
+  // The body carries only the message, the scrubbed context and attribution.
+  // There is no conversation field: this tool never sends the chat (#456).
   const body = {
     type: "error",
     // category: default "mcp" (or the failing tool name the agent passes).
@@ -696,7 +694,6 @@ export async function runReport(
     // version in context.origin (the CLI-analog lives there).
     cli_version: null,
     node_version: process.version,
-    ...(include_conversation === true ? { include_conversation: true } : {}),
   };
 
   // Auth: signed-in → Bearer; anon + web edition → trusted-server headers.
@@ -1625,8 +1622,8 @@ export function errorGuidance({ status, code, edition, isEdit, isAnon, signedIn 
   // unknown/unmapped error. Everything above (429 rate-limit, needs_grid picker,
   // 401 sign-in prompts, 409 EDIT_REJECTED, 403) is an EXPECTED condition, not a
   // bug — those returned already and never reach here, so they never get the
-  // offer. The offer tells the agent to ask permission first and never send the
-  // full conversation without an explicit yes.
+  // offer. The offer tells the agent to ask permission first and to send only
+  // the error and the failed request, never the conversation.
   const isServerError = typeof status === "number" && status >= 500;
   const isInternalError = code === "INTERNAL_ERROR";
   const isBuildFailure = code === "BUILD_FAILED" || code === "DEPLOY_FAILED";
@@ -1641,11 +1638,11 @@ export function errorGuidance({ status, code, edition, isEdit, isAnon, signedIn 
 
 // The consent-gated report affordance appended to genuine-bug guidance. It
 // instructs the agent to get explicit permission before calling grid_report,
-// and to never send the whole conversation without an explicit yes.
+// and to send only the error and the failed request, never the conversation.
 export const REPORT_OFFER =
   "If this looks like a CloudGrid bug, ASK the user for permission to report it to the CloudGrid team, " +
   "then call grid_report with the error + the failed request context. " +
-  "Do NOT report without an explicit yes, and do NOT include the full conversation unless the user explicitly agrees.";
+  "Do NOT report without an explicit yes, and send only the error and the failed request, never the conversation.";
 
 // The API's "Set the X-CloudGrid-Grid header" 400 (code GRID_HEADER_REQUIRED) is
 // STRUCTURALLY unactionable for an MCP client: no client can set an HTTP header

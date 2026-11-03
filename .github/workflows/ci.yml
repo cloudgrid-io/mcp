@@ -158,6 +158,11 @@ jobs:
       # annotations.
       - run: npm run test:auth-strictness
       # #400: the emitted tools/list contract (schemas snapshot + strict inputs).
+      # #410: every tool description is at most 1,000 characters on both
+      # editions, and grid_plug's keeps its routing phrases and the clauses a
+      # model needs (sign-in, needs_grid, needs_grid_create, no keys, polling,
+      # end with the URL).
+      - run: npm run test:tool-description-length
       - run: npm run test:tools-list-contract
       - run: npm run test:auth
       # OAuth-route gating (M14): anon host 404s OAuth discovery + registration;
@@ -169,6 +174,10 @@ jobs:
       # the icon. Regression half: /healthz, the POST /mcp 401 challenge, OAuth
       # discovery gating and unknown-path 404s are unchanged by the new routes.
       - run: npm run test:index-favicon
+      # OpenAI domain verification: GET /.well-known/openai-apps-challenge serves
+      # exactly MCP_OPENAI_APPS_CHALLENGE as text/plain with no sign-in, and 404s
+      # when the variable is unset or blank.
+      - run: npm run test:openai-challenge
       # Web identity (#279): an explicit in-session login is authoritative over
       # transport-token refreshes for the same subject; a genuine subject change
       # ends that override. Plus hasUsableCredential (#286): the transport guard's

@@ -538,24 +538,28 @@ export function registerTools(server, ctx) {
       // Kept to the decision of WHETHER to call this tool at all (#410, #432):
       // what it does, the user phrasings it serves (there is no grid_deploy
       // alias — this phrasing does the routing, mcp#337), the single-page-vs-
-      // runtime-app distinction, and the sign-in contract (#395). No other
-      // product is named and nothing is marked preferred: the description states
-      // capabilities and the requests they serve (directory review criteria).
-      // Conditional HOW-to-call guidance lives in the per-parameter describe()
-      // strings and the grid_start orientation.
+      // runtime-app distinction, the sign-in contract (#395), and one short
+      // clause each for the signals a model must handle (needs_grid,
+      // needs_grid_create, no keys in page source, building -> poll, end with
+      // the URL). No other product is named and nothing is marked preferred:
+      // the description states capabilities and the requests they serve
+      // (directory review criteria). Detail lives in the per-parameter
+      // describe() strings, the server instructions and the grid_start
+      // orientation. test/tool-description-length.test.mjs caps every tool
+      // description at 1,000 characters and pins these clauses.
       description:
-        "Plug an app, website, game, or single HTML page into CloudGrid and get a live public URL in seconds. " +
-        "Serves requests to deploy, publish, host, ship, launch, go live, or share a working link — " +
+        "Plug an app, website, game, or HTML page into CloudGrid at a live public URL. " +
+        "Serves requests to deploy, publish, host, ship, launch, go live, or share a working link: " +
         "\"give me a link\", \"share it with friends\", \"make it live\", \"put it online\", \"host this\". " +
-        "Takes a single self-contained HTML page, or a full app: a multi-file, framework-, or database-backed app " +
-        "runs as a runtime app with the services it declares (managed MongoDB, Redis, pgvector, disk, an AI gateway with no API key). " +
-        `A new plug needs sign-in: when signed out it returns needs_auth — ${ctx.edition === "web" ? "the user signs in through the CloudGrid connector" : "call grid_login"}, then re-call grid_plug; there is no guest or sign-in-free publish. ` +
-        "Create and update are the same call: without target_entity_id (or grid+slug) it CREATEs a new URL, with one it UPDATEs that URL in place. " +
-        "Pass exactly one source: `html`" +
-        (ctx.edition === "web"
-          ? " or `artifact_files` (inline multi-file app). "
-          : ", `path` (local folder/file), or `artifact_files`. ") +
-        "To edit a page without its HTML, call grid_get_app_source first, then deploy with target_entity_id.",
+        "Pass one source: `html` (a self-contained page) or `artifact_files` (a multi-file or database-backed " +
+        "runtime app; cloudgrid.yaml declares its needs)" +
+        (ctx.edition === "web" ? ". " : ", or `path` (local folder, file, or .zip). ") +
+        "No target_entity_id (or grid+slug) creates a new URL; with one it updates it in place. " +
+        "To edit a page without its HTML, call grid_get_app_source first, then deploy with target_entity_id. " +
+        `Signed out it returns needs_auth: ${ctx.edition === "web" ? "the user signs in through the CloudGrid connector" : "call grid_login"}, then re-call; there is no guest publish. ` +
+        "needs_grid: ask which grid. needs_grid_create: confirm a slug, then grid_create_grid. " +
+        "Never put an API key in page source. A runtime app returns building: poll grid_check_deploy until live. " +
+        "End with the live URL.",
       inputSchema: plugInputSchema,
       outputSchema: {
         entity_id: z.string().optional().describe("Globally unique — pass back as target_entity_id to re-plug."),
@@ -1187,14 +1191,14 @@ export function registerTools(server, ctx) {
   // Both editions. The agent calls this ONLY after the user explicitly agrees
   // to report a genuine failure (the errorGuidance offer + the PLAYBOOK rule
   // gate on consent). Posts the error + failed-request context to the CloudGrid
-  // team; the full conversation is never sent unless include_conversation is
-  // explicitly set true (which the agent only does on an explicit yes).
+  // team. It takes no conversation parameter: only the message and context the
+  // user agreed to send leave the session (#456).
   reg(
     "grid_report",
     {
       title: "Report a failure",
       description:
-        "Report a genuine CloudGrid failure to the CloudGrid team — ONLY with the user's explicit consent. When a build/deploy or platform call fails unexpectedly, ASK the user first; call this only after they say yes. What is sent: the short `message` (what failed), the `context` you pass (the tool, inputs, grid, original request, error code/detail), and the client name and platform — nothing else from the conversation. include_conversation:true adds the chat, and is set ONLY if the user explicitly agreed to send it. Redaction is key-name-only: a value is dropped only when its KEY looks secret, so a secret embedded in a value (e.g. inside HTML) is NOT redacted — do not put secrets in `message` or `context`. Never sends anything the user didn't agree to.",
+        "Report a genuine CloudGrid failure to the CloudGrid team — ONLY with the user's explicit consent. When a build/deploy or platform call fails unexpectedly, ASK the user first; call this only after they say yes. What is sent: the short `message` (what failed), the `context` you pass (the tool, inputs, grid, original request, error code/detail), and the client name and platform — only the message and context the user agreed to send, nothing else from the conversation. Redaction is key-name-only: a value is dropped only when its KEY looks secret, so a secret embedded in a value (e.g. inside HTML) is NOT redacted — do not put secrets in `message` or `context`. Never sends anything the user didn't agree to.",
       inputSchema: {
         message: z
           .string()
@@ -1211,10 +1215,6 @@ export function registerTools(server, ctx) {
           .partial()
           .optional()
           .describe("The failed-request context. Redaction is key-name-only (a value is dropped only when its KEY looks secret) client-side, and the server applies the same key-name filter — a secret embedded in a value is not redacted by either."),
-        include_conversation: z
-          .boolean()
-          .optional()
-          .describe("Default false. Set true ONLY if the user explicitly agreed to include the full conversation."),
         category: z
           .string()
           .optional()
@@ -1244,7 +1244,6 @@ export function registerTools(server, ctx) {
         return await runReport(ctx, {
           message: input?.message,
           context: input?.context,
-          include_conversation: input?.include_conversation === true,
           category: input?.category,
           trace_id: input?.trace_id,
           failed_step: input?.failed_step,

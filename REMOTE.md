@@ -26,6 +26,7 @@ PORT=8080 npm run start:web      # from a clone
 - `POST /mcp` — the MCP Streamable HTTP endpoint (one transport per session).
 - `GET /mcp`, `DELETE /mcp` — SSE stream and session close.
 - `GET /healthz` — liveness for the host.
+- `GET /.well-known/openai-apps-challenge` — OpenAI domain verification (see below).
 
 Smoke test (spawns the server, connects an HTTP client, checks that a signed-out
 create is refused and publishes nothing):
@@ -207,6 +208,20 @@ registration is not actually in effect.
   then promote it to the first (signing) position and deploy, then drop the old
   key later. Prepending straight away makes new pods sign under a key the
   not-yet-updated pods cannot verify, causing transient 400s.
+
+## OpenAI domain verification
+
+The OpenAI app directory checks that the submitter controls this host by
+fetching `GET /.well-known/openai-apps-challenge` and comparing the body with a
+token generated in the OpenAI Platform portal.
+
+- `MCP_OPENAI_APPS_CHALLENGE` — the portal's token. When set, the route returns
+  exactly that text as `text/plain` (surrounding whitespace is dropped). When
+  unset or blank, the route returns 404.
+
+The route needs no sign-in and no MCP session. The token is public once served,
+so it can be a plain env value; it is per deployment, so it stays out of the
+source.
 
 ## App card after a plug
 
