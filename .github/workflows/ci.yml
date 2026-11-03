@@ -364,6 +364,11 @@ jobs:
       # has a non-empty title, canonical entity_id/grid params work alongside
       # legacy aliases, org is absent from the published visibility enum.
       - run: npm run test:tool-titles-and-vocab
+      # Tool annotations (cloudgrid#2302): on both editions every tool has a
+      # title and readOnlyHint, destructiveHint and openWorldHint as explicit
+      # booleans; the hosted tools' hints match a reviewed table. Self-tested
+      # against broken fixtures first.
+      - run: npm run test:tool-annotations
       # Visibility-mapping drift guard (#192): the playbook's six-row mapping
       # table matches the live grid_visibility schema (inside/outside enums,
       # require_signin, spaces param) and presents the two-axis model before
