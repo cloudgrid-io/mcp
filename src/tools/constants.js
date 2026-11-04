@@ -29,8 +29,10 @@ export const ANON_HTML_MAX_BYTES = 2_000_000;
 export const AUTHED_HTML_MAX_BYTES = 25_000_000;
 // The Console's canonical host is my.cloudgrid.io (cloudgrid-io/cloudgrid#4135).
 // console.cloudgrid.io stays as a permanent redirect, so links printed by
-// earlier releases still land.
-export const CONSOLE_URL = "https://my.cloudgrid.io/";
+// earlier releases still land. CLOUDGRID_CONSOLE_URL points it at another
+// environment's Console (staging: https://my.cgstage.io/) (#468). Every Console
+// link goes through this one value; it always ends in exactly one slash.
+export const CONSOLE_URL = `${(process.env.CLOUDGRID_CONSOLE_URL || "https://my.cloudgrid.io").replace(/\/+$/, "")}/`;
 
 // The console link handed to a user AFTER a plug. When the grid slug is known it
 // points at THAT grid (verified live: /home?grid=<slug> -> 200) instead of the
