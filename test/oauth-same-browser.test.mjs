@@ -88,6 +88,7 @@ async function openAuthorize({ session = null, redirect = REDIRECT, name = "Clau
   const bind = (res.headers.getSetCookie?.() ?? []).map((c) => c.split(";")[0]).join("; ");
   return {
     client_id, verifier, html, bind,
+    referrerPolicy: res.headers.get("referrer-policy"),
     setCookie: (res.headers.getSetCookie?.() ?? []).join(" | "),
     sid: html.match(/sid=([0-9a-f-]{36})/)?.[1] ?? html.match(/name="sid" value="([0-9a-f-]{36})"/)?.[1],
     formToken: html.match(/name="form_token" value="([^"]+)"/)?.[1],
@@ -172,6 +173,21 @@ test("a browser already signed in approves with one click", async () => {
     body: new URLSearchParams({ grant_type: "authorization_code", code, code_verifier: a.verifier, redirect_uri: REDIRECT, client_id: a.client_id }),
   });
   assert.equal(tok.status, 200);
+});
+
+// #464: under `Referrer-Policy: no-referrer` a browser sends `Origin: null` on
+// the Allow form POST, and the approve handler (which requires the page's own
+// Origin) refuses every click. The tests above set Origin by hand, so only the
+// served policy can catch this.
+test("the connect page is never served with a no-referrer policy (#464)", async () => {
+  const session = platformJwt("referrer-policy");
+  valid.add(session);
+  for (const a of [await openAuthorize({ session }), await openAuthorize()]) {
+    assert.equal(a.referrerPolicy, "same-origin", "Referrer-Policy header");
+    const meta = a.html.match(/<meta name="referrer" content="([^"]*)">/)?.[1];
+    assert.equal(meta, "same-origin", "referrer meta tag");
+    assert.doesNotMatch(a.html, /no-referrer/);
+  }
 });
 
 test("a cookie the API does not accept gets the normal sign-in, not Allow", async () => {
