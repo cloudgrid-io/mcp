@@ -7,6 +7,7 @@
 // IS bug #355. A literal fails when the helper's logic breaks, which is the
 // whole point of a regression guard.
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { consoleGridUrl, CONSOLE_URL } from "../src/tools/constants.js";
 
 let failures = 0;
@@ -34,6 +35,32 @@ check("empty slug → bare root", consoleGridUrl("") === CONSOLE_URL);
 
 // Anchor the constant itself so a change to CONSOLE_URL is a conscious one.
 check("CONSOLE_URL is the console root", CONSOLE_URL === "https://my.cloudgrid.io/");
+
+// CLOUDGRID_CONSOLE_URL points the links at another environment's Console
+// (staging) (#468). The value is read once at import, so each case runs in a
+// fresh process with only that variable set. A trailing slash, or none, or
+// several, all give the same root.
+function consoleUrlsWith(value) {
+  const env = { ...process.env };
+  delete env.CLOUDGRID_CONSOLE_URL;
+  if (value !== undefined) env.CLOUDGRID_CONSOLE_URL = value;
+  const r = spawnSync(process.execPath, ["--input-type=module", "-e",
+    'const m = await import(process.argv[1]); console.log(JSON.stringify([m.CONSOLE_URL, m.consoleGridUrl("acme")]));',
+    new URL("../src/tools/constants.js", import.meta.url).href], { env, encoding: "utf-8" });
+  if (r.status !== 0) return [null, r.stderr];
+  return JSON.parse(r.stdout.trim());
+}
+const staging = ["https://my.cgstage.io/", "https://my.cgstage.io/home?grid=acme"];
+check("unset → production root",
+  JSON.stringify(consoleUrlsWith(undefined)) === JSON.stringify(["https://my.cloudgrid.io/", "https://my.cloudgrid.io/home?grid=acme"]));
+check("empty → production root",
+  consoleUrlsWith("")[0] === "https://my.cloudgrid.io/");
+check("override with trailing slash → that Console",
+  JSON.stringify(consoleUrlsWith("https://my.cgstage.io/")) === JSON.stringify(staging));
+check("override without trailing slash → same root",
+  JSON.stringify(consoleUrlsWith("https://my.cgstage.io")) === JSON.stringify(staging));
+check("override with several trailing slashes → same root",
+  JSON.stringify(consoleUrlsWith("https://my.cgstage.io///")) === JSON.stringify(staging));
 
 console.log(failures === 0 ? "\nAll console-grid-url checks passed." : `\n${failures} check(s) FAILED.`);
 process.exit(failures === 0 ? 0 : 1);

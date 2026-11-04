@@ -52,6 +52,17 @@ Hosting is platform work (GKE): a Deployment + Service + Ingress at a stable hos
 is stateless; sessions live in memory, so a single replica is simplest first, or a
 sticky-session ingress for more.
 
+Environment. Each defaults to production, so set them only when the server runs
+against another environment (staging, for example):
+
+- `CLOUDGRID_API_URL`: the API address this server calls (default `https://api.cloudgrid.io`).
+- `CLOUDGRID_PUBLIC_API_URL`: the public API host used in links handed to the
+  user's browser, such as sign-in (default `https://api.cloudgrid.io`).
+- `CLOUDGRID_CONSOLE_URL`: the Console root used in every Console link, such as
+  the dashboard link after a plug (default `https://my.cloudgrid.io/`). A trailing
+  slash is optional. Staging sets `https://my.cgstage.io/`.
+- `MCP_PUBLIC_URL`: this server's public origin (see below).
+
 ## Identity on the web
 
 A hosted server cannot read a local credentials file. The user signs in through
