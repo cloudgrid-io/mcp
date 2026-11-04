@@ -351,11 +351,15 @@ function scriptJson(value) {
 }
 
 // Every OAuth HTML response refuses to be framed, and does not leak its URL
-// (which carries client_id and state) as a referrer.
+// (which carries client_id and state) as a referrer to another origin.
+// `same-origin`, not `no-referrer` (#464): under `no-referrer` a browser sends
+// `Origin: null` on the Allow form POST, and the approve handler refuses it.
+const OAUTH_REFERRER_POLICY = "same-origin";
+
 function oauthPageHeaders(res) {
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
-  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Referrer-Policy", OAUTH_REFERRER_POLICY);
 }
 
 function sendOAuthError(res, message, status = 400) {
@@ -383,7 +387,7 @@ function interstitialHtml({ sid, loginUrl, clientName, redirectHost, signedInAs 
   return `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="referrer" content="no-referrer">
+<meta name="referrer" content="${OAUTH_REFERRER_POLICY}">
 <title>Connect CloudGrid</title>
 <link rel="icon" type="image/png" href="/favicon.png">
 <style>
