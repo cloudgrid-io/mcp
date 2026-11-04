@@ -30,6 +30,7 @@ import {
   authHeaderState,
   logSafe,
   logAuthChallenge,
+  clientNameForLog,
   logNoSession,
   logRehydrateFailed,
   logInitialize,
@@ -150,6 +151,42 @@ test("the four exit helpers each emit a distinct, parseable line", () => {
   assert.ok(cap.some((l) => l === "cloudgrid-mcp: /mcp 400 no-session reason=missing-session-id-and-not-initialize"));
   assert.ok(cap.some((l) => l === "cloudgrid-mcp: /mcp 400 rehydrate-failed session-id=stale-session-id"));
   assert.ok(cap.some((l) => l.startsWith("cloudgrid-mcp: session established")));
+});
+
+test("the connect 401 line carries the client name, bounded and flattened like the session-established line", () => {
+  const cap = [];
+  const push = (m) => cap.push(m);
+  const req = { headers: {} };
+
+  logAuthChallenge(req, push, "connect", clientNameForLog({ name: "claude-code", version: "2.0.0" }));
+  assert.equal(cap.at(-1), "cloudgrid-mcp: /mcp 401 auth-challenge authorization=absent reason=connect client=claude-code");
+  assert.ok(!cap.at(-1).includes("2.0.0"), "the version is not logged, matching the session-established line");
+
+  // Missing clientInfo, missing name, empty name, non-string name: "(none)".
+  for (const info of [undefined, null, {}, { name: "" }, { name: 42 }, { version: "1" }]) {
+    logAuthChallenge(req, push, "connect", clientNameForLog(info));
+    assert.equal(cap.at(-1), "cloudgrid-mcp: /mcp 401 auth-challenge authorization=absent reason=connect client=(none)", `info=${JSON.stringify(info)}`);
+  }
+
+  // An over-long name is cut exactly as logInitialize cuts it.
+  const long = "n".repeat(200);
+  logAuthChallenge(req, push, "connect", clientNameForLog({ name: long }));
+  assert.equal(cap.at(-1), `cloudgrid-mcp: /mcp 401 auth-challenge authorization=absent reason=connect client=${logSafe(long)}`);
+  assert.ok(cap.at(-1).endsWith(`client=${"n".repeat(64)}…`));
+  const initLines = [];
+  logInitialize({ getClientVersion: () => ({ name: long }), getClientCapabilities: () => ({}) }, "s", "p", (m) => initLines.push(m));
+  assert.ok(initLines[0].endsWith(`client=${"n".repeat(64)}…`), "same bound on the session-established line");
+
+  // A control-character name cannot forge a second line.
+  const before = cap.length;
+  logAuthChallenge(req, push, "connect", clientNameForLog({ name: "x\r\ncloudgrid-mcp: session established session-id=forged" }));
+  assert.equal(cap.length, before + 1);
+  assert.ok(!/[\r\n]/.test(cap.at(-1)), "no CR or LF in the line");
+  assert.match(cap.at(-1), /client=x  cloudgrid-mcp: session established/);
+
+  // Without a client argument the line is unchanged (the protected-tool and token paths).
+  logAuthChallenge(req, push, "protected-tool");
+  assert.equal(cap.at(-1), "cloudgrid-mcp: /mcp 401 auth-challenge authorization=absent reason=protected-tool");
 });
 
 test("logRehydrateFailed flattens an injected mcp-session-id header", () => {
@@ -305,6 +342,29 @@ test("EXIT 401: a missing / malformed / empty Bearer each logs its own distinct 
   assert.equal(raw.code, 401, "bare Bearer scheme with no token is challenged");
   line = await waitFor("/mcp 401 auth-challenge", since);
   assert.match(line, /authorization=empty-token/, `empty token; got: ${line}`);
+});
+
+test("EXIT 401 at connect: a signed-out initialize logs the client name, or (none) without clientInfo", async () => {
+  let since = stderr.length;
+  let res = await post(initBody("connect-probe"), {});
+  assert.equal(res.status, 401, "a signed-out connect-mode initialize is challenged");
+  let line = await waitFor("/mcp 401 auth-challenge", since);
+  assert.match(line, /reason=connect client=connect-probe$/, `got: ${line}`);
+  assert.ok(!line.includes("0.0.0"), `no version; got: ${line}`);
+
+  since = stderr.length;
+  const noInfo = initBody();
+  delete noInfo.params.clientInfo;
+  res = await post(noInfo, {});
+  assert.equal(res.status, 401);
+  line = await waitFor("/mcp 401 auth-challenge", since);
+  assert.match(line, /reason=connect client=\(none\)$/, `got: ${line}`);
+
+  since = stderr.length;
+  res = await post(initBody(`evil\nforged ${"z".repeat(100)}`), {});
+  assert.equal(res.status, 401);
+  line = await waitFor("/mcp 401 auth-challenge", since);
+  assert.ok(line.endsWith(`client=evil forged ${"z".repeat(52)}…`), `bounded and flattened; got: ${line}`);
 });
 
 test("EXIT 400 (branch 1): a non-initialize request with no session id logs the no-session reason", async () => {

@@ -61,11 +61,26 @@ export function keyShape(value, depth = 0) {
   return out;
 }
 
+// The client name from an initialize `clientInfo`, or "(none)" when clientInfo
+// or its name is missing, so the field is always present on the connect 401.
+// Client text: logAuthChallenge bounds and flattens it with logSafe, the same
+// bound the session-established line uses.
+export function clientNameForLog(clientInfo) {
+  const name = clientInfo?.name;
+  return typeof name === "string" && name !== "" ? name : "(none)";
+}
+
 // The 401 auth challenge on /mcp (REQUIRE_AUTH && no usable Bearer).
 // `reason` is a fixed word from the gate (connect, protected-tool, or a token
 // check result such as expired / wrong_audience), never client text.
-export function logAuthChallenge(req, emit = defaultEmit, reason = "") {
-  emit(`cloudgrid-mcp: /mcp 401 auth-challenge authorization=${authHeaderState(req)}${reason ? ` reason=${logSafe(reason, 32)}` : ""}`);
+// `client`, when given, is a clientNameForLog result: the connect 401 answers an
+// initialize, and the name shows which client was asked to sign in at connect.
+export function logAuthChallenge(req, emit = defaultEmit, reason = "", client) {
+  emit(
+    `cloudgrid-mcp: /mcp 401 auth-challenge authorization=${authHeaderState(req)}` +
+      `${reason ? ` reason=${logSafe(reason, 32)}` : ""}` +
+      `${client === undefined ? "" : ` client=${logSafe(client)}`}`,
+  );
 }
 
 // The first 400 branch: a request with no session id that is not an initialize.
