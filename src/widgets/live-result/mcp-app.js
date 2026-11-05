@@ -29,6 +29,7 @@ import {
   showPreview,
   updateMessage,
   visibilityArgs,
+  visibilityPills,
   checkDeployArgs,
   applyCheckDeploy,
 } from "./view.js";
@@ -79,16 +80,16 @@ function render() {
     els.preview.hidden = true;
   }
 
-  const options = model.visibilityOptions;
-  els.visibility.hidden = !(options.length && model.entityId);
+  const pills = visibilityPills(model);
+  els.visibility.hidden = !(pills.length && model.entityId);
   els.pills.replaceChildren(
-    ...options.map((opt) => {
+    ...pills.map((opt) => {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "pill";
       b.textContent = opt.label;
       b.dataset.value = opt.value;
-      b.setAttribute("aria-pressed", String(opt.value === model.visibility));
+      b.setAttribute("aria-pressed", String(opt.pressed));
       b.addEventListener("click", () => setVisibility(opt.value));
       return b;
     }),

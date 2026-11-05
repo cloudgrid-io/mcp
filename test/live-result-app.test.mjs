@@ -27,6 +27,7 @@ import {
   showPreview,
   updateMessage,
   visibilityArgs,
+  visibilityPills,
   checkDeployArgs,
   applyCheckDeploy,
   PREVIEW_META_KEY as VIEW_META_KEY,
@@ -185,6 +186,12 @@ check("web: HTML carries the card actions", ["Open", "Copy link", "Update", "Who
   check("view: live result → headline Live", headline(m) === "Live");
   check("view: live result with preview URL → preview shown", showPreview(m) === true);
   check("view: visibility options carried", m.visibilityOptions.length === 2 && m.visibility === "private");
+  // #473: the card marks the current choice from current_visibility, and only that one.
+  const pills = visibilityPills(m);
+  check("view: current visibility pill is marked pressed",
+    pills.length === 2 && pills.find((p) => p.value === "private")?.pressed === true && pills.find((p) => p.value === "link")?.pressed === false);
+  const unconfirmed = readResult({ ...live, structuredContent: { ...live.structuredContent, current_visibility: undefined } });
+  check("view: no current_visibility → no pill marked", visibilityPills(unconfirmed).every((p) => p.pressed === false));
   check("view: no preview meta → no preview", showPreview(readResult({ ...live, _meta: undefined })) === false);
   check("view: http preview URL is never framed",
     showPreview(readResult({ ...live, _meta: { [VIEW_META_KEY]: "http://preview.example.com/ent-1" } })) === false);

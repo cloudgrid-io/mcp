@@ -1789,6 +1789,80 @@ export async function plugViaCliFallback(ctx, artifacts, deps = {}) {
  * Source is `path` (local edition — the folder/file is read and uploaded) XOR
  * `artifact_files` (hosted — inline file entries).
  */
+// ── Current visibility after a plug (#473) ──────────────────────────────────
+// The plug result must say who can open the page, read from the API, never
+// guessed. The create default is not fixed in code (a grid override and the
+// platform defaults decide it), so when the plug response carries no
+// `visibility` the entity is read back once. Anything unreadable stays
+// unconfirmed, and the result says so.
+
+// One sentence per stored value, keyed like VISIBILITY_LABELS.
+export const VISIBILITY_SENTENCES = {
+  private: "Private: only you can open it.",
+  grid: "Grid: everyone in your grid can open it.",
+  link: "Link: anyone with the link can open it.",
+  authenticated: "Link, sign-in required: anyone with the link who is signed in to CloudGrid can open it.",
+  space: "Selected spaces: members of the chosen spaces in your grid can open it.",
+  public: "Public: anyone can open it, and search engines can list it.",
+};
+
+/**
+ * Normalize an API visibility read (a plug response, an inspiration read, or a
+ * runtime card) to one VISIBILITY_LABELS key. The two stored axes win when both
+ * are present (they are what access control acts on); otherwise
+ * the legacy enum is folded (`org` → grid, the unlisted link forms → link, the
+ * indexed forms → public). Returns null for anything it cannot name exactly.
+ */
+export function visibilityKeyFromRead(d) {
+  if (!d || typeof d !== "object") return null;
+  const scope = d.share_scope;
+  const access = d.external_access;
+  if (typeof scope === "string" && typeof access === "string") {
+    if (access === "none") {
+      if (scope === "private") return "private";
+      if (scope === "grid") return "grid";
+      if (scope === "spaces") return "space";
+      return null;
+    }
+    if (access === "link" && scope === "private") return d.require_signin === true ? "authenticated" : "link";
+    if (access === "public" && scope === "grid") return "public";
+    return null;
+  }
+  const v = typeof d.visibility === "string" ? d.visibility : null;
+  if (!v) return null;
+  if (v === "org" || v === "grid") return "grid";
+  if (v === "private" || v === "authenticated" || v === "space") return v;
+  if (v === "link" || v === "link-anonymous") return d.link_indexed === true ? "public" : "link";
+  if (v === "public" || v === "link-indexed") return "public";
+  return null;
+}
+
+/**
+ * Read an entity's current visibility back from the API: the inspiration read
+ * (GET /api/v2/inspirations/:id) for a page, the runtime card
+ * (GET /api/v2/runtimes/:id/card) for an app or agent. Unknown kind tries the
+ * inspiration read first. Best effort: any failure returns null (unconfirmed),
+ * never an error, so a read hiccup cannot fail a plug that already succeeded.
+ */
+export async function readCurrentVisibility({ entityId, kind, headers, fetchImpl = fetch }) {
+  if (!entityId) return null;
+  const id = encodeURIComponent(entityId);
+  const inspiration = `${API_BASE}/api/v2/inspirations/${id}`;
+  const runtime = `${API_BASE}/api/v2/runtimes/${id}/card`;
+  const order = kind === "app" || kind === "agent" ? [runtime] : kind === "inspiration" ? [inspiration] : [inspiration, runtime];
+  for (const u of order) {
+    try {
+      const res = await fetchImpl(u, { headers, signal: AbortSignal.timeout(5000) });
+      if (!res.ok) continue;
+      const key = visibilityKeyFromRead(await res.json());
+      if (key) return key;
+    } catch {
+      /* unconfirmed */
+    }
+  }
+  return null;
+}
+
 export async function runPlug(ctx, input, deps = {}) {
   const { fetchImpl = fetch, uploadTimeoutMs = PLUG_UPLOAD_TIMEOUT_MS } = deps;
   const {
@@ -2506,17 +2580,42 @@ export async function runPlug(ctx, input, deps = {}) {
   // the user, then apply their answer via grid_visibility. On an edit, leave the
   // entity's existing visibility untouched (don't re-ask on every re-plug) — this
   // stays `!isEdit` deliberately, decoupled from the console line above.
-  if (!isEdit && data.entity_id) {
-    const current = typeof data.visibility === "string" ? data.visibility : null;
-    if (current) structured.current_visibility = current;
-    structured.visibility_options = VISIBILITY_OPTIONS.map((v) => ({ value: v, label: VISIBILITY_LABELS[v] }));
-    lines.push(
-      `Now ASK the user who should be able to open this${current ? ` (currently ${VISIBILITY_LABELS[current] ?? current})` : ""}, then set their choice with grid_visibility — do not decide it for them. Options: ${
-        VISIBILITY_OPTIONS
-          .map((v) => `${v} (${VISIBILITY_LABELS[v]})`)
-          .join("; ")
-      }. Finer control: a sign-in-required link (require_signin), search-indexed (indexed), or selected spaces (inside: spaces).`,
-    );
+  //
+  // #473: on create AND update, state who can open it now, from the API only.
+  // The plug response's `visibility` when present; otherwise one read-back of
+  // the entity. Unreadable stays unconfirmed, and the text says so, so the
+  // agent never fills the gap with a guess.
+  // The read-back needs the caller's own session, so it runs on the authed wire
+  // only; an owner-token edit reports what its response carries.
+  if (data.entity_id) {
+    const current =
+      visibilityKeyFromRead(data) ??
+      (useAnonWire
+        ? null
+        : await readCurrentVisibility({
+            entityId: data.entity_id,
+            kind: data.detection?.kind ?? data.kind ?? null,
+            headers,
+            fetchImpl,
+          }));
+    if (current) {
+      structured.current_visibility = current;
+      lines.push(`Who can open it: ${VISIBILITY_SENTENCES[current]} grid_visibility changes who can open it.`);
+    } else {
+      lines.push(
+        "Who can open it: not confirmed. The API did not report this page's visibility. Do not tell the user who can open it; grid_visibility sets it.",
+      );
+    }
+    if (!isEdit) {
+      structured.visibility_options = VISIBILITY_OPTIONS.map((v) => ({ value: v, label: VISIBILITY_LABELS[v] }));
+      lines.push(
+        `Now ASK the user who should be able to open this, then set their choice with grid_visibility. Do not decide it for them. Options: ${
+          VISIBILITY_OPTIONS
+            .map((v) => `${v} (${VISIBILITY_LABELS[v]})`)
+            .join("; ")
+        }. Finer control: a sign-in-required link (require_signin), search-indexed (indexed), or selected spaces (inside: spaces).`,
+      );
+    }
   }
   return { text: lines.join("\n"), structured };
 }

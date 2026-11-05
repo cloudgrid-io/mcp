@@ -61,7 +61,8 @@ async function capturePlug(input) {
   const cliCalls = [];
   let projectFiles = null;
   const fetchImpl = async (url, opts) => {
-    captured = opts.body; // FormData
+    // Only the plug POST carries a body; the #473 visibility read-back GET does not.
+    if (opts?.body) captured = opts.body; // FormData
     return new Response(
       JSON.stringify({ entity_id: "e1", slug: "s1", url: "https://x", status: "live" }),
       { status: 200, headers: { "content-type": "application/json" } },

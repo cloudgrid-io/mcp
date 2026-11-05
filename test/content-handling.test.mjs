@@ -135,7 +135,7 @@ try {
     // authed inline between 2MB and AUTHED cap → allowed.
     const before = calls.length;
     await runPlug(makeCtx({ token: "jwt-1" }), { html: big });
-    check("authed inline > 2MB (< 25MB) → allowed (published)", calls.length === before + 1);
+    check("authed inline > 2MB (< 25MB) → allowed (published)", calls.slice(before).filter((c) => c.url.endsWith("/api/v2/plug")).length === 1);
 
     // authed over AUTHED cap → authed-limit message.
     const huge = "<!doctype html><html><body>" + "a".repeat(26_000_000) + "</body></html>";
