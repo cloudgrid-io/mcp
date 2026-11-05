@@ -51,7 +51,9 @@ globalThis.fetch = async (url, opts = {}) => {
   });
 };
 
-const lastCall = () => calls[calls.length - 1];
+// The last plug POST. #473: an authed plug may follow its POST with a
+// visibility read-back GET, so "last call" means the last /api/v2/plug call.
+const lastCall = () => [...calls].reverse().find((c) => c.url.endsWith("/api/v2/plug"));
 // The confirm-before-live poll appends form-less GETs after a building plug —
 // artifact assertions must read the last call that actually carried FormData.
 const lastFormCall = () => [...calls].reverse().find((c) => c.form);
@@ -241,7 +243,7 @@ try {
       .find((c) => c.url.includes("/api/v2/inspirations/") && c.method === "PATCH");
     check("web authed html create posts to /plug with Authorization", Boolean(plugPost) && plugPost.headers.Authorization === "Bearer jwt-web");
     check("new deploy → visibility is NOT set silently (no PATCH)", !patch);
-    check("new deploy → reports the server's current visibility", w.structured.current_visibility === "org");
+    check("new deploy → reports the server's current visibility (legacy org folds to grid)", w.structured.current_visibility === "grid" && /Who can open it: Grid: everyone in your grid can open it\./.test(w.text));
     // Two-axis model: the offered set is the three current modes (private, grid,
     // link) — retired values (org, authenticated, space-as-mode) are display-only
     // and must NOT be offered as choices.

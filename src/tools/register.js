@@ -573,11 +573,11 @@ export function registerTools(server, ctx) {
         claim_message: z.string().optional().describe("Drops plugged outside a grid: the claim note to relay to the owner."),
         owner_token: z.string().optional().describe("Drops plugged outside a grid: the bearer owner token (re-plug + claim). Re-minted on every such edit — persist the newest."),
         console_url: z.string().optional().describe("Emitted on every non-building plug (both editions): a link to the grid in the console."),
-        current_visibility: z.string().optional().describe("Web authed inspiration create: the visibility set after publish (link)."),
+        current_visibility: z.string().optional().describe("Who can open it now, as the API reports it after this plug: private, grid, link, authenticated, space, or public. Absent when the API did not confirm it."),
         visibility_options: z.array(z.object({
           value: z.string().describe("Visibility value to pass to grid_visibility."),
           label: z.string().describe("Human-readable label."),
-        })).optional().describe("Web authed inspiration create: available visibility levels."),
+        })).optional().describe("New deploy: the visibility levels to offer the user; set the choice with grid_visibility."),
         // grid_plug has ONE outputSchema but THREE response modes; the SDK renders
         // this schema with additionalProperties:false and the client rejects any
         // undeclared key (MCP -32602). Declare the two non-deploy-result modes so

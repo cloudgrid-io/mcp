@@ -78,6 +78,15 @@ export function updateMessage(model, request) {
   return what + how;
 }
 
+/**
+ * The "Who can open it" pills: one per offered option, the current one marked
+ * pressed (#473). The current value comes only from the result's
+ * current_visibility; with none, no pill is marked.
+ */
+export function visibilityPills(model) {
+  return model.visibilityOptions.map((o) => ({ value: o.value, label: o.label, pressed: o.value === model.visibility }));
+}
+
 /** grid_visibility arguments for a choice, scoped to this card's entity. */
 export function visibilityArgs(model, value) {
   return {

@@ -1047,7 +1047,7 @@
           "type": "string"
         },
         "current_visibility": {
-          "description": "Web authed inspiration create: the visibility set after publish (link).",
+          "description": "Who can open it now, as the API reports it after this plug: private, grid, link, authenticated, space, or public. Absent when the API did not confirm it.",
           "type": "string"
         },
         "entity_id": {
@@ -1174,7 +1174,7 @@
           "type": "string"
         },
         "visibility_options": {
-          "description": "Web authed inspiration create: available visibility levels.",
+          "description": "New deploy: the visibility levels to offer the user; set the choice with grid_visibility.",
           "items": {
             "additionalProperties": false,
             "properties": {
