@@ -1809,7 +1809,7 @@ export const VISIBILITY_SENTENCES = {
 /**
  * Normalize an API visibility read (a plug response, an inspiration read, or a
  * runtime card) to one VISIBILITY_LABELS key. The two stored axes win when both
- * are present (Decision 060: they are what access control acts on); otherwise
+ * are present (they are what access control acts on); otherwise
  * the legacy enum is folded (`org` → grid, the unlisted link forms → link, the
  * indexed forms → public). Returns null for anything it cannot name exactly.
  */
