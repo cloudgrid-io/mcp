@@ -165,8 +165,8 @@ try {
   publicReplies = [{ status: 200, body: "<html>composed</html>" }];
   await runSource(makeCtx({ lastDrop: null }), { grid: "acme", slug: "page" });
   check(
-    "grid+slug composes path-based apex URL",
-    publicCalls()[0]?.url === "https://acme.cloudgrid.io/page",
+    "grid+slug composes the inspiration's own host",
+    publicCalls()[0]?.url === "https://page--acme.cloudgrid.io/",
   );
 
   // no url, no session, no grid+slug → fail (throws), no fetch of any kind.
