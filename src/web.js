@@ -52,6 +52,7 @@ import { createWebIdentity } from "./web-identity.js";
 import { createErrorHandler } from "./web-errors.js";
 import {
   logAuthChallenge,
+  clientNameForLog,
   logNoSession,
   logRehydrateFailed,
   logInitialize,
@@ -596,8 +597,9 @@ app.post("/mcp", limit.mcp, limit.initialize, async (req, res) => {
     // Any initialize, well-formed or not, so a client that never sends a valid
     // one still learns that sign-in is needed.
     const asksInitialize = !Array.isArray(req.body) && req.body?.method === "initialize";
-    if (asksInitialize && modeOf(req.body?.params?.clientInfo) === "connect") {
-      logAuthChallenge(req, undefined, "connect");
+    const clientInfo = req.body?.params?.clientInfo;
+    if (asksInitialize && modeOf(clientInfo) === "connect") {
+      logAuthChallenge(req, undefined, "connect", clientNameForLog(clientInfo));
       sendAuthChallenge(req, res, { atConnect: true });
       return;
     }
