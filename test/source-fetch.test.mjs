@@ -288,6 +288,18 @@ try {
   });
   check("structured.entity_id echoes input", echoed.structured.entity_id === "ent-42");
 
+  // ── 5b. The inspiration's own host `<slug>--<grid>.cloudgrid.io`: the slug comes
+  //        from the host, never from the file path ────────────────────────────
+  reset();
+  apiHtml = "<html>host-form</html>";
+  const viaHost = await runSource(makeCtx({ lastDrop: null }), {
+    url: "https://deck--acme.cloudgrid.io/css/a.css",
+  });
+  check("host form: API read is by the host's slug", apiSourceCalls().some((c) => c.url === `${API_BASE}/api/v2/inspirations/deck/source`));
+  check("host form: never by the file path's first segment", !apiSourceCalls().some((c) => c.url.includes("/inspirations/css/")));
+  check("host form: the grid header is the host's grid", apiSourceCalls().some((c) => c.headers?.["X-CloudGrid-Grid"] === "acme"));
+  check("host form: served from the API", viaHost.structured.html === "<html>host-form</html>");
+
   // ── 6. Inline HTML + bytes + truncated ──────────────────────────────────────
   reset();
   apiHtml = null;
