@@ -20,6 +20,7 @@ import { TEST_SIGNING_SEED } from "./helpers/mcp-tokens.mjs";
 
 const SECRET = "test-oauth-hmac-secret-redirect-consent-00000";
 const CLAUDE_CALLBACK = "https://claude.ai/api/mcp/auth_callback";
+const CURSOR_CALLBACK = "cursor://anysphere.cursor-retrieval/oauth/user-cloudgrid/callback";
 
 const b64url = (b) => b.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
@@ -101,6 +102,13 @@ const REFUSED = [
   ["https with a fragment", "https://claude.ai/api/mcp/auth_callback#frag"],
   ["credentials in the URI", "https://claude.ai@example.com/callback"],
   ["relative URI", "/callback"],
+  ["file: scheme", "file:///tmp/callback"],
+  ["unlisted desktop scheme", "windsurf://codeium.windsurf/oauth/callback"],
+  ["cursor: without a host (opaque)", "cursor:callback"],
+  ["cursor: with an empty host", "cursor:///oauth/callback"],
+  ["cursor: with a fragment", `${CURSOR_CALLBACK}#frag`],
+  ["cursor: with credentials", "cursor://user:pw@anysphere.cursor-retrieval/oauth/cb"],
+  ["scheme that only starts with cursor", "cursorx://anysphere.cursor-retrieval/oauth/cb"],
 ];
 
 for (const [label, uri] of REFUSED) {
@@ -125,6 +133,7 @@ const ACCEPTED = [
   ["loopback 127.0.0.1", "http://127.0.0.1:43210/callback"],
   ["loopback [::1]", "http://[::1]:43210/callback"],
   ["loopback localhost", "http://localhost:9/cb"],
+  ["Cursor desktop scheme (RFC 8252 §7.1)", CURSOR_CALLBACK],
 ];
 
 for (const [label, uri] of ACCEPTED) {
@@ -139,7 +148,7 @@ for (const [label, uri] of ACCEPTED) {
 }
 
 test("authorize refuses a pre-existing client_id whose redirect URI breaks the rules", async () => {
-  for (const uri of ["javascript:alert(1)", "myapp://cb", "http://example.com/cb"]) {
+  for (const uri of ["javascript:alert(1)", "myapp://cb", "http://example.com/cb", "data:text/html,x", "cursor:///cb", "windsurf://h/cb"]) {
     const { res, text } = await authorize(legacyClientId([uri]), uri);
     assert.equal(res.status, 400, `${uri} must be refused`);
     assert.equal(res.headers.get("location"), null, "never redirected to");
@@ -148,8 +157,34 @@ test("authorize refuses a pre-existing client_id whose redirect URI breaks the r
 });
 
 test("authorize still accepts a pre-existing client_id with an allowed URI", async () => {
-  const { res } = await authorize(legacyClientId([CLAUDE_CALLBACK]), CLAUDE_CALLBACK);
+  for (const uri of [CLAUDE_CALLBACK, CURSOR_CALLBACK]) {
+    const { res } = await authorize(legacyClientId([uri]), uri);
+    assert.equal(res.status, 200, uri);
+  }
+});
+
+test("authorize requires PKCE S256 for a desktop scheme redirect", async () => {
+  const { body } = await register({ redirect_uris: [CURSOR_CALLBACK], client_name: "Cursor" });
+  const base = authorizeUrl(body.client_id, CURSOR_CALLBACK);
+  for (const url of [base.replace("S256", "plain"), base.replace(/&code_challenge=[^&]+/, "")]) {
+    const res = await fetch(url, { redirect: "manual" });
+    assert.equal(res.status, 400);
+    assert.equal(res.headers.get("location"), null);
+    assert.match(await res.text(), /PKCE \(S256\)/);
+  }
+});
+
+test("for a desktop scheme redirect the consent step names the app, not a host", async () => {
+  // The registered name is self-asserted; the page names the app that handles the scheme.
+  const { body } = await register({ redirect_uris: [CURSOR_CALLBACK], client_name: "Something else" });
+  const { res, text } = await authorize(body.client_id, CURSOR_CALLBACK);
   assert.equal(res.status, 200);
+  assert.match(text, /<p id="consent"><strong>Cursor<\/strong> wants to connect to your CloudGrid account\.<\/p>/);
+  assert.match(text, /After sign-in you will be returned to <strong>Cursor<\/strong>\./);
+  assert.doesNotMatch(text, /Something else/);
+  assert.doesNotMatch(text, /anysphere\.cursor-retrieval/);
+  // The page's own redirect check accepts the scheme it was given.
+  assert.match(text, /const SCHEMES = \["https:","http:","cursor:"\];/);
 });
 
 test("the consent step names the client and the redirect host before sign-in", async () => {

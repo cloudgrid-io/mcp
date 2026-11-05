@@ -60,7 +60,9 @@ function clientIdPrefix(clientId) {
 function hostOf(uri) {
   if (!uri) return "absent";
   try {
-    return new URL(String(uri)).host;
+    const u = new URL(String(uri));
+    // A private-use scheme redirect keeps its scheme, so the log tells it apart.
+    return u.protocol === "https:" || u.protocol === "http:" ? u.host : `${u.protocol}//${u.host}`;
   } catch {
     return "invalid";
   }
@@ -174,13 +176,32 @@ function cleanClientName(name) {
 }
 
 // --- Redirect URI rules -------------------------------------------------------
-// A redirect URI must be `https:`, or `http:` on a loopback address (local
-// clients run a callback listener on 127.0.0.1 / [::1] / localhost). Anything
+// A redirect URI must be `https:`, `http:` on a loopback address (local
+// clients run a callback listener on 127.0.0.1 / [::1] / localhost), or a
+// private-use scheme of a known desktop client (NATIVE_APP_SCHEMES). Anything
 // else — other schemes, http to a non-loopback host, a fragment (RFC 6749
 // §3.1.2), embedded credentials — is refused. Enforced at registration
 // (invalid_redirect_uri, RFC 7591 §3.2.2) and again at authorize, so a client_id
 // minted before these rules cannot be used with a URI that breaks them.
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "[::1]", "localhost"]);
+
+// Private-use URI schemes (RFC 8252 §7.1) accepted as redirects, mapped to the
+// name of the desktop app that handles the scheme. The consent page shows that
+// name in place of a host. PKCE S256, which RFC 8252 requires for these, is
+// mandatory at authorize for every client. Add a scheme only for a client whose
+// published registration uses it:
+//   cursor:  Cursor registers cursor://anysphere.cursor-retrieval/oauth/<server>/callback.
+// Not listed: VS Code registers https://vscode.dev/redirect and loopback http.
+const NATIVE_APP_SCHEMES = new Map([["cursor:", "Cursor"]]);
+
+// The app name for a private-use scheme redirect, else "".
+export function nativeAppFor(uri) {
+  try {
+    return NATIVE_APP_SCHEMES.get(new URL(String(uri)).protocol) ?? "";
+  } catch {
+    return "";
+  }
+}
 
 // Returns null when the URI is acceptable, else a reason for error_description.
 export function redirectUriProblem(uri) {
@@ -195,16 +216,16 @@ export function redirectUriProblem(uri) {
   if (u.username || u.password) return "redirect_uri must not contain user credentials.";
   if (u.protocol === "https:" && u.hostname) return null;
   if (u.protocol === "http:" && LOOPBACK_HOSTS.has(u.hostname)) return null;
-  return "redirect_uri must use https, or http on a loopback address (127.0.0.1, [::1], localhost).";
+  if (NATIVE_APP_SCHEMES.has(u.protocol) && u.hostname) return null;
+  return (
+    "redirect_uri must use https, http on a loopback address (127.0.0.1, [::1], localhost), " +
+    `or a supported desktop app scheme (${[...NATIVE_APP_SCHEMES.keys()].join(", ")} with a host).`
+  );
 }
 
-function isHttpUrl(uri) {
-  try {
-    const { protocol } = new URL(String(uri));
-    return protocol === "https:" || protocol === "http:";
-  } catch {
-    return false;
-  }
+// A code is only ever handed to a redirect that passes the rules above.
+function isAllowedRedirect(uri) {
+  return redirectUriProblem(String(uri)) === null;
 }
 
 // --- Who the consent page names (#5785) ----------------------------------------
@@ -371,7 +392,9 @@ function sendOAuthError(res, message, status = 400) {
 // host the browser returns to; nothing starts until the user continues. Then it
 // opens the CloudGrid sign-in in a new tab and polls until it completes, and
 // returns the browser to the client app.
-function interstitialHtml({ sid, loginUrl, clientName, redirectHost, signedInAs = null, formToken = "" }) {
+// For a private-use scheme redirect, `redirectApp` names the desktop app that
+// handles the scheme; it replaces both the client name and the host.
+function interstitialHtml({ sid, loginUrl, clientName, redirectHost, redirectApp = "", signedInAs = null, formToken = "" }) {
   const approve = signedInAs
     ? `<p>Signed in to CloudGrid as <strong>${escapeHtml(signedInAs)}</strong>.</p>
   <form method="post" action="/oauth/authorize/approve">
@@ -381,9 +404,12 @@ function interstitialHtml({ sid, loginUrl, clientName, redirectHost, signedInAs 
   </form>
   <p class="status"><a id="go" href="${escapeHtml(loginUrl)}" target="_blank" rel="noopener noreferrer">Use a different account</a></p>`
     : `<a class="btn" id="go" href="${escapeHtml(loginUrl)}" target="_blank" rel="noopener noreferrer">Continue to sign in</a>`;
-  const who = clientName
-    ? `<strong>${escapeHtml(clientName)}</strong> (<strong>${escapeHtml(redirectHost)}</strong>)`
-    : `An application at <strong>${escapeHtml(redirectHost)}</strong>`;
+  const returnTo = redirectApp || redirectHost;
+  const who = redirectApp
+    ? `<strong>${escapeHtml(redirectApp)}</strong>`
+    : clientName
+      ? `<strong>${escapeHtml(clientName)}</strong> (<strong>${escapeHtml(redirectHost)}</strong>)`
+      : `An application at <strong>${escapeHtml(redirectHost)}</strong>`;
   return `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -404,12 +430,13 @@ function interstitialHtml({ sid, loginUrl, clientName, redirectHost, signedInAs 
 <body><main>
   <h1>Connect CloudGrid</h1>
   <p id="consent">${who} wants to connect to your CloudGrid account.</p>
-  <p class="host">After sign-in you will be returned to <strong>${escapeHtml(redirectHost)}</strong>. If you did not start this, close this page.</p>
+  <p class="host">After sign-in you will be returned to <strong>${escapeHtml(returnTo)}</strong>. If you did not start this, close this page.</p>
   ${approve}
   <p class="status" id="st" hidden>Waiting for sign-in. Finish it in this browser.</p>
 </main>
 <script>
   const POLL_URL = ${scriptJson(`/oauth/authorize/poll?sid=${sid}`)};
+  const SCHEMES = ${scriptJson(["https:", "http:", ...NATIVE_APP_SCHEMES.keys()])};
   const st = document.getElementById("st");
   let started = false;
   async function tick() {
@@ -418,7 +445,7 @@ function interstitialHtml({ sid, loginUrl, clientName, redirectHost, signedInAs 
       const d = await r.json();
       if (d.status === "ready") {
         let ok = false;
-        try { const u = new URL(d.redirect); ok = u.protocol === "https:" || u.protocol === "http:"; } catch {}
+        try { const u = new URL(d.redirect); ok = SCHEMES.includes(u.protocol); } catch {}
         if (ok) { location.href = d.redirect; return; }
         st.textContent = "This connection cannot be completed. Close this page and connect again.";
         return;
@@ -700,6 +727,7 @@ export function mountOAuth(app, opts) {
         loginUrl: buildLoginUrl(cgCode),
         clientName: shownClientName(client.client_name, redirect_uri),
         redirectHost: new URL(String(redirect_uri)).host,
+        redirectApp: nativeAppFor(redirect_uri),
         signedInAs: signedIn?.email ?? null,
         formToken,
       }),
@@ -766,7 +794,7 @@ export function mountOAuth(app, opts) {
         break;
       }
     }
-    if (!grant || !isHttpUrl(sess.redirect_uri)) {
+    if (!grant || !isAllowedRedirect(sess.redirect_uri)) {
       sendOAuthError(res, "You are not signed in to CloudGrid in this browser. Close this page and connect again.");
       return;
     }
@@ -812,9 +840,9 @@ export function mountOAuth(app, opts) {
       sess.grant = upstream.jwt;
       sess.grantAt = now;
     }
-    if (!isHttpUrl(sess.redirect_uri)) {
+    if (!isAllowedRedirect(sess.redirect_uri)) {
       // Unreachable while authorize enforces the redirect rules; kept so a
-      // code is never handed to a non-http(s) target.
+      // code is never handed to a target outside them.
       authSessions.delete(sid);
       res.json({ status: "expired" });
       return;

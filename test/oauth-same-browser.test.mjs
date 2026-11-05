@@ -175,6 +175,36 @@ test("a browser already signed in approves with one click", async () => {
   assert.equal(tok.status, 200);
 });
 
+// cloudgrid-io/mcp#472: a desktop client's private-use scheme redirect (Cursor)
+// gets the code by a 302 from Allow and by the poll's redirect, the same as https.
+test("Allow and the poll hand the code to a cursor: redirect", async () => {
+  const CURSOR = "cursor://anysphere.cursor-retrieval/oauth/user-cloudgrid/callback";
+  const session = platformJwt("cursor-user");
+  valid.add(session);
+  const a = await openAuthorize({ session, redirect: CURSOR, name: "Cursor" });
+  const ok = await fetch(`${BASE}/oauth/authorize/approve`, {
+    method: "POST", redirect: "manual",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Cookie: `${a.bind}; cloudgrid_session=${session}`, "Sec-Fetch-Site": "same-origin", Origin: BASE },
+    body: new URLSearchParams({ sid: a.sid, form_token: a.formToken }),
+  });
+  assert.equal(ok.status, 302);
+  const loc = new URL(ok.headers.get("location"));
+  assert.equal(`${loc.protocol}//${loc.host}${loc.pathname}`, CURSOR);
+  assert.equal(loc.searchParams.get("state"), "st");
+  const tok = await fetch(`${BASE}/oauth/token`, {
+    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "authorization_code", code: loc.searchParams.get("code"), code_verifier: a.verifier, redirect_uri: CURSOR, client_id: a.client_id }),
+  });
+  assert.equal(tok.status, 200);
+  assert.match(stderr, /redirect handed back to client; redirect_host=cursor:\/\/anysphere\.cursor-retrieval\n/);
+
+  nextSignIn = platformJwt("cursor-poll");
+  const b = await openAuthorize({ redirect: CURSOR, name: "Cursor" });
+  const r = await poll(b.sid, `${b.bind}; cloudgrid_session=${nextSignIn}`);
+  assert.equal(r.status, "ready");
+  assert.ok(r.redirect.startsWith(`${CURSOR}?code=`));
+});
+
 // #464: under `Referrer-Policy: no-referrer` a browser sends `Origin: null` on
 // the Allow form POST, and the approve handler (which requires the page's own
 // Origin) refuses every click. The tests above set Origin by hand, so only the
