@@ -23,9 +23,7 @@ function defaultEmit(msg) {
 // CR/LF and other control chars) or flood one (cap length). Presence/shape only.
 export function logSafe(value, max = 64) {
   const s = String(value ?? "");
-  // Line breaks first, as their own step, so a log scanner sees the removal;
-  // then every other control character.
-  const flat = s.replace(/[\r\n]/g, " ").replace(/[\u0000-\u001f\u007f]/g, " ");
+  const flat = s.replace(/[\u0000-\u001f\u007f]/g, " ");
   return flat.length > max ? `${flat.slice(0, max)}…` : flat;
 }
 
