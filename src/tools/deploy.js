@@ -1904,7 +1904,7 @@ export const STATIC_TARGET_REFUSAL =
 export const RUNTIME_TARGET_REFUSAL =
   "Nothing was changed. This link is a runtime app, and a re-plug replaces its whole source, so one HTML page would " +
   "replace the app's server code. To update the app, send all of its files in artifact_files, with its cloudgrid.yaml. " +
-  "To publish the page on its own, call grid_plug again without target_entity_id. The app stays as is.";
+  "To plug the page on its own, call grid_plug again without target_entity_id. The app stays as is.";
 
 /**
  * Does this re-plug source fit the target's kind (#481)? Returns the refusal
