@@ -89,8 +89,12 @@ button.secondary {
   border-color: light-dark(rgba(13,13,15,0.25), rgba(250,250,250,0.3));
 }
 .pill[aria-pressed="true"] {
+  font-weight: 600;
   background: light-dark(#0d0d0f, #fafafa);
   color: light-dark(#fafafa, #0d0d0f);
+  border-color: light-dark(#0d0d0f, #fafafa);
+  box-shadow: 0 0 0 2px light-dark(rgba(13,13,15,0.2), rgba(250,250,250,0.25));
 }
+.visibility .now { font-size: 0.8rem; margin: -0.25rem 0 0.5rem; }
 .status { margin: 0.6rem 0 0; font-size: 0.8rem; opacity: 0.75; }
 .status:empty { display: none; }

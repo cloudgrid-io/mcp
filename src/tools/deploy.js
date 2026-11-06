@@ -1863,6 +1863,75 @@ export async function readCurrentVisibility({ entityId, kind, headers, fetchImpl
   return null;
 }
 
+/**
+ * The kind of an existing entity, read before a re-plug writes to it (#481):
+ * "inspiration" (a single-page site), "app" or "agent" (a runtime), or null
+ * when the API does not say. The inspiration read answers 200 only for an
+ * inspiration; the runtime card names its kind. Best effort: any failure is
+ * null, and the re-plug then goes ahead as before (the API stays the authority).
+ */
+export async function readTargetKind({ entityId, headers, fetchImpl = fetch }) {
+  if (!entityId) return null;
+  const id = encodeURIComponent(entityId);
+  try {
+    const res = await fetchImpl(`${API_BASE}/api/v2/inspirations/${id}`, { headers, signal: AbortSignal.timeout(5000) });
+    if (res.ok) return "inspiration";
+  } catch {
+    /* try the runtime card */
+  }
+  try {
+    const res = await fetchImpl(`${API_BASE}/api/v2/runtimes/${id}/card`, { headers, signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return null;
+    const body = await res.json().catch(() => null);
+    const kind = body?.kind ?? body?.realm;
+    return kind === "inspiration" || kind === "app" || kind === "agent" ? kind : null;
+  } catch {
+    return null;
+  }
+}
+
+// Files that mark a source as a runtime app (a server, a build, a database),
+// never a single page.
+const RUNTIME_MARKER_RE =
+  /(^|\/)(cloudgrid\.ya?ml|package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?|deno\.jsonc?|requirements\.txt|pyproject\.toml|Pipfile|go\.mod|Cargo\.toml|Gemfile|composer\.json|pom\.xml|build\.gradle(\.kts)?|Dockerfile)$/i;
+
+export const STATIC_TARGET_REFUSAL =
+  "Nothing was changed. This link is a single-page site, and a re-plug can only replace its page with another page. " +
+  "The files you sent are a runtime app (a cloudgrid.yaml, package.json, or server code, with no HTML page first), " +
+  "and a runtime app, for example one with a database, needs its own address: call grid_plug again with the same " +
+  "artifact_files and without target_entity_id to plug it as a new app. The current page stays as is.";
+
+export const RUNTIME_TARGET_REFUSAL =
+  "Nothing was changed. This link is a runtime app, and a re-plug replaces its whole source, so one HTML page would " +
+  "replace the app's server code. To update the app, send all of its files in artifact_files, with its cloudgrid.yaml. " +
+  "To publish the page on its own, call grid_plug again without target_entity_id. The app stays as is.";
+
+/**
+ * Does this re-plug source fit the target's kind (#481)? Returns the refusal
+ * text when it does not, or null when it fits or the kind is unknown.
+ *   - an inspiration edit swaps ONE file as the page, so it takes a page: a
+ *     single file, or files led by an .html entry, with no runtime marker.
+ *   - a runtime edit replaces the whole source, so a lone HTML page (the
+ *     `html` source, or one .html file with no manifest) would wipe the app.
+ * `artifacts` is the list in wire order (primary entry first).
+ */
+export function replugKindMismatch({ targetKind, artifacts, manifestFromArtifacts }) {
+  if (!targetKind || !Array.isArray(artifacts) || artifacts.length === 0) return null;
+  const paths = artifacts.map((a) => String(a?.path || ""));
+  if (targetKind === "inspiration") {
+    const runtimeShaped =
+      manifestFromArtifacts ||
+      paths.some((p) => RUNTIME_MARKER_RE.test(p)) ||
+      (paths.length > 1 && !/\.html?$/i.test(paths[0]));
+    return runtimeShaped ? STATIC_TARGET_REFUSAL : null;
+  }
+  if (targetKind === "app" || targetKind === "agent") {
+    const lonePage = paths.length === 1 && /\.html?$/i.test(paths[0]) && !manifestFromArtifacts;
+    return lonePage ? RUNTIME_TARGET_REFUSAL : null;
+  }
+  return null;
+}
+
 export async function runPlug(ctx, input, deps = {}) {
   const { fetchImpl = fetch, uploadTimeoutMs = PLUG_UPLOAD_TIMEOUT_MS } = deps;
   const {
@@ -2169,6 +2238,30 @@ export async function runPlug(ctx, input, deps = {}) {
   const resolvedManifestYaml = cloudgrid_yaml
     || (hasArtifacts && artifact_files.find((f) => f?.path === "cloudgrid.yaml")?.content)
     || null;
+
+  // ── Re-plug kind guard (#481) ───────────────────────────────────────────────
+  // The API's inspiration edit content-versions the FIRST uploaded file as the
+  // page, whatever it is: a runtime bundle re-plugged onto a static page went
+  // live as package.json. A lone page re-plugged onto a runtime app would
+  // replace its whole source. Read the target's kind BEFORE any write and
+  // refuse a mismatch with what to do instead. The owner-token wire only ever
+  // edits a guest drop, which is a page. Unknown kind: go ahead as before.
+  if (isEdit) {
+    let targetKind = null;
+    if (useAnonWire) {
+      targetKind = "inspiration";
+    } else if (ctx.state.lastDrop?.entity_id === targetEntityId && ctx.state.lastDrop?.kind) {
+      targetKind = ctx.state.lastDrop.kind;
+    } else {
+      targetKind = await readTargetKind({ entityId: targetEntityId, headers, fetchImpl });
+    }
+    const refusal = replugKindMismatch({
+      targetKind,
+      artifacts,
+      manifestFromArtifacts: Boolean(cloudgrid_yaml && !hasHtml) || artifacts.some((a) => /(^|\/)cloudgrid\.ya?ml$/i.test(a.path || "")),
+    });
+    if (refusal) throw new Error(refusal);
+  }
 
   // ── CREATE manifest injection (issue #48) ───────────────────────────────────
   // The runtime build orchestrator relies on the manifest leading the bundle

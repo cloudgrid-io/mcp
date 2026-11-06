@@ -78,13 +78,39 @@ export function updateMessage(model, request) {
   return what + how;
 }
 
+// Labels for a current setting the card does not offer as a choice (#482).
+// Mirrors VISIBILITY_LABELS in src/tools/constants.js, which the browser
+// bundle cannot import.
+const CURRENT_ONLY_LABELS = {
+  authenticated: "Anyone with the link, sign-in required",
+  space: "Selected spaces",
+  public: "Anyone, findable by search",
+};
+
+// A stored legacy name for an offered choice.
+const CURRENT_ALIASES = { org: "grid" };
+
 /**
  * The "Who can open it" pills: one per offered option, the current one marked
  * pressed (#473). The current value comes only from the result's
- * current_visibility; with none, no pill is marked.
+ * current_visibility; with none, no pill is marked. A current setting that is
+ * not one of the offered choices (a sign-in link, selected spaces, search
+ * findable) gets its own pressed pill, so the card always shows what is set
+ * now (#482).
  */
 export function visibilityPills(model) {
-  return model.visibilityOptions.map((o) => ({ value: o.value, label: o.label, pressed: o.value === model.visibility }));
+  const current = CURRENT_ALIASES[model.visibility] ?? model.visibility;
+  const pills = model.visibilityOptions.map((o) => ({ value: o.value, label: o.label, pressed: o.value === current }));
+  if (pills.length && current && !pills.some((p) => p.pressed) && CURRENT_ONLY_LABELS[current]) {
+    pills.unshift({ value: current, label: CURRENT_ONLY_LABELS[current], pressed: true });
+  }
+  return pills;
+}
+
+/** The line under "Who can open it": the current setting, or that it is not confirmed. */
+export function visibilityNote(model) {
+  const now = visibilityPills(model).find((p) => p.pressed);
+  return now ? `Now: ${now.label}.` : "Current setting not confirmed. Pick one to set it.";
 }
 
 /** grid_visibility arguments for a choice, scoped to this card's entity. */

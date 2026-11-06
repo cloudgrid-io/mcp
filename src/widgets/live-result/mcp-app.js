@@ -30,6 +30,7 @@ import {
   updateMessage,
   visibilityArgs,
   visibilityPills,
+  visibilityNote,
   checkDeployArgs,
   applyCheckDeploy,
 } from "./view.js";
@@ -51,6 +52,7 @@ const els = {
   cancel: $("update-cancel"),
   visibility: $("visibility"),
   pills: $("pills"),
+  visibilityNow: $("visibility-now"),
   status: $("status"),
 };
 
@@ -82,12 +84,13 @@ function render() {
 
   const pills = visibilityPills(model);
   els.visibility.hidden = !(pills.length && model.entityId);
+  els.visibilityNow.textContent = visibilityNote(model);
   els.pills.replaceChildren(
     ...pills.map((opt) => {
       const b = document.createElement("button");
       b.type = "button";
-      b.className = "pill";
-      b.textContent = opt.label;
+      b.className = opt.pressed ? "pill selected" : "pill";
+      b.textContent = opt.pressed ? `\u2713 ${opt.label}` : opt.label;
       b.dataset.value = opt.value;
       b.setAttribute("aria-pressed", String(opt.pressed));
       b.addEventListener("click", () => setVisibility(opt.value));

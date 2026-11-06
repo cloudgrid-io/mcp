@@ -18,6 +18,7 @@
 // in a browser harness against the built HTML.
 // Run: node test/live-result-app.test.mjs
 
+import { readFileSync } from "node:fs";
 import { RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import { registerTools } from "../src/tools/register.js";
 import { liveResultResourceMeta, withPreviewMeta } from "../src/tools/register.js";
@@ -28,6 +29,7 @@ import {
   updateMessage,
   visibilityArgs,
   visibilityPills,
+  visibilityNote,
   checkDeployArgs,
   applyCheckDeploy,
   PREVIEW_META_KEY as VIEW_META_KEY,
@@ -192,6 +194,33 @@ check("web: HTML carries the card actions", ["Open", "Copy link", "Update", "Who
     pills.length === 2 && pills.find((p) => p.value === "private")?.pressed === true && pills.find((p) => p.value === "link")?.pressed === false);
   const unconfirmed = readResult({ ...live, structuredContent: { ...live.structuredContent, current_visibility: undefined } });
   check("view: no current_visibility → no pill marked", visibilityPills(unconfirmed).every((p) => p.pressed === false));
+  // #482: the card always shows the current setting, and says so in words.
+  check("view: current setting named under the pills", visibilityNote(m) === "Now: Only you.");
+  check("view: unconfirmed → says not confirmed", visibilityNote(unconfirmed) === "Current setting not confirmed. Pick one to set it.");
+  const withCurrent = (v) => readResult({ ...live, structuredContent: { ...live.structuredContent, current_visibility: v } });
+  const legacy = visibilityPills(withCurrent("org"));
+  const three = { ...live, structuredContent: { ...live.structuredContent, visibility_options: [
+    { value: "private", label: "Only you" }, { value: "grid", label: "Everyone in your grid" }, { value: "link", label: "Anyone with the link" }] } };
+  const legacyThree = visibilityPills(readResult({ ...three, structuredContent: { ...three.structuredContent, current_visibility: "org" } }));
+  check("view: legacy org marks the grid pill", legacy.every((p) => p.value !== "org") && legacyThree.filter((p) => p.pressed).map((p) => p.value).join() === "grid");
+  for (const [v, label] of [["public", "Anyone, findable by search"], ["authenticated", "Anyone with the link, sign-in required"], ["space", "Selected spaces"]]) {
+    const ps = visibilityPills(withCurrent(v));
+    const pressed = ps.filter((p) => p.pressed);
+    check(`view: current ${v} (not an offered choice) → its own pill, the only one pressed`,
+      ps.length === 3 && pressed.length === 1 && pressed[0].value === v && pressed[0].label === label);
+    check(`view: current ${v} → named under the pills`, visibilityNote(withCurrent(v)) === `Now: ${label}.`);
+  }
+  check("view: an unknown current value → no extra pill, none pressed",
+    visibilityPills(withCurrent("something-new")).length === 2 && visibilityPills(withCurrent("something-new")).every((p) => !p.pressed));
+  // The built card wires the selection into the DOM: aria-pressed, a selected
+  // class, a check mark, and the "Now:" line.
+  const cardJs = readFileSync(new URL("../src/widgets/live-result/mcp-app.js", import.meta.url), "utf8");
+  const cardCss = readFileSync(new URL("../src/widgets/live-result/mcp-app.css", import.meta.url), "utf8");
+  const cardHtml = readFileSync(new URL("../src/widgets/live-result/mcp-app.html", import.meta.url), "utf8");
+  check("card: pressed pill gets aria-pressed, the selected class, and a check mark",
+    /setAttribute\("aria-pressed", String\(opt\.pressed\)\)/.test(cardJs) && /opt\.pressed \? "pill selected"/.test(cardJs) && /\\u2713/.test(cardJs));
+  check("card: the Now line is rendered from visibilityNote", /visibilityNow\.textContent = visibilityNote\(model\)/.test(cardJs) && /id="visibility-now"/.test(cardHtml));
+  check("card: the pressed pill has its own style", /\.pill\[aria-pressed="true"\][^}]*border-color/.test(cardCss));
   check("view: no preview meta → no preview", showPreview(readResult({ ...live, _meta: undefined })) === false);
   check("view: http preview URL is never framed",
     showPreview(readResult({ ...live, _meta: { [VIEW_META_KEY]: "http://preview.example.com/ent-1" } })) === false);

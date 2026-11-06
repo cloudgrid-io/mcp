@@ -41,10 +41,15 @@ function makeCtx({ token = null, edition = "web" } = {}) {
 const calls = [];
 let replies = [];
 const realFetch = globalThis.fetch;
+// #481: a re-plug reads the target's kind first (GET inspiration read, then the
+// runtime card). These queue-driven cases do not model it: answer those reads
+// 404 (kind unknown, the re-plug goes ahead as before) without taking a queued
+// reply.
+const isKindRead = (url, opts) => (opts.method || "GET") === "GET" && /\/api\/v2\/(inspirations\/[^/?]+|runtimes\/[^/?]+\/card)$/.test(String(url));
 globalThis.fetch = async (url, opts = {}) => {
   const form = opts.body instanceof FormData ? opts.body : null;
   calls.push({ url: String(url), headers: opts.headers || {}, form, method: opts.method });
-  const next = replies.shift() ?? { status: 200, body: {} };
+  const next = isKindRead(url, opts) ? { status: 404, body: {} } : replies.shift() ?? { status: 200, body: {} };
   return new Response(JSON.stringify(next.body), {
     status: next.status,
     headers: { "content-type": "application/json", ...(next.headers || {}) },
