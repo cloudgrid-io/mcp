@@ -47,6 +47,10 @@ export {
   pollDeployTrace,
   visibilityKeyFromRead,
   readCurrentVisibility,
+  readTargetKind,
+  replugKindMismatch,
+  STATIC_TARGET_REFUSAL,
+  RUNTIME_TARGET_REFUSAL,
   VISIBILITY_SENTENCES,
 } from "./tools/deploy.js";
 export { registerTools, buildCreateProjectArgs } from "./tools/register.js";

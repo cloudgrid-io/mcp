@@ -355,6 +355,12 @@ jobs:
       # one preview origin only when configured), the result _meta preview URL,
       # the text-first URL fallback, and the card's pure view logic.
       - run: npm run test:live-result
+      # grid_plug states who can open the page (#473), and a re-plug never
+      # writes a source that does not fit the target's kind (#481): runtime
+      # files onto a single page, or a lone page onto a runtime app, are refused
+      # before any write.
+      - run: npm run test:plug-visibility
+      - run: npm run test:replug-kind-guard
       # The served cards (src/widgets/grid-login.html, live-result.html) are
       # built artifacts: the ext-apps App class bundled inline by
       # scripts/build-widgets.mjs. Fail if either drifts from its source folder

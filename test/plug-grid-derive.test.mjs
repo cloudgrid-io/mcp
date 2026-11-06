@@ -60,12 +60,17 @@ const realFetch = globalThis.fetch;
 function installFetch(queue) {
   calls = [];
   replies = [...queue];
+  // #481: a re-plug reads the target's kind first (GET inspiration read, then the
+  // runtime card). These queue-driven cases do not model it: answer those reads
+  // 404 (kind unknown, the re-plug goes ahead as before) without taking a queued
+  // reply.
+  const isKindRead = (url, opts) => (opts.method || "GET") === "GET" && /\/api\/v2\/(inspirations\/[^/?]+|runtimes\/[^/?]+\/card)$/.test(String(url));
   globalThis.fetch = async (url, opts = {}) => {
     const form = opts.body instanceof FormData ? opts.body : null;
     let body = null;
     if (!form) { try { body = opts.body ? JSON.parse(opts.body) : null; } catch { body = opts.body; } }
     calls.push({ url: String(url), method: opts.method || "GET", headers: opts.headers || {}, form, body });
-    const next = replies.shift() ?? { status: 200, body: {} };
+    const next = isKindRead(url, opts) ? { status: 404, body: {} } : replies.shift() ?? { status: 200, body: {} };
     return new Response(JSON.stringify(next.body), {
       status: next.status,
       headers: { "content-type": "application/json", ...(next.headers || {}) },
