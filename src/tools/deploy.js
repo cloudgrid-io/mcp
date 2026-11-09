@@ -2530,7 +2530,7 @@ export async function runPlug(ctx, input, deps = {}) {
   const structured = {
     ...(data.entity_id ? { entity_id: data.entity_id } : {}),
     ...(data.slug ? { slug: data.slug } : {}),
-    grid: data.grid ?? null,
+    grid: data.grid ?? orgSlug ?? null,
     ...(url ? { url } : {}),
     ...(data.poll_url ? { poll_url: data.poll_url } : {}),
     status: data.status ?? (isEdit ? "updated" : "created"),
@@ -2609,19 +2609,26 @@ export async function runPlug(ctx, input, deps = {}) {
   if (isBuilding) {
     lines.push(
       isEdit
-        ? `Building (async): ${url} — the update is plugging, not live yet.`
-        : `Building (async): ${url} — the plug is in progress, not live yet.`,
+        ? `Plugging (async): ${url} — the update is plugging, not live yet.`
+        : `Plugging (async): ${url} — the plug is in progress, not live yet.`,
     );
     // Point at a tool that exists on THIS edition. grid_status is CLI-wrapping,
     // local-only — telling a hosted (ChatGPT/claude.ai) model to "run
     // grid_status" dead-ends (observed live: a hosted session had no status
     // tool and blind-polled the public URL into a 502). grid_check_deploy is
     // direct-API and registered on both editions.
+    // Name the exact next call with the entity_id and grid (#489): ChatGPT
+    // opens a new session for every tool call, so a bare "call
+    // grid_check_deploy" has nothing to check there.
     const checkHint = ctx.edition === "web" ? "grid_check_deploy" : "grid_check_deploy (or grid_status)";
+    const checkArgs = [
+      data.entity_id ? `entity_id ${data.entity_id}` : null,
+      structured.grid ? `grid ${structured.grid}` : null,
+      data.poll_url ? `poll_url ${data.poll_url}` : null,
+    ].filter(Boolean);
     lines.push(
-      data.poll_url
-        ? `Call ${checkHint} until status is "success" (trace ${data.trace_id ?? "n/a"}). Do NOT tell the user it is live until then.`
-        : `Call ${checkHint} until it is ready. Do NOT tell the user it is live until then.`,
+      `Next: call ${checkHint}${checkArgs.length ? ` with ${checkArgs.join(", ")}` : ""} about every 15 s until it reports success` +
+        `${data.trace_id ? ` (trace ${data.trace_id})` : ""}, then give the user the URL. Do NOT tell the user it is live until then.`,
     );
   } else if (isEdit) {
     lines.push(`Updated in place: ${url}`);
@@ -2805,19 +2812,35 @@ export async function runPickup(ctx, { id, into_org_slug, name, source_version_i
 
 // Change an entity's visibility — inspiration OR runtime app/agent. Authed,
 // direct API — works on the hosted edition where the CLI-wrapping share tool is
-// unavailable. Kind-aware routing (see below). Defaults to the drop made in this
-// session, so "make it private" needs no ids.
-export async function runVisibility(ctx, { target, visibility, inside, outside, require_signin, spaces, indexed, kind, org }) {
+// unavailable. Kind-aware routing (see below). The app is the entity_id, else
+// the one the app url resolves to, else the drop made in this session. The
+// session fallback is empty on ChatGPT, which opens a new session per call
+// (#489), so the explicit arguments come first.
+export async function runVisibility(ctx, { target, url, visibility, inside, outside, require_signin, spaces, indexed, kind, org }) {
   const token = await ctx.getToken();
   if (!token) {
     throw new Error(ctx.edition === "web" ? `Changing visibility needs an owner. ${signInHow(ctx)} first.` : "Changing visibility needs an owner. Run grid_login first.");
   }
-  const id = target || ctx.state.lastDrop?.entity_id;
-  if (!id) {
-    throw new Error("No target. Pass the entity id, or drop something first in this session.");
+  let id = target || null;
+  let gridHint = org || null;
+  let urlKind = null;
+  if (!id && url) {
+    const found = await entityFromAppUrl(ctx, url, gridHint);
+    if (!found) {
+      throw new Error(`Could not find an app at ${url}. Check the link, or pass the app's entity_id from the grid_plug result instead.`);
+    }
+    id = found.entityId;
+    gridHint = gridHint || found.grid;
+    urlKind = found.kind;
   }
+  const sessionDrop = ctx.state.lastDrop;
+  if (!id) id = sessionDrop?.entity_id || null;
+  if (!id) {
+    throw new Error(`No app to change. ${noAppHint("grid_visibility")}`);
+  }
+  const fromSession = sessionDrop?.entity_id === id ? sessionDrop : null;
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-  const orgSlug = org || (await ctx.getActiveGrid());
+  const orgSlug = gridHint || fromSession?.grid || (await ctx.getActiveGrid());
   // Grid-native header + X-CloudGrid-Org alias (same slug) during the soak.
   if (orgSlug) {
     headers["X-CloudGrid-Grid"] = orgSlug;
@@ -2932,7 +2955,7 @@ export async function runVisibility(ctx, { target, visibility, inside, outside, 
     }
   }
 
-  const k = kind || ctx.state.lastDrop?.kind || null;
+  const k = kind || urlKind || fromSession?.kind || null;
   const isRuntimeKind = k === "app" || k === "agent";
 
   const patch = async (pathName) => {
@@ -3158,23 +3181,41 @@ export async function pollDeployTrace(ctx, { pollUrl, entityId, grid, budgetMs =
 // both editions: this is the status verb hosted (ChatGPT/claude.ai) sessions
 // were missing — they had no way to confirm a runtime build came live and
 // blind-polled the public URL into 502s.
-export async function runCheckDeploy(ctx, { poll_url, grid } = {}) {
-  const gridSlug = grid || ctx.state.lastDrop?.grid;
-  const entityId = ctx.state.lastDrop?.entity_id;
-  // poll_url may be null on the hosted inline-create path — fall back to the
-  // session's entity_id and resolve the trace from /entities/:id/deploys.
+export async function runCheckDeploy(ctx, { poll_url, entity_id, url: appUrl, grid } = {}) {
+  // Which app: an explicit entity_id, else the one the app url resolves to,
+  // else this session's last plug. The explicit arguments come first because
+  // ChatGPT opens a new session for every call (#489), so lastDrop is empty
+  // there. The session's plug fills in only for the same app.
+  let entityId = entity_id || null;
+  let gridSlug = grid || null;
+  if (!entityId && appUrl) {
+    const found = await entityFromAppUrl(ctx, appUrl, gridSlug);
+    entityId = found?.entityId ?? null;
+    gridSlug = gridSlug || found?.grid || null;
+  }
+  const last = ctx.state.lastDrop;
+  const sameApp = Boolean(last) && (!entityId || last.entity_id === entityId) && (!appUrl || entityId || last.url === appUrl);
+  if (sameApp) {
+    entityId = entityId || last.entity_id || null;
+    gridSlug = gridSlug || last.grid || null;
+  }
+  const url = appUrl || (sameApp ? last.url : null) || null;
+  const slug = sameApp ? last.slug : null;
+  // poll_url may be null on the hosted inline-create path; the entity_id
+  // resolves the trace from /entities/:id/deploys.
   const target = await resolvePollUrl(ctx, {
-    pollUrl: poll_url || ctx.state.lastDrop?.poll_url,
+    pollUrl: poll_url || (sameApp ? last.poll_url : null),
     entityId,
     grid: gridSlug,
   });
   if (!target) {
     throw new Error(
-      "No build to check. Pass poll_url from a grid_plug result, or plug something first in this session. (Instant inspiration plugs are live on return and have no build to poll.)",
+      entityId
+        ? `No build found yet for entity_id ${entityId}. Wait about 15 s and call grid_check_deploy again with the same entity_id. (Instant page plugs are live on return and have no build to check.)`
+        : `No build to check. ${noAppHint("grid_check_deploy")} (Instant page plugs are live on return and have no build to check.)`,
     );
   }
   const verdict = await fetchDeployTrace(ctx, { pollUrl: target, grid: gridSlug });
-  const url = ctx.state.lastDrop?.url;
   if (verdict.status === "success") {
     return {
       // The "now live" moment for an async runtime build lands here, not in
@@ -3202,7 +3243,7 @@ export async function runCheckDeploy(ctx, { poll_url, grid } = {}) {
       return {
         text: "The uploaded source could not be read by the build (its archive was corrupt) — the URL is " +
           "not live. The project files are NOT lost — they are saved on the entity. " +
-          cliContinueHandoff({ entityId, grid: gridSlug, slug: ctx.state.lastDrop?.slug }),
+          cliContinueHandoff({ entityId, grid: gridSlug, slug }),
         structured: {
           status: "failed",
           live: false,
@@ -3212,7 +3253,7 @@ export async function runCheckDeploy(ctx, { poll_url, grid } = {}) {
       };
     }
     const handoff = ctx.edition === "web" && entityId
-      ? `\nThe project files are NOT lost — they are saved on the entity. If it can't be fixed from this chat, hand the user their work: call grid_get_app_source for the source zip (source_download_url), or give them the local continue command: npx -y @cloudgrid-io/cli@latest pull ${gridSlug ? `${gridSlug}/` : ""}${ctx.state.lastDrop?.slug || entityId} — it downloads the project and links the folder so their next plug updates this same entity.`
+      ? `\nThe project files are NOT lost — they are saved on the entity. If it can't be fixed from this chat, hand the user their work: call grid_get_app_source for the source zip (source_download_url), or give them the local continue command: npx -y @cloudgrid-io/cli@latest pull ${gridSlug ? `${gridSlug}/` : ""}${slug || entityId} — it downloads the project and links the folder so their next plug updates this same entity.`
       : "";
     return {
       text: `The build FAILED: ${verdict.error || "no reason reported"}. The URL is not live — do not give it to the user as working. Fix the app (or re-plug) and try again.` +
@@ -3229,7 +3270,7 @@ export async function runCheckDeploy(ctx, { poll_url, grid } = {}) {
     };
   }
   return {
-    text: `Still ${verdict.status === "unknown" ? "building (status unavailable)" : verdict.status} — NOT live yet. Do not tell the user it is live. Wait ~15s and call grid_check_deploy again.`,
+    text: `Still ${verdict.status === "unknown" ? "building (status unavailable)" : verdict.status} — NOT live yet. Do not tell the user it is live. Wait ~15s and call grid_check_deploy again${entityId ? ` with entity_id ${entityId}` : ""}.`,
     structured: { status: verdict.status, live: false },
   };
 }
@@ -3393,6 +3434,41 @@ async function resolveEntityViaPickup(ctx, { target, url, grid }) {
   }
 }
 
+// An app's public URL → { entityId, grid, kind }, for a tool called about an
+// app this session never plugged (#489: ChatGPT opens a new MCP session for
+// every tool call, so the session's last plug is always empty there). Reads
+// the slug from either serving shape (<slug>--<grid> host, or <grid> host +
+// /<slug> path) and resolves it through the pickup contract. Only https
+// *.cloudgrid.io URLs; null when it cannot resolve.
+async function entityFromAppUrl(ctx, url, grid) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:" || !isCloudgridHost(parsed.hostname)) return null;
+  const gridHint = grid || gridFromCloudgridUrl(parsed.toString());
+  const label = parsed.hostname.split(".")[0];
+  const slug = label.includes("--")
+    ? label.split("--")[0]
+    : parsed.pathname.replace(/^\/+/, "").split("/")[0] || null;
+  const pickup = await resolveEntityViaPickup(ctx, { target: slug, url: parsed.toString(), grid: gridHint });
+  if (!pickup?.entity_id) return null;
+  return { entityId: pickup.entity_id, grid: pickup.grid || gridHint || null, kind: pickup.kind || null };
+}
+
+// The next step when a tool has no app to act on (#489). Never a dead end:
+// name the arguments, say where they come from, and what to do without them.
+function noAppHint(tool) {
+  return (
+    `Pass entity_id (from the earlier grid_plug result) or the app's url to ${tool}. ` +
+    "Some hosts, ChatGPT among them, start a new session for every tool call, so the app plugged earlier " +
+    "in the conversation is not remembered between calls: always pass entity_id. If neither the id nor the " +
+    "URL is in this conversation, ask the user for the app's link (there is no tool that lists their apps yet)."
+  );
+}
+
 // Fetch a drop's/inspiration's current deployed HTML inline as text so an agent
 // that lost the content can edit it and re-plug in place. Resolves the fetch URL
 // (explicit url → session lastDrop → composed grid+slug), then reads the HTML
@@ -3412,9 +3488,19 @@ export async function runSource(ctx, { entity_id, url, grid, slug } = {}) {
     // Inspirations/HTML drops are path-based at the org apex.
     target = composePlugUrl({ slug, grid });
   }
+  // Only an entity_id (a fresh session, #489): the pickup contract names its
+  // URL, and its edition metadata comes along.
+  let pickup = null;
+  if (!target && entity_id) {
+    pickup = await resolveEntityViaPickup(ctx, { target: entity_id, grid });
+    if (pickup) {
+      target = (typeof pickup.url === "string" && pickup.url) ||
+        composePlugUrl({ slug: pickup.slug, grid: pickup.grid, detection: { kind: pickup.kind } });
+    }
+  }
   if (!target) {
     throw new Error(
-      "I don't have this drop's URL — pass the url (e.g. https://<grid>.cloudgrid.io/<slug>) or grid+slug.",
+      `I don't have this app's URL. ${noAppHint("grid_get_app_source")} (grid plus slug also works.)`,
     );
   }
 
@@ -3446,17 +3532,17 @@ export async function runSource(ctx, { entity_id, url, grid, slug } = {}) {
   // and we NEVER fetch the public URL for resolution.
   let extra = {};
   if (!eid) {
-    const pickup = await resolveEntityViaPickup(ctx, { target: slugHint, url: resolvedUrl, grid: gridHint });
-    if (pickup?.entity_id) {
-      eid = pickup.entity_id;
-      extra = {
-        ...(pickup.kind ? { kind: pickup.kind } : {}),
-        ...(typeof pickup.single_html === "boolean" ? { single_html: pickup.single_html } : {}),
-        ...(pickup.capabilities ? { capabilities: pickup.capabilities } : {}),
-        ...(pickup.replug_handle ? { replug_handle: pickup.replug_handle } : {}),
-        ...(pickup.source_download_url ? { source_download_url: pickup.source_download_url } : {}),
-      };
-    }
+    pickup = await resolveEntityViaPickup(ctx, { target: slugHint, url: resolvedUrl, grid: gridHint });
+    if (pickup?.entity_id) eid = pickup.entity_id;
+  }
+  if (pickup?.entity_id) {
+    extra = {
+      ...(pickup.kind ? { kind: pickup.kind } : {}),
+      ...(typeof pickup.single_html === "boolean" ? { single_html: pickup.single_html } : {}),
+      ...(pickup.capabilities ? { capabilities: pickup.capabilities } : {}),
+      ...(pickup.replug_handle ? { replug_handle: pickup.replug_handle } : {}),
+      ...(pickup.source_download_url ? { source_download_url: pickup.source_download_url } : {}),
+    };
   }
 
   // ── API-first (reachable) ────────────────────────────────────────────────

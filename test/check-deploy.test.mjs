@@ -38,6 +38,9 @@ const isEntityDeploys = (u) => /\/api\/v2\/entities\/[^/]+\/deploys(\?|$)/.test(
 // When set, GET /entities/:id/deploys returns this trace_id (the hosted
 // inline-create case where the plug 202 omits poll_url/trace_id).
 let entityDeploysTrace = null;
+// When set, POST /entities/:target/pickup resolves an app URL to this body.
+let pickupBody = null;
+const isPickup = (u) => /\/api\/v2\/entities\/[^/]+\/pickup$/.test(u);
 
 globalThis.fetch = async (url, opts = {}) => {
   const u = String(url);
@@ -45,6 +48,9 @@ globalThis.fetch = async (url, opts = {}) => {
   fetchCalls.push({ url: u, method });
   if (isPlug(u, method)) {
     return new Response(JSON.stringify(plugReply.body), { status: plugReply.status, headers: { "content-type": "application/json" } });
+  }
+  if (isPickup(u)) {
+    return new Response(JSON.stringify(pickupBody ?? { error: "not found" }), { status: pickupBody ? 200 : 404, headers: { "content-type": "application/json" } });
   }
   if (isEntityDeploys(u)) {
     const body = entityDeploysTrace ? { deploys: [{ trace_id: entityDeploysTrace, status: "building" }] } : { deploys: [] };
@@ -58,7 +64,7 @@ globalThis.fetch = async (url, opts = {}) => {
   return new Response("{}", { status: 404, headers: { "content-type": "application/json" } });
 };
 
-const reset = () => { fetchCalls = []; plugReply = null; traceReplies = []; traceHits = 0; entityDeploysTrace = null; };
+const reset = () => { fetchCalls = []; plugReply = null; traceReplies = []; traceHits = 0; entityDeploysTrace = null; pickupBody = null; };
 const entityDeploysCalls = () => fetchCalls.filter((c) => isEntityDeploys(c.url));
 const BUILDING = { entity_id: "e1", slug: "app-1", grid: "acme", url: "https://app-1--acme.cloudgrid.io", status: "building", poll_url: "/deploys/d_app_abc123", trace_id: "d_app_abc123", detection: { kind: "app" } };
 
@@ -69,7 +75,7 @@ try {
   traceReplies = [{ body: { status: "building" } }, { body: { status: "success" } }];
   const live = await runPlug(makeCtx(), { artifact_files: [{ path: "index.js", content: "x" }], confirm_new_app: true });
   check("fast build: polled the trace", traceHits >= 2);
-  check("fast build: result says live (no Building line)", !/Building \(async\)/.test(live.text) && /Live|live/.test(live.text));
+  check("fast build: result says live (no Plugging line)", !/Plugging \(async\)/.test(live.text) && /Live|live/.test(live.text));
   check("fast build: structured.status is live", live.structured.status === "live");
   check("fast build: no poll_url left in structured", !live.structured.poll_url);
 
@@ -91,7 +97,7 @@ try {
   plugReply = { status: 202, body: BUILDING };
   traceReplies = [{ body: { status: "building" } }];
   const slow = await runPlug(makeCtx({ edition: "web" }), { artifact_files: [{ path: "index.js", content: "x" }], confirm_new_app: true });
-  check("slow build: keeps the Building wording", /Building \(async\)/.test(slow.text));
+  check("slow build: keeps the Plugging wording", /Plugging \(async\)/.test(slow.text));
   check("slow build: forbids claiming live", /Do NOT tell the user it is live/i.test(slow.text));
   check("slow build (web): points at grid_check_deploy", /grid_check_deploy/.test(slow.text));
   check("slow build (web): does NOT point at local-only grid_status", !/grid_status/.test(slow.text));
@@ -103,6 +109,11 @@ try {
   check("slow build: no console line while pending", !/see and manage all their apps in their grid/.test(slow.text));
   check("slow build: no console_url while pending", slow.structured.console_url === undefined);
   check("slow build: lastDrop carries poll_url for the no-args check", true);
+  // #489: ChatGPT opens a new session per call, so the building result names
+  // the exact next call with the entity_id and grid, and carries both.
+  check("slow build: structured carries entity_id and grid", slow.structured.entity_id === "e1" && slow.structured.grid === "acme");
+  check("slow build: names the next call with entity_id and grid, every 15 s, then the URL",
+    /call grid_check_deploy with entity_id e1, grid acme/.test(slow.text) && /about every 15 s until it reports success/.test(slow.text) && /then give the user the URL/.test(slow.text));
 
   // local edition wording keeps grid_status as a secondary
   reset();
@@ -152,6 +163,38 @@ try {
   let noTarget = null;
   try { await runCheckDeploy(makeCtx(), {}); } catch (e) { noTarget = e; }
   check("check with nothing to check: clear error", noTarget !== null && /No build to check/.test(noTarget.message));
+  check("check with nothing to check: names entity_id and the app url as the next step (#489)",
+    /Pass entity_id \(from the earlier grid_plug result\) or the app's url/.test(noTarget?.message ?? "") && /ask the user for the app's link/.test(noTarget?.message ?? ""));
+
+  // #489: a fresh session (no lastDrop, the ChatGPT case) with an entity_id
+  // resolves the trace from /entities/:id/deploys and reports success.
+  reset();
+  entityDeploysTrace = "d_app_fresh1";
+  traceReplies = [{ body: { status: "success" } }];
+  const fresh = await runCheckDeploy(makeCtx(), { entity_id: "e_fresh", grid: "acme", url: "https://g1--acme.cloudgrid.io" });
+  check("fresh session + entity_id: resolves the trace from that entity",
+    entityDeploysCalls().length === 1 && entityDeploysCalls()[0].url.includes("/entities/e_fresh/deploys"));
+  check("fresh session + entity_id: reports live with the URL it was given",
+    fresh.structured.live === true && fresh.structured.url === "https://g1--acme.cloudgrid.io");
+
+  // Fresh session with only the app URL: resolved to its entity first.
+  reset();
+  pickupBody = { entity_id: "e_byurl", slug: "g1", grid: "acme", kind: "app" };
+  entityDeploysTrace = "d_app_fresh2";
+  traceReplies = [{ body: { status: "building" } }];
+  const byUrl = await runCheckDeploy(makeCtx(), { url: "https://g1--acme.cloudgrid.io" });
+  check("fresh session + url: resolves the entity, then its trace",
+    fetchCalls.some((c) => c.url.endsWith("/entities/g1/pickup")) && entityDeploysCalls()[0]?.url.includes("/entities/e_byurl/deploys"));
+  check("fresh session + url: still building says to call again with the entity_id",
+    byUrl.structured.live === false && /call grid_check_deploy again with entity_id e_byurl/.test(byUrl.text));
+
+  // An explicit entity_id for another app never borrows the session's poll_url.
+  reset();
+  entityDeploysTrace = "d_app_other";
+  traceReplies = [{ body: { status: "success" } }];
+  await runCheckDeploy(makeCtx({ lastDrop: { entity_id: "e_old", poll_url: "/deploys/d_app_old", url: "https://old--acme.cloudgrid.io" } }), { entity_id: "e_new" });
+  check("entity_id for another app: polls that app, not the session's build",
+    fetchCalls.some((c) => c.url.includes("/deploys/d_app_other")) && !fetchCalls.some((c) => c.url.includes("/deploys/d_app_old")));
 
   // grid_check_deploy with only an entity_id in session (no poll_url) → resolves + reports
   reset();

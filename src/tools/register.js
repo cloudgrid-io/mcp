@@ -721,8 +721,8 @@ export function registerTools(server, ctx) {
       description:
         "Retrieve the CURRENT deployed HTML of an inspiration/drop inline as text, so you can edit it and " +
         "re-plug the SAME URL when you no longer have its source in context (e.g. the user asks to 'change the " +
-        "color' of a page — even in a fresh chat with only its URL). Defaults to this session's last drop; " +
-        "otherwise pass the public url (or grid+slug). Given just a URL with no session, it resolves the " +
+        "color' of a page — even in a fresh chat with only its URL). Pass the entity_id from the grid_plug result " +
+        "or the public url (or grid+slug); the session's last drop is only a fallback. Given just a URL with no session, it resolves the " +
         "entity_id via the pickup contract and also returns the entity's kind, single_html, capabilities " +
         "(replug/fork), and replug_handle — read those to decide whether to edit in place (single-HTML + " +
         "capabilities.replug), fall back for a multi-file app/agent (use source_download_url + the local " +
@@ -730,7 +730,7 @@ export function registerTools(server, ctx) {
         "(app/agent) source, use source_download_url, or grid_pull to get the files and link the folder. " +
         "Reads the HTML from the API server-side; read-only, creates nothing.",
       inputSchema: {
-        entity_id: z.string().optional().describe("The drop's durable id. Defaults to this session's last drop."),
+        entity_id: z.string().optional().describe("The drop's durable id, from the grid_plug result. Enough on its own: its URL is looked up. Falls back to this session's last drop."),
         url: z.string().optional().describe("The public URL of the drop (e.g. https://<grid>.cloudgrid.io/<slug>). Defaults to this session's last drop URL."),
         grid: z.string().optional().describe("Grid slug — used only to construct the URL when neither url nor session state is available."),
         slug: z.string().optional().describe("Entity slug — used with grid to construct the URL when neither url nor session state is available."),
@@ -867,7 +867,7 @@ export function registerTools(server, ctx) {
     "grid_visibility",
     {
       title: "Change app visibility",
-      description: "Change who can see a CloudGrid inspiration OR runtime app/agent. Simple modes: private (only the user), grid (everyone in their grid), link (anyone with the URL — add indexed: true to be findable by search engines). Finer control via the TWO AXES instead: inside (who in the grid: private | spaces | grid) and outside (reach beyond it: none | link | public), with require_signin for a members-only link and `spaces` for selected spaces. 'authenticated' is retired (it maps to a sign-in-required link). Use when the user wants to make something private, restrict who sees it, or open it up — including right after a drop, with no target id needed. Kind-aware routing across both surfaces. Defaults to the drop made in this session. Requires sign-in. Calls the API directly.",
+      description: "Change who can see a CloudGrid inspiration OR runtime app/agent. Simple modes: private (only the user), grid (everyone in their grid), link (anyone with the URL — add indexed: true to be findable by search engines). Finer control via the TWO AXES instead: inside (who in the grid: private | spaces | grid) and outside (reach beyond it: none | link | public), with require_signin for a members-only link and `spaces` for selected spaces. 'authenticated' is retired (it maps to a sign-in-required link). Use when the user wants to make something private, restrict who sees it, or open it up. Pass the app's entity_id (from the grid_plug result) or its url: some hosts start a new session for every tool call, so the drop made earlier in the conversation is only a fallback. Kind-aware routing across both surfaces. Requires sign-in. Calls the API directly.",
       inputSchema: {
         visibility: z.enum(["private", "grid", "link", "public", "authenticated", "space"]).optional().describe("Simple mode: private | grid | link ('public' is an alias of link — pass indexed: true for search-findable; 'authenticated' is the retired alias for a sign-in-required link; 'space' needs the `spaces` list). Pass either this OR the inside/outside axes."),
         inside: z.enum(["private", "spaces", "grid"]).optional().describe("Axis 1 — who in the grid can see it: private (only the user), spaces (selected spaces — pass `spaces`), or grid (everyone in the grid). Use together with `outside`, instead of `visibility`."),
@@ -875,7 +875,8 @@ export function registerTools(server, ctx) {
         require_signin: z.boolean().optional().describe("With outside: link (or visibility: link) — the link requires a signed-in CloudGrid account."),
         spaces: z.array(z.string()).optional().describe("Space slugs, for inside: spaces (or the legacy space/grid modes)."),
         indexed: z.boolean().optional().describe("With visibility: link — make the page search-engine indexable."),
-        entity_id: z.string().optional().describe("Entity id. Defaults to this session's last drop."),
+        entity_id: z.string().optional().describe("The app's entity_id, from the grid_plug result. Falls back to this session's last drop."),
+        url: z.string().optional().describe("The app's public URL, when the entity_id is not at hand. Resolved to its entity_id."),
         kind: z.enum(["inspiration", "app", "agent"]).optional().describe("Entity kind. Omit to auto-detect from this session's last drop (falls back to trying the runtime surface, then the inspiration surface)."),
         grid: z.string().optional().describe("Grid of the entity. Defaults to the active grid."),
         target: z.string().optional().describe("Alias of entity_id (legacy). Prefer entity_id."),
@@ -923,10 +924,12 @@ export function registerTools(server, ctx) {
     {
       title: "Check deploy status",
       description:
-        "Check whether an async runtime-app build has finished and the app is live. Call this after grid_plug returns status \"building\" — repeat every ~15s until it reports success or failed, and do NOT tell the user the app is live until it does. Defaults to this session's last deploy; pass poll_url from a grid_plug result to check another. Requires sign-in (builds are owned). Calls the API directly — works on every edition, including hosted.",
+        "Check whether an async runtime-app build (a deploy, which here means a plug) has finished and the app is live. Call this after grid_plug returns status \"building\" — repeat every ~15s until it reports success or failed, and do NOT tell the user the app is live until it does. Always pass the entity_id from the grid_plug result (or the app url): some hosts start a new session for every tool call, so the session's last plug is not always available. Pass poll_url when the grid_plug result has one. Requires sign-in (builds are owned). Calls the API directly — works on every edition, including hosted.",
       inputSchema: {
-        poll_url: z.string().optional().describe("The poll_url from a grid_plug result. Defaults to this session's last deploy."),
-        grid: z.string().optional().describe("Grid of the entity. Defaults to the deploy's grid, then the active grid."),
+        entity_id: z.string().optional().describe("The entity_id from the grid_plug result. Pass it on every call; it finds the app's latest build. Falls back to this session's last plug."),
+        url: z.string().optional().describe("The app's public URL, when the entity_id is not at hand (e.g. https://<slug>--<grid>.cloudgrid.io)."),
+        poll_url: z.string().optional().describe("The poll_url from a grid_plug result, when it has one."),
+        grid: z.string().optional().describe("Grid of the entity (the grid from the grid_plug result). Defaults to the plug's grid, then the active grid."),
       },
       outputSchema: {
         status: z.string().describe("The build status: success | failed | building | queued | unknown."),

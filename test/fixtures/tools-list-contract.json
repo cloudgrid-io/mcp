@@ -4,12 +4,20 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
       "properties": {
+        "entity_id": {
+          "description": "The entity_id from the grid_plug result. Pass it on every call; it finds the app's latest build. Falls back to this session's last plug.",
+          "type": "string"
+        },
         "grid": {
-          "description": "Grid of the entity. Defaults to the deploy's grid, then the active grid.",
+          "description": "Grid of the entity (the grid from the grid_plug result). Defaults to the plug's grid, then the active grid.",
           "type": "string"
         },
         "poll_url": {
-          "description": "The poll_url from a grid_plug result. Defaults to this session's last deploy.",
+          "description": "The poll_url from a grid_plug result, when it has one.",
+          "type": "string"
+        },
+        "url": {
+          "description": "The app's public URL, when the entity_id is not at hand (e.g. https://<slug>--<grid>.cloudgrid.io).",
           "type": "string"
         }
       },
@@ -437,7 +445,7 @@
       "additionalProperties": false,
       "properties": {
         "entity_id": {
-          "description": "The drop's durable id. Defaults to this session's last drop.",
+          "description": "The drop's durable id, from the grid_plug result. Enough on its own: its URL is looked up. Falls back to this session's last drop.",
           "type": "string"
         },
         "grid": {
@@ -1711,7 +1719,7 @@
       "additionalProperties": false,
       "properties": {
         "entity_id": {
-          "description": "Entity id. Defaults to this session's last drop.",
+          "description": "The app's entity_id, from the grid_plug result. Falls back to this session's last drop.",
           "type": "string"
         },
         "grid": {
@@ -1766,6 +1774,10 @@
         },
         "target": {
           "description": "Alias of entity_id (legacy). Prefer entity_id.",
+          "type": "string"
+        },
+        "url": {
+          "description": "The app's public URL, when the entity_id is not at hand. Resolved to its entity_id.",
           "type": "string"
         },
         "visibility": {

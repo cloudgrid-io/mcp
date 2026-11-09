@@ -142,6 +142,9 @@ jobs:
       # live in-call; failed -> user-language error; slow -> do-not-claim-live +
       # grid_check_deploy). Plus the boot staleness self-check. Mock fetch.
       - run: npm run test:check-deploy
+      # #489: tools that default to "the app plugged earlier" work from a fresh
+      # session (ChatGPT opens one per call) given an entity_id or the app url.
+      - run: npm run test:fresh-session
       - run: npm run test:console-grid-url
       - run: npm run test:staleness
       # Offline proxy support test: HTTPS_PROXY / NO_PROXY resolution, bypass
@@ -366,6 +369,9 @@ jobs:
       # scripts/build-widgets.mjs. Fail if either drifts from its source folder
       # so a committed resource can never fall out of sync with its source.
       - run: npm run build:widgets -- --check
+      # Package icons (#490): the committed source SVG is the design system's
+      # brand mark from @cloudgrid-io/ui; fail if the library's mark moved on.
+      - run: npm run build:icons -- --check
       # Tool titles (#201) + targeting-vocabulary convergence (#198): every tool
       # has a non-empty title, canonical entity_id/grid params work alongside
       # legacy aliases, org is absent from the published visibility enum.

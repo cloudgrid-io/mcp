@@ -1,6 +1,6 @@
 {
   "name": "@cloudgrid-io/mcp",
-  "version": "0.22.4",
+  "version": "0.22.5",
   "description": "MCP access to CloudGrid — the live runtime environment where the user's apps run WITH the infrastructure they need out of the box: managed MongoDB, Redis (cache/queues/pub-sub), a pgvector store, persistent disk, and built-in AI with no API keys, in any language or stack, no Docker or Kubernetes to manage. Brainstorm, build, plug, and improve apps, games, dashboards, and tools; instant single-page publishes and full runtime-app deploys with a live URL — for developers and non-technical users. Three editions: local stdio (full toolset), hosted web (light, CLI-free), and a public docs-search server.",
   "type": "module",
   "bin": {
@@ -66,6 +66,7 @@
     "test:widgets": "node test/apps-widgets.test.mjs",
     "test:set-sharing": "node test/set-sharing.test.mjs",
     "test:check-deploy": "node test/check-deploy.test.mjs",
+    "test:fresh-session": "node test/fresh-session.test.mjs",
     "test:console-grid-url": "node test/console-grid-url.test.mjs",
     "test:staleness": "node test/staleness.test.mjs",
     "test:proxy": "node test/proxy.test.mjs",
@@ -100,7 +101,8 @@
     "test:delete-hosted": "node test/delete-hosted.test.mjs",
     "test:served-text-policy": "node test/served-text-policy.test.mjs",
     "test:hosted-no-auto-log": "node test/hosted-no-auto-log.test.mjs",
-    "build:widgets": "node scripts/build-widgets.mjs"
+    "build:widgets": "node scripts/build-widgets.mjs",
+    "build:icons": "node scripts/build-icons.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "^1.7.5",
@@ -112,6 +114,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@cloudgrid-io/ui": "0.49.0",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "esbuild": "^0.25.0"
