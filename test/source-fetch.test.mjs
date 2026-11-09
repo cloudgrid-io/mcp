@@ -175,9 +175,9 @@ try {
   try {
     await runSource(makeCtx({ lastDrop: null }), {});
   } catch (err) {
-    threw = /don't have this drop's URL/.test(err.message);
+    threw = /don't have this app's URL/.test(err.message) && /entity_id/.test(err.message) && /url/.test(err.message);
   }
-  check("no url + no session + no grid/slug → fail", threw && fetchCalls.length === 0);
+  check("no url + no session + no grid/slug → fail, naming entity_id and the url (#489)", threw && fetchCalls.length === 0);
 
   // entity_id mismatch with session lastDrop → do NOT reuse session url.
   reset();
@@ -188,9 +188,20 @@ try {
       { entity_id: "other" },
     );
   } catch (err) {
-    mismatchThrew = /don't have this drop's URL/.test(err.message);
+    mismatchThrew = /don't have this app's URL/.test(err.message);
   }
-  check("entity_id mismatch does not reuse session url", mismatchThrew && fetchCalls.length === 0);
+  check("entity_id mismatch does not reuse session url (only the id lookup runs)",
+    mismatchThrew && publicCalls().length === 0 && apiSourceCalls().length === 0 && pickupCalls()[0]?.url.endsWith("/entities/other/pickup"));
+
+  // #489: a fresh session with only an entity_id looks up the app's URL through
+  // the pickup contract and reads the source.
+  reset();
+  pickupReply = { status: 200, body: { entity_id: "e-fresh", slug: "page", grid: "acme", kind: "inspiration", single_html: true } };
+  apiHtml = "<html>fresh</html>";
+  const fresh = await runSource(makeCtx({ lastDrop: null }), { entity_id: "e-fresh" });
+  check("fresh session + entity_id only → resolves the URL and reads the source (#489)",
+    fresh.structured.url === "https://acme.cloudgrid.io/page" && fresh.structured.html === "<html>fresh</html>" &&
+    fresh.structured.entity_id === "e-fresh" && fresh.structured.kind === "inspiration");
 
   // ── 2. SSRF guard (rejected BEFORE any fetch — API read or public) ──────────
   reset();

@@ -137,7 +137,7 @@ How a plug works:
 - Browsing (grid_start, grid_get_template, grid_get_app_source) works signed out. Creating or changing anything needs a signed-in CloudGrid account: the user's AI tool asks them to sign in the first time a tool needs one, then the call can be made again. There is no sign-in-free publish.
 - No grid yet: grid_plug returns needs_grid_create; suggest a slug, confirm it with the user, call grid_create_grid, then grid_plug with that grid. More than one grid: it returns needs_grid; ask which.
 - Never put an API key in page HTML or app code: a plugged page's source is public, and grid_plug rejects known key shapes. needs: { ai: true } in cloudgrid.yaml gives the app the managed AI gateway with no key; other keys go in grid secrets.
-- A runtime build is asynchronous: grid_plug returns status "building"; poll grid_check_deploy until it reports success before saying the app is live.
+- A runtime build is asynchronous: grid_plug returns status "building"; poll grid_check_deploy with its entity_id until it reports success before saying the app is live.
 - End with the live URL.
 
 grid_start returns a short orientation and the workflow index; grid_get_template loads a workflow, template, or reference doc (cloudgrid-yaml, capability-map, playbook). Nothing from this conversation is sent to CloudGrid except what the user asks to send through grid_note or grid_report.`;
@@ -152,7 +152,7 @@ What it does, and the requests each tool serves:
 
 What it does not do: it is not a shell, a container or VM host, or a Kubernetes target; it does not deploy a git repository from a URL; it does not run desktop or mobile apps.
 
-How a plug works: creating anything needs a signed-in account (a signed-out create returns needs_auth; call grid_login). Never write an API key into page source or app code — needs: { ai: true } gives the app the managed AI gateway with no key, and other keys go in grid secrets (grid_plug rejects known key shapes). A runtime build is asynchronous: poll grid_check_deploy until success before saying it is live. For shell steps, run the CLI as \`npx -y @cloudgrid-io/cli@latest <command>\` (never a bare \`grid\`); \`grid dev\` runs the app locally with the same services. grid_start returns a short orientation and the workflow index; grid_get_template loads workflows, templates, and reference docs.`;
+How a plug works: creating anything needs a signed-in account (a signed-out create returns needs_auth; call grid_login). Never write an API key into page source or app code — needs: { ai: true } gives the app the managed AI gateway with no key, and other keys go in grid secrets (grid_plug rejects known key shapes). A runtime build is asynchronous: poll grid_check_deploy with its entity_id until success before saying it is live. For shell steps, run the CLI as \`npx -y @cloudgrid-io/cli@latest <command>\` (never a bare \`grid\`); \`grid dev\` runs the app locally with the same services. grid_start returns a short orientation and the workflow index; grid_get_template loads workflows, templates, and reference docs.`;
 
 // ── grid_start orientation ───────────────────────────────────────────────────
 // Short on purpose: the decisions a model makes on the first plug, and where
@@ -162,7 +162,7 @@ export const ORIENTATION = `CloudGrid runs web apps at a live public URL and pro
 
 Choose the plug by the artifact:
 - ONE self-contained HTML page (CSS and JS inline, images as data: URIs) → grid_plug with html. Live in seconds, on every edition.
-- Separate files, a framework, or anything that needs data, a server, cron, or an AI model → a runtime app: grid_plug with artifact_files (hosted) or path to a folder (local), with a cloudgrid.yaml. Declare infrastructure with needs: (database → Mongo, cache → Redis, vector → pgvector, disk, ai → the AI gateway); read injected env vars inside handlers, never at module top level. Fetch grid_get_template({kind:"doc", name:"cloudgrid-yaml"}) before writing the manifest. The build is asynchronous: poll grid_check_deploy until success before saying it is live.
+- Separate files, a framework, or anything that needs data, a server, cron, or an AI model → a runtime app: grid_plug with artifact_files (hosted) or path to a folder (local), with a cloudgrid.yaml. Declare infrastructure with needs: (database → Mongo, cache → Redis, vector → pgvector, disk, ai → the AI gateway); read injected env vars inside handlers, never at module top level. Fetch grid_get_template({kind:"doc", name:"cloudgrid-yaml"}) before writing the manifest. The build is asynchronous: poll grid_check_deploy with its entity_id until success before saying it is live.
 - A page that must SAVE data (submissions, shared state, sign-in) is a runtime app, not a static page: use the app-with-data workflow.
 
 Before a new plug: sign-in is required (on the local edition, needs_auth → grid_login; on the hosted edition the AI tool asks the user to sign in). With no grid, grid_plug returns needs_grid_create → suggest a slug, confirm it, grid_create_grid, then plug with that grid (no wait needed). With more than one grid, ask which. Then ask who should see it and set it with grid_visibility (private | grid | link | public); when the user defers, pick the most private option that satisfies the request and say so.

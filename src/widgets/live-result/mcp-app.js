@@ -17,12 +17,7 @@
  * scripts/build-widgets.mjs. The iframe CSP is deny-by-default, so nothing here
  * may reference a remote script, stylesheet, or font.
  */
-import {
-  App,
-  applyDocumentTheme,
-  applyHostFonts,
-  applyHostStyleVariables,
-} from "@modelcontextprotocol/ext-apps";
+import { App, applyDocumentTheme } from "@modelcontextprotocol/ext-apps";
 import {
   readResult,
   headline,
@@ -39,7 +34,6 @@ const $ = (id) => document.getElementById(id);
 const els = {
   card: $("card"),
   headline: $("headline"),
-  badge: $("badge"),
   preview: $("preview"),
   frame: $("preview-frame"),
   url: $("url"),
@@ -68,9 +62,8 @@ function render() {
     return;
   }
   els.card.hidden = false;
+  els.card.dataset.status = model.status;
   els.headline.textContent = headline(model);
-  els.badge.hidden = model.status !== "building";
-  els.badge.textContent = model.status === "building" ? "Not live yet" : "";
   els.url.textContent = model.url;
   els.url.setAttribute("href", model.url);
   els.check.hidden = model.status !== "building";
@@ -188,7 +181,7 @@ async function sendUpdate(request) {
 
 async function checkDeploy() {
   els.check.disabled = true;
-  setStatus("Checking the build.");
+  setStatus("Checking.");
   try {
     const res = await app.callServerTool({ name: "grid_check_deploy", arguments: checkDeployArgs(model) });
     const next = applyCheckDeploy(model, res);
@@ -196,7 +189,7 @@ async function checkDeploy() {
     render();
     setStatus(next.note);
   } catch {
-    setStatus("Could not check the build. Try again.");
+    setStatus("Could not check the status. Try again.");
   } finally {
     els.check.disabled = false;
   }
@@ -225,10 +218,12 @@ const app = new App({ name: "CloudGrid app", version: "1.0.0" });
 
 app.onerror = (err) => console.error("[live-result card]", err);
 
+// The card wears the CloudGrid tokens (mcp-app.css), not the host's styles;
+// it follows only the host's light or dark theme. Until the host says, the
+// system preference decides.
+applyDocumentTheme(window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light");
 app.onhostcontextchanged = (ctx) => {
   if (ctx?.theme) applyDocumentTheme(ctx.theme);
-  if (ctx?.styles?.variables) applyHostStyleVariables(ctx.styles.variables);
-  if (ctx?.styles?.css?.fonts) applyHostFonts(ctx.styles.css.fonts);
 };
 
 app.ontoolresult = (result) => {

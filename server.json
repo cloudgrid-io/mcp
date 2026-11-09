@@ -3,7 +3,7 @@
   "name": "io.github.cloudgrid-io/mcp",
   "title": "CloudGrid",
   "description": "Plug apps, sites and HTML pages into CloudGrid and get a live URL, with databases and AI built in.",
-  "version": "0.22.4",
+  "version": "0.22.5",
   "websiteUrl": "https://docs.cloudgrid.io/mcp/tools/",
   "repository": {
     "url": "https://github.com/cloudgrid-io/mcp",

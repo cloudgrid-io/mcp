@@ -30,3 +30,4 @@ scripts/
 # Extra icon sizes (512px is bundled for the manifest)
 assets/cloudgrid-icon-256.png
 assets/cloudgrid-icon.png
+assets/cloudgrid-icon.svg

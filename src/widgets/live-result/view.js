@@ -56,9 +56,9 @@ export function showPreview(model) {
   return model.status !== "building" && Boolean(model.previewUrl);
 }
 
-/** The card heading for a model. */
+/** The card heading for a model. The user-facing verb is plug. */
 export function headline(model) {
-  if (model.status === "building") return "Building";
+  if (model.status === "building") return "Plugging";
   if (model.status === "updated") return "Updated";
   return "Live";
 }
@@ -113,18 +113,24 @@ export function visibilityNote(model) {
   return now ? `Now: ${now.label}.` : "Current setting not confirmed. Pick one to set it.";
 }
 
-/** grid_visibility arguments for a choice, scoped to this card's entity. */
+/** grid_visibility arguments for a choice, scoped to this card's entity (#489). */
 export function visibilityArgs(model, value) {
   return {
     visibility: value,
-    ...(model.entityId ? { entity_id: model.entityId } : {}),
+    ...(model.entityId ? { entity_id: model.entityId } : { url: model.url }),
     ...(model.grid ? { grid: model.grid } : {}),
   };
 }
 
-/** grid_check_deploy arguments for a building card. */
+/**
+ * grid_check_deploy arguments for a building card. The entity id and URL ride
+ * on every call: ChatGPT opens a new server session for each tool call, so the
+ * server cannot fall back to the plug it made earlier (#489).
+ */
 export function checkDeployArgs(model) {
   return {
+    ...(model.entityId ? { entity_id: model.entityId } : {}),
+    ...(model.entityId ? {} : { url: model.url }),
     ...(model.pollUrl ? { poll_url: model.pollUrl } : {}),
     ...(model.grid ? { grid: model.grid } : {}),
   };
@@ -133,7 +139,7 @@ export function checkDeployArgs(model) {
 /** Fold a grid_check_deploy result into the model. */
 export function applyCheckDeploy(model, result) {
   const s = result?.structuredContent || {};
-  if (result?.isError) return { model, note: "Could not check the build. Try again." };
+  if (result?.isError) return { model, note: "Could not check the status. Try again." };
   if (s.live === true || s.status === "success") {
     return {
       model: {
@@ -146,7 +152,7 @@ export function applyCheckDeploy(model, result) {
     };
   }
   if (s.status === "failed") {
-    return { model, note: typeof s.error === "string" && s.error ? `The build failed: ${s.error}` : "The build failed." };
+    return { model, note: typeof s.error === "string" && s.error ? `Plugging failed: ${s.error}` : "Plugging failed." };
   }
-  return { model, note: "Still building. Check again in a few seconds." };
+  return { model, note: "Still plugging. Check again in a few seconds." };
 }

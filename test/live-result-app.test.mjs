@@ -221,6 +221,16 @@ check("web: HTML carries the card actions", ["Open", "Copy link", "Update", "Who
     /setAttribute\("aria-pressed", String\(opt\.pressed\)\)/.test(cardJs) && /opt\.pressed \? "pill selected"/.test(cardJs) && /\\u2713/.test(cardJs));
   check("card: the Now line is rendered from visibilityNote", /visibilityNow\.textContent = visibilityNote\(model\)/.test(cardJs) && /id="visibility-now"/.test(cardHtml));
   check("card: the pressed pill has its own style", /\.pill\[aria-pressed="true"\][^}]*border-color/.test(cardCss));
+  // #490: the card is styled only with the library's semantic tokens, and the
+  // built card carries those tokens from @cloudgrid-io/ui for light and dark.
+  const cssNoComments = cardCss.replace(/\/\*[\s\S]*?\*\//g, "");
+  check("card CSS: no literal colours, only --cg-* tokens (#490)",
+    !/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(|light-dark\(/i.test(cssNoComments) && /var\(--cg-tertiary\)/.test(cssNoComments));
+  const uiTokens = JSON.parse(readFileSync(new URL("../node_modules/@cloudgrid-io/ui/dist/tokens.json", import.meta.url), "utf8"));
+  check("built card: light tokens come from the library's default scope",
+    html.includes(`--cg-tertiary: ${uiTokens.scopes.default["--cg-tertiary"]};`) && html.includes(`--cg-surface-card: ${uiTokens.scopes.default["--cg-surface-card"]};`));
+  check("built card: dark tokens come from the library's ink scope",
+    /:root\[data-theme="dark"\] \{[^}]*--cg-text-primary: #ffffff;/.test(html) && html.includes(`--cg-text-primary: ${uiTokens.scopes.ink["--cg-text-primary"]};`));
   check("view: no preview meta → no preview", showPreview(readResult({ ...live, _meta: undefined })) === false);
   check("view: http preview URL is never framed",
     showPreview(readResult({ ...live, _meta: { [VIEW_META_KEY]: "http://preview.example.com/ent-1" } })) === false);
@@ -233,10 +243,23 @@ check("web: HTML carries the card actions", ["Open", "Copy link", "Update", "Who
     readResult({ content: [{ type: "text", text: "Live: https://g.example/y\nmore" }], structuredContent: {} })?.url === "https://g.example/y");
 
   const building = readResult({ ...live, structuredContent: { ...live.structuredContent, status: "building", poll_url: "https://api.example/p/1" } });
-  check("view: building → headline Building", headline(building) === "Building");
+  check("view: building → headline Plugging (#490)", headline(building) === "Plugging");
   check("view: building → no preview yet", showPreview(building) === false);
-  check("view: check-deploy args carry poll_url and grid",
-    JSON.stringify(checkDeployArgs(building)) === JSON.stringify({ poll_url: "https://api.example/p/1", grid: "g" }));
+  check("view: check-deploy args carry entity_id, poll_url and grid",
+    JSON.stringify(checkDeployArgs(building)) === JSON.stringify({ entity_id: "ent-1", poll_url: "https://api.example/p/1", grid: "g" }));
+  // #489: the hosted inline create returns poll_url null, and ChatGPT opens a
+  // new session per call, so the card must name the app itself.
+  const noPoll = readResult({ ...live, structuredContent: { ...live.structuredContent, status: "building", poll_url: null } });
+  check("view: no pollUrl → check-deploy sends entity_id and grid (#489)",
+    JSON.stringify(checkDeployArgs(noPoll)) === JSON.stringify({ entity_id: "ent-1", grid: "g" }));
+  const noId = readResult({ ...live, structuredContent: { url: "https://g1--g.cloudgrid.io", status: "building", grid: "g" } });
+  check("view: no entity_id either → check-deploy sends the app url (#489)",
+    JSON.stringify(checkDeployArgs(noId)) === JSON.stringify({ url: "https://g1--g.cloudgrid.io", grid: "g" }));
+  check("view: still building → says plugging, not building (#490)",
+    applyCheckDeploy(building, { structuredContent: { status: "building", live: false } }).note === "Still plugging. Check again in a few seconds.");
+  check("card: no Building or Not live yet copy left in the card (#490)",
+    !/Building|Not live yet|the build/.test(readFileSync(new URL("../src/widgets/live-result/mcp-app.js", import.meta.url), "utf8") +
+      readFileSync(new URL("../src/widgets/live-result/mcp-app.html", import.meta.url), "utf8")));
   const done = applyCheckDeploy(building, { structuredContent: { status: "success", live: true, url: "https://g.example/x" } });
   check("view: check-deploy success → live, preview shown", done.model.status === "live" && showPreview(done.model) === true);
   check("view: check-deploy still building → stays building",
@@ -253,6 +276,8 @@ check("web: HTML carries the card actions", ["Open", "Copy link", "Update", "Who
   check("view: empty update asks what to change", /Ask me what to change/.test(updateMessage(m, "  ")));
   check("view: visibility args scoped to this entity",
     JSON.stringify(visibilityArgs(m, "link")) === JSON.stringify({ visibility: "link", entity_id: "ent-1", grid: "g" }));
+  check("view: visibility args with no entity_id name the app url (#489)",
+    JSON.stringify(visibilityArgs(noId, "grid")) === JSON.stringify({ visibility: "grid", url: "https://g1--g.cloudgrid.io", grid: "g" }));
 }
 
 console.log(failures ? `\n${failures} FAIL` : "\nAll live-result MCP App checks passed.");

@@ -100,7 +100,7 @@ posted). `CLOUDGRID_QA_IDLE_MS` overrides the abandoned-idle window (default
 | `grid_plug` | API | Plug an app, website, game, or HTML page into CloudGrid at a live public URL. |
 | `grid_get_app_source` | API | Retrieve the CURRENT deployed HTML of an inspiration/drop inline as text, so you can edit it and re-plug the SAME URL... |
 | `grid_visibility` | API | Change who can see a CloudGrid inspiration OR runtime app/agent. |
-| `grid_check_deploy` | API | Check whether an async runtime-app build has finished and the app is live. |
+| `grid_check_deploy` | API | Check whether an async runtime-app build (a deploy, which here means a plug) has finished and the app is live. |
 | `grid_list_grids` | API | List the signed-in user's grids, each with slug, name, role, and provisioning status. |
 | `grid_start` | API | A short orientation for building with CloudGrid: the account this session is signed in as and its active grid, how to... |
 | `grid_get_template` | corpus | Load a specific CloudGrid workflow, template, example, rule, troubleshooting note, or reference doc by name — determi... |
