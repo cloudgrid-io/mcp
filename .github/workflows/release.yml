@@ -37,3 +37,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "${{ github.ref_name }}" --generate-notes cloudgrid.mcpb
+      # #494: publish server.json to the official MCP Registry. GitHub OIDC
+      # proves the run belongs to cloudgrid-io, so no token is stored. The
+      # publisher is pinned by version and checksum. server.json's version
+      # already matches package.json (test:registry-server-json in CI).
+      - name: Publish to the MCP Registry
+        env:
+          MCP_PUBLISHER_VERSION: "1.8.7"
+          MCP_PUBLISHER_SHA256: 00b21004149a4ce66f0782508ae4a2bce67d1bea395a8da0bd8028159fb59579
+        run: |
+          curl -fsSL -o mcp-publisher.tar.gz "https://github.com/modelcontextprotocol/registry/releases/download/v${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
+          echo "${MCP_PUBLISHER_SHA256}  mcp-publisher.tar.gz" | sha256sum -c -
+          tar -xzf mcp-publisher.tar.gz mcp-publisher
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
