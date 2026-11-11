@@ -179,12 +179,26 @@ export function registerTools(server, ctx) {
   // dynamically, and the renames' old names (grid_deploy, grid_set_sharing,
   // grid_copy_app, grid_claim_anonymous_deploy, grid_download_source,
   // grid_fetch, grid_logs) are gone rather than advertised as redirects.
+  //
+  // annotations.title is derived here from the tool's top-level title, so the
+  // two never drift: the Claude directory listing reads annotations.title, and
+  // other clients read the top-level title (cloudgrid-io/mcp#496).
+  const withTitle = (title, annotations) => ({ ...annotations, title });
+
   const reg = (name, config, handler) => {
-    server.registerTool(name, { ...config, inputSchema: strictInput(config.inputSchema) }, withCapture(name, handler));
+    server.registerTool(
+      name,
+      { ...config, inputSchema: strictInput(config.inputSchema), annotations: withTitle(config.title, config.annotations) },
+      withCapture(name, handler),
+    );
   };
 
   const regTool = (name, title, description, schema, annotations, handler) => {
-    server.registerTool(name, { title, description, inputSchema: strictInput(schema), annotations }, withCapture(name, handler));
+    server.registerTool(
+      name,
+      { title, description, inputSchema: strictInput(schema), annotations: withTitle(title, annotations) },
+      withCapture(name, handler),
+    );
   };
 
   // ── Widget resources (web edition, ChatGPT Apps SDK) ──────────────────────
