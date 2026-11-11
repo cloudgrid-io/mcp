@@ -92,19 +92,19 @@ posted). `CLOUDGRID_QA_IDLE_MS` overrides the abandoned-idle window (default
 
 | Tool | Wraps | Summary |
 |---|---|---|
-| `grid_pickup` | API | Pick up an app: make your OWN COPY of any app you can see (like a git fork) into a grid you can build in. |
-| `grid_pull` | API | Pull an app to continue/edit it IN PLACE — like `git clone` of the SAME entity: your next grid_plug (with its target_... |
-| `grid_collab` | API | Collab: GET PUSH ACCESS to the SAME live entity that someone else owns — you become a collaborator on THAT entity, no... |
-| `grid_create_grid` | API | Create a new grid (workspace) for the signed-in user — they become its admin. |
-| `grid_note` | API | Leave a one-paragraph summary of what you built this session and why, for the local edition's optional QA session log... |
+| `grid_pickup` | API | Pick up an app: copies any app the user can see into one of their grids as a NEW, separate entity (a fork, like a git... |
+| `grid_pull` | API | Pull an app to continue or edit it IN PLACE, like `git clone` of the SAME entity: the next plug with its target_entit... |
+| `grid_collab` | API | Collab: grants the signed-in user PUSH ACCESS to the SAME live entity that someone else owns, as a collaborator on th... |
+| `grid_create_grid` | API | Create a new grid (the workspace the user's apps live in) for the signed-in user, who becomes its admin. |
+| `grid_note` | API | Record a one-paragraph summary of what was built this session and why, for the local edition's optional QA session lo... |
 | `grid_plug` | API | Plug an app, website, game, or HTML page into CloudGrid at a live public URL. |
-| `grid_get_app_source` | API | Retrieve the CURRENT deployed HTML of an inspiration/drop inline as text, so you can edit it and re-plug the SAME URL... |
+| `grid_get_app_source` | API | Retrieve the CURRENT deployed HTML of an inspiration/drop inline as text, for editing and re-plugging the SAME URL wh... |
 | `grid_visibility` | API | Change who can see a CloudGrid inspiration OR runtime app/agent. |
 | `grid_check_deploy` | API | Check whether an async runtime-app build (a deploy, which here means a plug) has finished and the app is live. |
-| `grid_list_grids` | API | List the signed-in user's grids, each with slug, name, role, and provisioning status. |
+| `grid_list_grids` | API | List the signed-in user's grids, each with slug, name, role, whether it is the active grid, and setup status (render_... |
 | `grid_start` | API | A short orientation for building with CloudGrid: the account this session is signed in as and its active grid, how to... |
-| `grid_get_template` | corpus | Load a specific CloudGrid workflow, template, example, rule, troubleshooting note, or reference doc by name — determi... |
-| `grid_report` | API | Report a genuine CloudGrid failure to the CloudGrid team — ONLY with the user's explicit consent. |
+| `grid_get_template` | corpus | Load a specific CloudGrid workflow, template, example, rule, troubleshooting note, or reference doc by kind and name:... |
+| `grid_report` | API | Report a genuine CloudGrid failure (a build, deploy, or platform call that failed unexpectedly) to the CloudGrid team... |
 | `grid_hello` | API | Create a minimal hello page and plug it into the user's grid, returning the live URL. |
 | `grid_delete` | `grid delete entity` | Archive a CloudGrid inspiration. |
 
@@ -117,7 +117,7 @@ CLI uses, so the two share one identity.
 | Tool | Wraps | Summary |
 |---|---|---|
 | `grid_login` | API | Start a CLI-free CloudGrid sign-in. |
-| `grid_login_status` | API | Finish a sign-in started by grid_login. |
+| `grid_login_status` | API | Finish a browser sign-in started from this server. |
 | `grid_create_project` | `grid new` | Scaffold a new CloudGrid app or agent folder (cloudgrid.yaml + a web service), optionally pre-declaring resources. |
 | `grid_view_logs` | `grid logs` | Tail recent logs for an entity. |
 | `grid_share` | `grid visibility set` | Set an entity's visibility and print its URL. |
@@ -129,7 +129,7 @@ CLI uses, so the two share one identity.
 | `grid_info` | `grid info` | Show metadata for a CloudGrid entity. |
 | `grid_get` | `grid get <grids|entities|spaces> --json` | List CloudGrid grids, entities, or spaces. |
 | `grid_describe_grid` | `grid describe grid <slug> --json` | Show a grid's detail: role, members, spaces, tier, wildcard-TLS state. |
-| `grid_edit_existing_app` | `grid pull` | Continue/edit an EXISTING entity locally: download its source + cloudgrid.yaml and link the folder so your next `grid... |
+| `grid_edit_existing_app` | `grid pull` | Continue/edit an EXISTING entity locally: downloads its source + cloudgrid.yaml and links the folder so the next `gri... |
 | `grid_rename` | `grid rename` | Rename a CloudGrid entity's display name (slug stays the same). |
 | `grid_take_offline` | `grid unplug` | Take an entity off the grid. |
 | `grid_rollback_deploy` | `grid rollback` | Rollback an entity to a previous version. |

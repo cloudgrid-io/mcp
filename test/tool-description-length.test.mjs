@@ -16,6 +16,7 @@
 //
 // Run: node test/tool-description-length.test.mjs
 import { registerTools } from "../src/tools.js";
+import { INSTRUCTIONS_WEB, INSTRUCTIONS_LOCAL } from "../src/playbook.js";
 
 export const DESCRIPTION_CAP = 1000;
 
@@ -57,7 +58,9 @@ check("cap self-test passes a description at the cap", overCap({ t: { descriptio
 
 // The clauses grid_plug's description must keep (what a model needs to decide
 // to call it and to call it correctly). Routing phrases first (mcp#337: there
-// is no grid_deploy alias, this phrasing routes the request).
+// is no grid_deploy alias, this phrasing routes the request). Since #500 the
+// description states results, not instructions; the workflow steps a model
+// takes on those results are pinned in the server instructions below.
 const PLUG_MUST_SAY = [
   ["routing verbs", /deploy, publish, host, ship, launch, go live, or share a working link/],
   ["routing phrase: give me a link", /give me a link/],
@@ -67,15 +70,32 @@ const PLUG_MUST_SAY = [
   ["routing phrase: host this", /host this/],
   ["single page vs runtime app", /`html`[^.]*self-contained page[^.]*`artifact_files`[^.]*runtime app/],
   ["create vs update", /creates a new URL; with one it updates it in place/],
-  ["source-first edit", /call grid_get_app_source first, then deploy with target_entity_id/],
   ["sign-in: needs_auth", /needs_auth/],
   ["sign-in: no guest publish", /there is no guest publish/],
-  ["needs_grid: ask which grid", /needs_grid: ask which grid/],
-  ["needs_grid_create: confirm a slug, grid_create_grid", /needs_grid_create: confirm a slug, then grid_create_grid/],
-  ["no API keys in page source", /Never put an API key in page source/],
-  ["runtime build polling", /returns building: poll grid_check_deploy until live/],
-  ["end with the URL", /End with the live URL/],
+  ["result: needs_grid", /needs_grid \(several grids, listed\)/],
+  ["result: needs_grid_create", /needs_grid_create \(no grid yet\)/],
+  ["result: needs_confirmation", /needs_confirmation/],
+  ["page source is public, keys rejected", /Page source is public; known API key shapes are rejected/],
+  ["runtime build is async", /a runtime app returns status building/i],
+  ["returns the URL and re-plug handle", /Returns the URL and the entity_id/],
 ];
+
+// The workflow guidance that left grid_plug's description (#500) and where it
+// lives now: the server instructions of both editions.
+const INSTRUCTIONS_MUST_SAY = [
+  ["source-first edit", /call grid_get_app_source first, then grid_plug with target_entity_id/],
+  ["needs_grid: ask which grid", /needs_grid; ask which/],
+  ["needs_grid_create: confirm a slug, grid_create_grid", /needs_grid_create; suggest a slug, confirm it with the user[^.]*call grid_create_grid/],
+  ["no API keys in page source", /Never (put|write) an API key/],
+  ["runtime build polling", /poll grid_check_deploy with its entity_id about every 15 seconds until/],
+  ["end with the URL", /End with the live URL/],
+  ["collab is grid_collab, not grid_pickup", /"Collab" or "join" on someone else's app is grid_collab, not grid_pickup/],
+  ["delete asks first", /Confirm with the user before grid_delete/],
+  ["report only with consent", /grid_report only after the user agrees/],
+];
+for (const [name, text] of [["INSTRUCTIONS_WEB", INSTRUCTIONS_WEB], ["INSTRUCTIONS_LOCAL", INSTRUCTIONS_LOCAL]]) {
+  for (const [label, re] of INSTRUCTIONS_MUST_SAY) check(`${name} says: ${label}`, re.test(text));
+}
 
 for (const edition of ["web", "local"]) {
   const configs = capture(edition);
@@ -89,9 +109,7 @@ for (const edition of ["web", "local"]) {
   for (const [label, re] of PLUG_MUST_SAY) check(`[${edition}] grid_plug says: ${label}`, re.test(plug));
   check(
     `[${edition}] grid_plug names the edition's sign-in step`,
-    edition === "web"
-      ? /signs in through the CloudGrid connector/.test(plug) && !/grid_login/.test(plug)
-      : /call grid_login/.test(plug),
+    (edition === "web" ? /signs in through the CloudGrid connector/ : /local browser sign-in/).test(plug) && !/grid_login/.test(plug),
   );
   check(
     `[${edition}] grid_plug lists the edition's sources`,

@@ -70,9 +70,12 @@ for (const edition of ["web", "local"]) {
   if (!plug) continue;
 
   noGuest(`[${edition}] grid_plug description`, plug.description);
+  // #500: descriptions name no other tool, so the local edition says what the
+  // sign-in is rather than naming grid_login; the result text and the server
+  // instructions name the tool.
   check(
-    `[${edition}] grid_plug description names the ${edition === "web" ? "connector sign-in" : "grid_login"} step for the signed-out case`,
-    edition === "web" ? /signs in through the CloudGrid connector/.test(plug.description) && !/grid_login/.test(plug.description) : /grid_login/.test(plug.description),
+    `[${edition}] grid_plug description names the ${edition === "web" ? "connector" : "local browser"} sign-in for the signed-out case`,
+    (edition === "web" ? /signs in through the CloudGrid connector/ : /local browser sign-in/).test(plug.description) && !/grid_login/.test(plug.description),
   );
 
   // Every input + output field description.
@@ -89,8 +92,8 @@ for (const edition of ["web", "local"]) {
   }
   const needsAuth = plug.outputSchema?.needs_auth?.description || "";
   check(
-    `[${edition}] needs_auth description routes to ${edition === "web" ? "the connector sign-in" : "grid_login"}`,
-    edition === "web" ? /sign in to CloudGrid/.test(needsAuth) && !/grid_login/.test(needsAuth) : /grid_login/.test(needsAuth),
+    `[${edition}] needs_auth description names ${edition === "web" ? "the AI tool's sign-in" : "the local browser sign-in"}`,
+    (edition === "web" ? /signs? in to CloudGrid through their AI tool/ : /local browser sign-in/).test(needsAuth) && !/grid_login/.test(needsAuth),
   );
   check(`[${edition}] needs_auth description does not mention anon: true`, !/anon:\s*true/i.test(needsAuth));
 
