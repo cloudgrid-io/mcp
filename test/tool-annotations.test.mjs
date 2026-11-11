@@ -8,8 +8,10 @@
 // tool could ship without hints, or the hosted edition could drift, with CI
 // green. This test closes that:
 //
-//   1. Both editions: every registered tool has a non-empty title and all three
-//      hints as explicit booleans, and no tool is both read-only and destructive.
+//   1. Both editions: every registered tool has a non-empty title, an
+//      annotations.title equal to it (the Claude directory listing reads
+//      annotations.title, cloudgrid-io/mcp#496), and all three hints as
+//      explicit booleans, and no tool is both read-only and destructive.
 //   2. Hosted edition: the hints match the reviewed table below, tool by tool,
 //      and the hosted tool set is exactly the table's. Changing a hint, or
 //      adding a hosted tool, means editing the table, which review then sees.
@@ -37,6 +39,7 @@ export function annotationProblems(name, cfg) {
     problems.push(`${name}: no annotations`);
     return problems;
   }
+  if (a.title !== cfg?.title) problems.push(`${name}: annotations.title does not equal title`);
   for (const h of HINTS) {
     if (typeof a[h] !== "boolean") problems.push(`${name}: ${h} is not an explicit boolean`);
   }
@@ -96,10 +99,19 @@ function capture(edition) {
 
 // ── 3. self-test first: each rule rejects a broken fixture ──────────────────
 {
-  const good = { title: "T", annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false } };
+  const good = { title: "T", annotations: { title: "T", readOnlyHint: true, destructiveHint: false, openWorldHint: false } };
   check("self-test: a complete config passes", annotationProblems("x", good).length === 0);
-  check("self-test: a missing title fails", annotationProblems("x", { ...good, title: " " }).length === 1);
+  check("self-test: a missing title fails", annotationProblems("x", { ...good, title: " " }).length >= 1);
   check("self-test: missing annotations fail", annotationProblems("x", { title: "T" }).length === 1);
+  {
+    const a = { ...good.annotations };
+    delete a.title;
+    check("self-test: a missing annotations.title fails", annotationProblems("x", { title: "T", annotations: a }).length === 1);
+    check(
+      "self-test: an annotations.title that differs from title fails",
+      annotationProblems("x", { title: "T", annotations: { ...good.annotations, title: "Other" } }).length === 1,
+    );
+  }
   for (const h of HINTS) {
     const a = { ...good.annotations };
     delete a[h];
@@ -111,7 +123,7 @@ function capture(edition) {
   );
   check(
     "self-test: read-only and destructive together fails",
-    annotationProblems("x", { title: "T", annotations: { readOnlyHint: true, destructiveHint: true, openWorldHint: true } }).length === 1,
+    annotationProblems("x", { title: "T", annotations: { title: "T", readOnlyHint: true, destructiveHint: true, openWorldHint: true } }).length === 1,
   );
 }
 
@@ -122,7 +134,7 @@ for (const [edition, configs] of Object.entries(editions)) {
   const min = edition === "web" ? 15 : 17;
   check(`[${edition}] tools registered (${names.length})`, names.length >= min);
   const problems = names.flatMap((n) => annotationProblems(n, configs[n]));
-  check(`[${edition}] every tool has a title and all three hints`, problems.length === 0, problems.join("; "));
+  check(`[${edition}] every tool has a title, a matching annotations.title, and all three hints`, problems.length === 0, problems.join("; "));
 }
 
 // ── 2. hosted edition: hints match the reviewed table ───────────────────────
