@@ -166,6 +166,10 @@ jobs:
       # model needs (sign-in, needs_grid, needs_grid_create, no keys, polling,
       # end with the URL).
       - run: npm run test:tool-description-length
+      # #500: tool descriptions (and every input and output describe()) name no
+      # other grid_* tool and carry no directives to the model; the workflow
+      # guidance lives in the server instructions and the tool results.
+      - run: npm run test:tool-description-neutral
       # #457: server.json (official MCP Registry entry) validates against the
       # vendored registry schema it names, lists the hosted streamable-http
       # remote, and carries the same version as package.json.

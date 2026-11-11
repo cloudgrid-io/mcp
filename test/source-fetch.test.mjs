@@ -24,10 +24,11 @@
 //      cloudgrid refused.
 //   8. Defaults: no inputs + a session lastDrop → reads lastDrop's source.
 //   9. Only grid_source is registered — the deprecated cloudgrid_source alias
-//      is gone (0.10.0); playbook + drop/plug descriptions carry the source rule.
+//      is gone (0.10.0); the playbook and the server instructions carry the source rule.
 // Run: node test/source-fetch.test.mjs
 
 import { runSource, registerTools, API_BASE } from "../src/tools.js";
+import { INSTRUCTIONS_WEB, INSTRUCTIONS_LOCAL } from "../src/playbook.js";
 
 let failures = 0;
 function check(label, cond) {
@@ -387,11 +388,30 @@ try {
   check("pickup resolve: carries capabilities.replug", picked.structured.capabilities?.replug === true);
   check("pickup resolve: carries replug_handle", picked.structured.replug_handle?.target_entity_id === "e9");
   check("pickup resolve: carries source_download_url", picked.structured.source_download_url === "/api/v2/inspirations/page/source");
+  // #500: the next-step hints moved out of the description and into the
+  // result. An editable single page carries no hint.
+  check("pickup resolve: an editable single page adds no next-step hint", !/\(assistant:/.test(picked.text));
   // The API read is keyed by the resolved entity_id.
   check(
     "pickup resolve: API read keyed by resolved entity_id",
     apiSourceCalls().some((c) => c.url === `${API_BASE}/api/v2/inspirations/e9/source`),
   );
+
+  // #500: not re-pluggable → the result offers a copy or push access.
+  reset();
+  apiHtml = "<html>not-mine</html>";
+  pickupReply = { status: 200, body: { ...pickupBody, owner: { handle: "x", is_you: false }, capabilities: { replug: false, fork: true, reason: "not_owner" } } };
+  const notMine = await runSource(makeCtx({ token: "jwt-x", lastDrop: null }), { url: "https://acme.cloudgrid.io/page" });
+  check("not re-pluggable: result offers grid_pickup and grid_collab",
+    /cannot re-plug this app in place \(not_owner\)/.test(notMine.text) && /grid_pickup/.test(notMine.text) && /grid_collab/.test(notMine.text));
+
+  // #500: multi-file → the result points at the full source.
+  reset();
+  apiHtml = "<html>shell</html>";
+  pickupReply = { status: 200, body: { ...pickupBody, kind: "app", single_html: false } };
+  const multi = await runSource(makeCtx({ token: "jwt-x", lastDrop: null }), { url: "https://acme.cloudgrid.io/page" });
+  check("multi-file: result points at grid_pull and source_download_url",
+    /multi-file app/.test(multi.text) && /grid_pull/.test(multi.text) && /source_download_url/.test(multi.text));
 
   // Best-effort: pickup failure → falls back to today's behavior (no throw, HTML
   // still served via the API read, entity_id null). Never regress the read.
@@ -460,11 +480,14 @@ try {
       /grid_get_app_source[\s\S]*target_entity_id[\s\S]*Do not ask the user to paste/.test(startText),
   );
 
-  // grid_plug (primary) description carries the source-first clause.
-  check(
-    "grid_plug description mentions grid_get_app_source",
-    /call grid_get_app_source first, then deploy with target_entity_id/.test(server.descriptions.grid_plug),
-  );
+  // The source-first rule lives in the server instructions of both editions
+  // (#500: tool descriptions name no other tool).
+  for (const [name, text] of [["INSTRUCTIONS_WEB", INSTRUCTIONS_WEB], ["INSTRUCTIONS_LOCAL", INSTRUCTIONS_LOCAL]]) {
+    check(
+      `${name} carries the source-first rule`,
+      /call grid_get_app_source first, then grid_plug with target_entity_id/.test(text),
+    );
+  }
 
   // ── Edition-aware edit flow (spec §6): the playbook carries EACH branch ──────
   check(

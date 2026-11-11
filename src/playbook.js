@@ -122,6 +122,9 @@ export function listWorkflows() {
 // does not do, and the plug contract — nothing about other products and no
 // priority or preference wording (directory review criteria; #432). Under
 // 4,096 characters, most important first; a test pins both.
+// Since #500 the workflow guidance (call order, polling, confirming with the
+// user, which access verb fits a request) lives here and in the tool results,
+// not in the tool descriptions, which state only what each tool does.
 export const INSTRUCTIONS_WEB = `CloudGrid runs the user's web apps at a live public URL and provides the infrastructure they need: managed MongoDB, Redis, pgvector, persistent disk, and an AI gateway that needs no API key. Every tool here is grid_*.
 
 What it does, and the requests each tool serves:
@@ -135,10 +138,16 @@ What it does not do: it is not a shell, a container or VM host, or a Kubernetes 
 
 How a plug works:
 - Browsing (grid_start, grid_get_template, grid_get_app_source) works signed out. Creating or changing anything needs a signed-in CloudGrid account: the user's AI tool asks them to sign in the first time a tool needs one, then the call can be made again. There is no sign-in-free publish.
-- No grid yet: grid_plug returns needs_grid_create; suggest a slug, confirm it with the user, call grid_create_grid, then grid_plug with that grid. More than one grid: it returns needs_grid; ask which.
+- No grid yet: grid_plug returns needs_grid_create; suggest a slug, confirm it with the user (it is permanent and appears in URLs), call grid_create_grid, then grid_plug with that grid right away (it waits for the new grid's setup). Create the grid here; the user does not need the console for it. More than one grid: it returns needs_grid; ask which, and do not pick one for the user.
 - Never put an API key in page HTML or app code: a plugged page's source is public, and grid_plug rejects known key shapes. needs: { ai: true } in cloudgrid.yaml gives the app the managed AI gateway with no key; other keys go in grid secrets.
-- A runtime build is asynchronous: grid_plug returns status "building"; poll grid_check_deploy with its entity_id until it reports success before saying the app is live.
+- A runtime build is asynchronous: grid_plug returns status "building"; poll grid_check_deploy with its entity_id about every 15 seconds until it reports success before saying the app is live. Some hosts start a new session for every tool call, so pass the entity_id on each follow-up call.
+- If large files had to be left out of an inline artifact_files plug, tell the user.
 - End with the live URL.
+
+Editing and access:
+- To edit a page whose HTML is not in context, call grid_get_app_source first, then grid_plug with target_entity_id.
+- "Collab" or "join" on someone else's app is grid_collab, not grid_pickup. grid_collab grants push access only; grid_pull then gets the code, and grid_plug with target_entity_id updates the shared app. If grid_pull reports view-only, say so and offer grid_pickup (a separate copy) or grid_collab.
+- Confirm with the user before grid_delete. Send grid_report only after the user agrees, and keep secrets out of it (values are not redacted).
 
 grid_start returns a short orientation and the workflow index; grid_get_template loads a workflow, template, or reference doc (cloudgrid-yaml, capability-map, playbook). Nothing from this conversation is sent to CloudGrid except what the user asks to send through grid_note or grid_report.`;
 
@@ -152,7 +161,11 @@ What it does, and the requests each tool serves:
 
 What it does not do: it is not a shell, a container or VM host, or a Kubernetes target; it does not deploy a git repository from a URL; it does not run desktop or mobile apps.
 
-How a plug works: creating anything needs a signed-in account (a signed-out create returns needs_auth; call grid_login). Never write an API key into page source or app code — needs: { ai: true } gives the app the managed AI gateway with no key, and other keys go in grid secrets (grid_plug rejects known key shapes). A runtime build is asynchronous: poll grid_check_deploy with its entity_id until success before saying it is live. For shell steps, run the CLI as \`npx -y @cloudgrid-io/cli@latest <command>\` (never a bare \`grid\`); \`grid dev\` runs the app locally with the same services. grid_start returns a short orientation and the workflow index; grid_get_template loads workflows, templates, and reference docs.`;
+How a plug works: creating anything needs a signed-in account (a signed-out create returns needs_auth; call grid_login, then grid_login_status after the browser step, then plug again). No grid yet: grid_plug returns needs_grid_create; suggest a slug, confirm it with the user, call grid_create_grid, then plug with that grid right away. More than one grid: it returns needs_grid; ask which. Never write an API key into page source or app code — needs: { ai: true } gives the app the managed AI gateway with no key, and other keys go in grid secrets (grid_plug rejects known key shapes). A runtime build is asynchronous: poll grid_check_deploy with its entity_id about every 15 seconds until success before saying it is live. End with the live URL.
+
+Editing and access: to edit a page whose HTML is not in context, call grid_get_app_source first, then grid_plug with target_entity_id. "Collab" or "join" on someone else's app is grid_collab, not grid_pickup; it grants push access only, then grid_pull or grid_edit_existing_app gets the code. If a pull reports view-only, say so and offer grid_pickup (a separate copy) or grid_collab. Confirm with the user before grid_delete or grid_take_offline. Send grid_report only after the user agrees. grid_note feeds the optional QA log: send it before a plug, or pass grid_plug's session_note.
+
+For shell steps, run the CLI as \`npx -y @cloudgrid-io/cli@latest <command>\` (never a bare \`grid\`); \`grid dev\` runs the app locally with the same services. grid_start returns a short orientation and the workflow index; grid_get_template loads workflows, templates, and reference docs.`;
 
 // ── grid_start orientation ───────────────────────────────────────────────────
 // Short on purpose: the decisions a model makes on the first plug, and where

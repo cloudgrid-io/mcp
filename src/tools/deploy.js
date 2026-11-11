@@ -184,6 +184,8 @@ export async function resolveGridOrAsk(ctx, { token, suppliedGrid, edition }, de
       lines.push(`  ${o.slug} — ${o.name} (${o.role})${suffix}`);
     }
     lines.push("Pass the grid slug in the `grid` parameter.");
+    // #500: the "ask, never guess" rule moved here from the tool descriptions.
+    lines.push("(assistant: ask the user which grid; do not pick one for them, and name the grid you plug into before creating.)");
     const readyCount = annotated.filter((o) => o.render_ready).length;
     if (readyCount === 0) {
       lines.push("Note: none of your grids are fully set up yet. Wait until provisioning completes (grid_start will show render_ready: true) before plugging.");
@@ -3340,6 +3342,20 @@ function shapeSourceResult(sourceUrl, entityId, htmlStr, extra = {}) {
   if (truncated) {
     lines.push(
       "(too large to return in full; re-plug needs the complete document — consider that this drop may be multi-file)",
+    );
+  }
+  // #500: the next-step guidance that used to sit in grid_get_app_source's
+  // description. It applies only when the pickup contract says so.
+  const caps = extra.capabilities;
+  if (caps && caps.replug === false) {
+    lines.push(
+      `(assistant: this account cannot re-plug this app in place${caps.reason ? ` (${caps.reason})` : ""}. ` +
+        "Offer the user grid_pickup to make their own copy, or grid_collab to get push access to the same app.)",
+    );
+  } else if (extra.single_html === false) {
+    lines.push(
+      "(assistant: this is a multi-file app, so this HTML is not its full source. Get the files with grid_pull" +
+        `${extra.source_download_url ? `, or from source_download_url (${extra.source_download_url})` : ""}.)`,
     );
   }
   lines.push("", html);

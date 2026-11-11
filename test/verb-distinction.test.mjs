@@ -22,6 +22,7 @@ import { readFileSync } from "node:fs";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { runPull } from "../src/tools/deploy.js";
+import { INSTRUCTIONS_WEB, INSTRUCTIONS_LOCAL } from "../src/playbook.js";
 
 let failures = 0;
 function check(label, cond) {
@@ -53,35 +54,33 @@ check("grid_collab is a registered tool", collab.length > 0);
 // It must DISTINGUISH itself from the other two verbs, or the three re-conflate.
 check("grid_collab frames itself as SAME-entity push access, not a fork/copy", /same (live )?entity/i.test(collab) && /not a (copy|fork)/i.test(collab));
 check("grid_collab frames itself as permission-only / fetches nothing", /permission only|grants permission|fetches nothing/i.test(collab));
-check("grid_collab names grid_pull as the follow-up for the code", /grid_pull/i.test(collab));
-check("grid_collab names grid_pickup as the fork alternative", /grid_pickup/i.test(collab));
+// #500: descriptions name no other tool, so the follow-up (pull) and the fork
+// alternative (pickup) are pinned in the server instructions (Part D); the
+// description still has to rule out a copy on its own.
+check("grid_collab says it creates no new entity", /no new entity/i.test(collab));
 // The 403 request-access flow is the whole point (#253): the surface must say so.
 check("grid_collab surfaces the request-on-gate flow", /request|approve|gate/i.test(collab));
 
-// grid_pickup must DISAMBIGUATE itself from collab, naming grid_collab as the
-// separate operation — otherwise "collab" maps onto pickup (the #242 bug).
-check("grid_pickup names grid_collab as the distinct verb", /grid_collab/.test(pickup));
+// grid_pickup must DISAMBIGUATE itself from collab — otherwise "collab" maps
+// onto pickup (the #242 bug). Since #500 it does so without naming the tool.
+check("grid_pickup says it is not a collab", /not a collab/i.test(pickup));
 check("grid_pickup still frames itself as a fork/copy", /fork|copy/i.test(pickup));
 // pickup must actively DISCLAIM granting access (access is collab's job). Any
 // mention of granting access in pickup must be a denial ("never grants you
 // access" / "does not grant access"), never a positive claim.
 check(
   "grid_pickup explicitly disclaims granting access",
-  /\b(never|not|n't|no)\b[^.]*grants?\s+(you\s+)?(push\s+)?access/i.test(pickup),
+  /\b(never|not|n't|no)\b[^.]*grants?\s+(you\s+)?(push\s+)?access|\bgrants no (push )?access\b/i.test(pickup),
 );
 
-// grid_pull must frame collab as an ACCESS grant that fetches nothing — not as
-// "rolling out soon", and not as a synonym for pull — and point at grid_collab.
-check("grid_pull names grid_collab", /grid_collab/.test(pull));
-check(
-  "grid_pull frames collab as permission-only / fetches-nothing",
-  /permission only|grants permission|fetches nothing/i.test(pull),
-);
+// grid_pull must say it needs push access and what a view-only caller gets;
+// the options it offers then are in its result (Part B).
 check("grid_pull mentions push access", /push access/i.test(pull));
+check("grid_pull states the view-only outcome", /can_edit: false/.test(pull) && /push access to the same entity/i.test(pull));
 
-// grid_edit_existing_app (the local CLI-wrapping pull) must also point at
-// grid_collab for gaining access, so its surface is consistent with grid_pull's.
-check("grid_edit_existing_app names grid_collab", /grid_collab/.test(edit));
+// grid_edit_existing_app (the local CLI-wrapping pull) must also keep access
+// separate from pulling, consistent with grid_pull's surface.
+check("grid_edit_existing_app says it grants no access", /grants no access/i.test(edit) && /`grid collab <entity>`/.test(edit));
 
 // The stale "(rolling out soon)" tag must be gone from EVERY tool description:
 // `grid collab` ships in the CLI today (program.ts:169) and the server route is
@@ -119,6 +118,13 @@ check(
   );
   check("runPull view-only guidance does NOT say \"rolling out soon\"", !/rolling out soon/i.test(text));
   check("runPull view-only guidance still offers the fork (grid_pickup)", /grid_pickup/i.test(text));
+}
+
+// ── Part D: the server instructions route "collab" (#500) ──────────────────
+for (const [name, text] of [["INSTRUCTIONS_WEB", INSTRUCTIONS_WEB], ["INSTRUCTIONS_LOCAL", INSTRUCTIONS_LOCAL]]) {
+  check(`${name} routes "collab" to grid_collab, not grid_pickup`, /"Collab" or "join" on someone else's app is grid_collab, not grid_pickup/.test(text));
+  check(`${name} names grid_pull as the follow-up for the code`, /grid_collab[^.]*\.[^.]*grid_pull|push access only[^.]*grid_pull/.test(text));
+  check(`${name} offers grid_pickup or grid_collab on view-only`, /view-only, say so and offer grid_pickup \(a separate copy\) or grid_collab/.test(text));
 }
 
 // ── Part C: no stale "rolling out soon" anywhere in the collab-touching source ─
