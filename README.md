@@ -2,86 +2,63 @@
 
 An MCP server for CloudGrid. It exposes the CloudGrid actions as MCP tools.
 
-It ships in two editions from one codebase:
+## Hosted server
 
-- **Local (stdio)** — runs on your machine, full toolset including the CLI-wrapping
-  tools. This README covers it. For Claude Code, Cursor, Claude Desktop.
-- **Web (hosted HTTP)** — a lighter toolset (17 direct-API tools, no CLI
-  wrappers) for web clients like claude.ai. See [REMOTE.md](REMOTE.md).
+Add this URL to your AI tool as a remote MCP server (in claude.ai and ChatGPT,
+add it as a custom connector):
 
-The local edition wraps the `grid` CLI for authenticated operations (the CLI
-handles auth, grid context, and error formatting) and calls the API directly for the
-plug, login, and visibility tools.
+```
+https://mcp.cloudgrid.io/mcp
+```
 
-## CLI compatibility
+Sign in to CloudGrid when your AI tool asks; the connection uses OAuth. There is
+nothing to install and nothing to configure. The hosted server carries the tools
+that call the CloudGrid API directly. How it works and how it is hosted:
+[REMOTE.md](REMOTE.md).
 
-The MCP uses an installed CLI only when it meets the platform floor
-(`MIN_CLI_VERSION`, currently 0.15.26 — kept in lockstep with the API's live
-`cli_compat` floor, which rejects older CLIs with HTTP 426). Below the floor it
-skips the local/global CLI and lazily fetches `@cloudgrid-io/cli@latest` via
-npx instead. A CI drift guard (`npm run test:drift-guard`) asserts every
-wrapped verb exists in the CLI help.
+## Local server
 
-### `GRID_AUTH_STALE` is out of scope
+The local edition runs on your machine over stdio and adds the tools that wrap
+the `grid` CLI (logs, rollbacks, env vars, secrets, scaffolding). Use it in Claude Code, Cursor or Claude Desktop when you build runtime
+apps from a folder on disk.
 
-Strict-OIDC (org-owned) grids can return `GRID_AUTH_STALE` when the caller's
-session predates an SSO policy change. The MCP does not target such grids and
-does not handle this code: if a `GRID_AUTH_STALE` response is ever seen, point
-the user at Console SSO to re-authenticate — the MCP will not silently retry.
-
-## Prerequisite
-
-Install and log in to the CLI:
+Install and sign in to the CLI:
 
 ```
 npm install -g @cloudgrid-io/cli
 grid login
 ```
 
-The server reads no credentials directly. It runs `grid`, which uses its own
-stored credentials at `~/.cloudgrid/credentials`.
-
-## Run
+Then point your MCP client at:
 
 ```
 npx -y @cloudgrid-io/mcp
 ```
 
-Or from a clone:
-
-```
-cd mcp
-npm install
-npm start
-```
-
-It speaks MCP over stdio. Point any MCP client at the `cloudgrid-mcp` command.
+The server reads no credentials of its own. It uses the CLI's stored sign-in at
+`~/.cloudgrid/credentials`; `grid_login` writes the same file.
 
 ### One CloudGrid server per client
 
-Run EITHER this local (stdio) server — standalone or via the Claude Code
-plugin, which bundles it — OR the hosted connector (`mcp.cloudgrid.io`) in a
-given client. Never both: each `grid_*`
-tool appears twice, the two servers hold separate sign-in state (the local
-edition shares the CLI's `~/.cloudgrid/credentials`; the connector holds an
-OAuth session), and they can disagree about whether you are signed in — the
-model may then act on whichever answered last. How to tell: duplicate
-`grid_*` entries in the client's tool list, or two CloudGrid servers in its
-MCP/connector settings. Which to keep: the local edition wherever you build
-runtime apps from folders (it has `path` + the CLI); the connector in
-chat-only clients where you publish single pages.
+Add either the hosted server or the local server to a given client, not both.
+With both, each `grid_*` tool appears twice and the two hold separate sign-in
+state, so they can disagree about whether you are signed in. To check, look for
+duplicate `grid_*` entries in the client's tool list, or two CloudGrid servers
+in its MCP or connector settings. Keep the local server where you build runtime
+apps from folders, and the hosted server in chat-only clients.
 
-### QA session log (optional)
+### Settings (local server)
 
-Set `CLOUDGRID_QA_SLACK_WEBHOOK` to an **internal / private** Slack incoming-webhook
-URL to receive a per-session QA log (`log-<Client>-<transport>-mcp.txt`) when a
-local (stdio) session goes live, fails, or is abandoned. The log carries the
-user's first message (when the host forwards it) and identity details, so the
-target channel MUST be internal. The hosted edition never posts a session log
-at all (its servers carry no webhook); a hosted `grid_note` is filed with the
-CloudGrid API instead — see "Privacy Policy" below. Unset → the feature is fully dark (nothing captured, nothing
-posted). `CLOUDGRID_QA_IDLE_MS` overrides the abandoned-idle window (default
-900000 = 15 min).
+All optional:
+
+- `CLOUDGRID_TELEMETRY=off`: turns off `grid_report` error reports.
+- `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`: route API calls through a proxy.
+- `NODE_EXTRA_CA_CERTS=/path/to/root-ca.pem`: trust an extra root certificate,
+  for networks that inspect TLS.
+
+`GRID_AUTH_STALE` is out of scope: grids whose owner enforces SSO can return it
+when your session predates an SSO policy change. The server does not retry; sign
+in again through Console SSO.
 
 <!-- gen:tools -->
 ## Tools
@@ -150,42 +127,6 @@ the web edition gets.
 All tools carry MCP annotations (`readOnlyHint`, `destructiveHint`,
 `openWorldHint`) for clients that support them.
 
-## Test
-
-A smoke test spawns the server with a real MCP client, lists the tools, and calls
-the read-only `grid_feedback` tool end to end:
-
-```
-cd mcp
-npm install
-npm run smoke
-```
-
-It needs a logged-in CLI on `$PATH`.
-
-### Live smoke scripts
-
-Three more scripts run against the live API on demand. They are not part of CI.
-A new plug needs sign-in, so none of them creates an anonymous drop. Each one
-skips a step, and says why, when the variables that step needs are missing.
-Tokens come only from the environment and are never printed.
-
-| Script | Without secrets | With secrets |
-|---|---|---|
-| `npm run smoke:drop` | A signed-out create with `anon: true` returns `needs_auth` and publishes nothing. | `CLOUDGRID_TOKEN` (and `CLOUDGRID_SMOKE_GRID` if the account has several grids): a signed-in create publishes an owned page and its URL serves. |
-| `npm run smoke:redrop` | Same signed-out check, through the web edition. | `CLOUDGRID_SMOKE_REDROP_ENTITY_ID` + `CLOUDGRID_SMOKE_REDROP_OWNER_TOKEN` (or `CLOUDGRID_SMOKE_REDROP_OWNER_TOKEN_FILE`) for an existing anonymous drop: the edit updates it in place, with no sign-in. The owner token is re-minted on every edit; a token file is rewritten with the fresh one. |
-| `npm run smoke:claim` | Skips. | `CLOUDGRID_TOKEN`: a signed-in plug. Add `CLOUDGRID_SMOKE_CLAIM_ENTITY_ID` + `CLOUDGRID_SMOKE_CLAIM_TOKEN` for an existing anonymous drop: `grid_pull` claims it into the account. A drop can be claimed once. |
-
-The signed-out check is refused inside the server before any publish request is
-sent, so it is safe to run at any time.
-
-## Design
-
-- Shells out with `execFile` and an argument array, so there is no shell and no
-  injection surface.
-- `grid_view_logs` never uses `--follow`; a streaming call would never return.
-- Stateless. Each call is one CLI invocation.
-
 ## Privacy Policy
 
 Full policy: <https://cloudgrid.io/privacy>
@@ -234,9 +175,10 @@ disable reporting entirely.
 install, which never auto-updates. It sends no account data and no user content.
 The hosted edition does not do this.
 
-**QA session log.** When `CLOUDGRID_QA_SLACK_WEBHOOK` is set (unset by default,
-fully dark otherwise), the local (stdio) server posts a per-session QA log to an
-internal Slack channel on deploy, error, idle timeout, or process shutdown. The
+**QA session log.** Off by default. The local (stdio) server posts a
+per-session QA log to the CloudGrid team only on a machine where a maintainer
+has turned it on (see [CONTRIBUTING.md](CONTRIBUTING.md)); a user never sets
+it. When on, it posts on deploy, error, idle timeout, or process shutdown. The
 log includes: session metadata (user ID, email, grid slug, client name), the
 user's first message (scrubbed, capped at 2 000 chars), a per-tool-call trail
 with allowlisted arg keys only, and an optional narrative set via `grid_note` or
