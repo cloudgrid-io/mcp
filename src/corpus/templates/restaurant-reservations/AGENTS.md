@@ -164,8 +164,9 @@ behind auth.
 
 ## 5. Deploy steps
 
-Runtime app → **local edition** only (Claude Desktop / Claude Code / CLI); the
-build is **asynchronous**.
+Runtime app → every edition: hosted through `grid_plug` with the files inline as
+`artifact_files`; local (Claude Desktop / Claude Code / CLI) also through a
+folder `path` or `grid plug`. The build is **asynchronous**.
 
 1. `grid_login_status` (→ `grid_login` if needed). Pick the grid if the
    user has more than one.
@@ -192,12 +193,13 @@ build is **asynchronous**.
 
 ## 6. Edition note
 
-This is a **runtime app** (built + deployed container), so it requires the
-**local edition** (Claude Desktop / Claude Code) or the CLI. On the **hosted**
-edition (Claude Web / hosted MCP) you CANNOT build a runtime app — hosted is
-inline-only and can publish static pages only. If the user is on hosted, say so
-plainly and offer a static, non-persistent menu page instead (no bookings), then
-stop the runtime path.
+This is a runtime app (a built and deployed container), and every edition can
+build it. On the hosted edition (Claude Web / hosted MCP), plug it with
+`grid_plug`, passing every file and the `cloudgrid.yaml` inline as
+`artifact_files`. The local edition (Claude Desktop / Claude Code) can also pass
+a folder `path`, or use the CLI. Inline files are copied through the tool call,
+so a large app (big lockfiles, binary assets) is more reliable from the local
+edition or the CLI.
 
 ---
 

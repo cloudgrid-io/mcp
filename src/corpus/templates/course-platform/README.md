@@ -23,4 +23,4 @@ Read `AGENTS.md`, then build the app following it — put the code under
 `services/web/`, read `DATABASE_MONGODB_URL` (legacy `MONGODB_URL` fallback) and
 the vault-injected `STRIPE_KEY` / `AUTH_PROVIDER_KEY` lazily inside getters,
 declare `needs: { database: true }`, and deploy with `grid plug` (async — poll to
-a live URL; local edition only).
+a live URL; hosted through `artifact_files`, locally also a folder `path` or the CLI).

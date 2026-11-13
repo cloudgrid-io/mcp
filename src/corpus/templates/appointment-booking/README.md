@@ -11,6 +11,6 @@ not finished code. Read `AGENTS.md` for the file tree, Mongo collections, the
 slot-computation and anti-double-booking rules, and the CloudGrid wiring
 (`needs: { database: true }` → `DATABASE_MONGODB_URL`; auth/Stripe secrets via
 the `vault:` block → env vars), then build the app under `services/web/` and
-deploy (async — poll to a live URL; local edition only). A scheduled reminder
+deploy (async — poll to a live URL; hosted through `artifact_files`, locally also a folder `path` or the CLI). A scheduled reminder
 cron service is designed but its deploy is **PENDING platform issue #1543** — see
 AGENTS.md § 7.

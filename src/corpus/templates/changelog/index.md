@@ -8,7 +8,7 @@ State (if any) lives only in memory and is lost on refresh.
 To publish this page, use **`grid_plug`** with the inline `html`: it deploys as an **inspiration** — instant, and works on the **hosted**
 edition (Claude Web) as well as local. The reference `cloudgrid.yaml` in this
 directory (`type: static`) is ONLY for plugging the page as an OWNED static
-runtime (async, local edition only); the fast path is `grid_plug`.
+runtime (async; hosted through `artifact_files`, locally also a folder `path` or the CLI); the fast path is `grid_plug`.
 
 The fillable HTML is the real template — fetch it with
 `grid_get_template("template", "changelog")` and fill in the user's content.

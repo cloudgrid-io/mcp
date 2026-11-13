@@ -24,7 +24,7 @@ NOT filled app code — read `AGENTS.md` and build the app following it.
    (`AUTH_PROVIDER_SECRET_KEY`, `AUTH_PROVIDER_PUBLISHABLE_KEY`); the deployer
    injects them at build + runtime. Create the vault items first.
 
-Runtime app → **local edition only**, async deploy (poll to a live URL).
+Runtime app → every edition (hosted through `artifact_files`, locally also a folder `path` or the CLI), async deploy (poll to a live URL).
 
 ## Fetch bundle
 

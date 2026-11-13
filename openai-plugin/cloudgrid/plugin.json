@@ -1,0 +1,104 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "cloudgrid",
+  "version": "0.22.6",
+  "description": "Deploy or publish web pages and apps from ChatGPT: CloudGrid plugs them and gives you a live URL, with managed MongoDB, Redis, pgvector, disk, and an AI gateway that needs no API key.",
+  "author": {
+    "name": "CloudGrid Inc.",
+    "email": "support@cloudgrid.io",
+    "url": "https://cloudgrid.io"
+  },
+  "homepage": "https://cloudgrid.io",
+  "repository": "https://github.com/cloudgrid-io/mcp",
+  "license": "MIT",
+  "keywords": [
+    "deploy",
+    "publish",
+    "host",
+    "web app",
+    "database",
+    "cloudgrid"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "CloudGrid",
+        "shortDescription": "Live URLs for apps and pages",
+        "longDescription": "CloudGrid runs the web pages and apps you build with ChatGPT at a live public URL. It also provides the infrastructure they need, so an app can store data, cache, search embeddings, keep files, and call an AI model without you setting any of it up.\n\nAsk ChatGPT to deploy, publish, host, or share something you built, and ChatGPT plugs it into CloudGrid. Plugging is how CloudGrid deploys and publishes: one step that puts a page or app live at its URL.\n\nWhat you can do from a conversation:\n- Plug a single HTML page and get its live URL in seconds.\n- Plug a multi-file or framework app, with a database, Redis, pgvector, persistent disk, scheduled jobs, or the AI gateway declared in one cloudgrid.yaml file. ChatGPT checks the build and tells you when it is live.\n- Change the app and keep the same link. ChatGPT can fetch the current page source when it is no longer in the chat.\n- Choose who can see it: only you, your grid, anyone with the link, or the public.\n- Give a collaborator push access, or copy an app you can see into your own grid.\n- Create a grid (your workspace) the first time you plug something.\n\nWhat it does not do: it is not a shell, a VM or container host, or a Kubernetes target. It does not run desktop or mobile apps.\n\nBrowsing tools (orientation, templates, a public page's source) work without an account. Plugging, sharing, and every other change need a CloudGrid account, and ChatGPT asks you to sign in the first time one is needed. Nothing from the conversation is sent to CloudGrid unless you ask ChatGPT to send a build note or a failure report.",
+        "developerName": "CloudGrid Inc.",
+        "category": "Developer Tools",
+        "capabilities": [
+          "Deploy or publish a single HTML page: plug it and get a live public URL",
+          "Deploy a multi-file app with managed MongoDB, Redis, pgvector, and disk: plug it",
+          "Give an app an AI gateway that needs no API key",
+          "Update a live app in place and keep its URL",
+          "Set who can see an app: private, grid, link, or public",
+          "Grant a collaborator push access to an app",
+          "Copy an app you can see into your own grid"
+        ],
+        "websiteURL": "https://cloudgrid.io",
+        "supportURL": "https://cloudgrid.io/contact",
+        "privacyPolicyURL": "https://cloudgrid.io/privacy",
+        "termsOfServiceURL": "https://cloudgrid.io/terms",
+        "defaultPrompt": [
+          "Make a one-page countdown timer for our launch and put it online.",
+          "Build a guestbook app that saves entries in a database and give me the link.",
+          "Make a team status page that only people in my grid can open."
+        ],
+        "composerIcon": "./assets/logo.png",
+        "logo": "./assets/logo.png"
+      },
+      "review": {
+        "demo_recording_url": "https://youtu.be/m2tety4cMmc",
+        "test_cases": {
+          "positive": [
+            {
+              "description": "Plug a single page and return its live URL",
+              "prompt": "Make a one-page countdown timer for our launch and put it online.",
+              "tools_triggered": "grid_plug",
+              "expected_behavior": "Writes the page, plugs it, and returns a live https URL that loads the timer."
+            },
+            {
+              "description": "Update a live page in place",
+              "prompt": "Change the countdown page's background to dark blue and keep the same link.",
+              "tools_triggered": "grid_get_app_source, grid_plug",
+              "expected_behavior": "Fetches the current HTML, edits it, and re-plugs it in place. The URL is unchanged and shows the new colour."
+            },
+            {
+              "description": "Change who can see a page",
+              "prompt": "Make my countdown page visible only to me.",
+              "tools_triggered": "grid_visibility",
+              "expected_behavior": "Sets the page to private and confirms. A signed-out visit asks for sign-in."
+            },
+            {
+              "description": "Plug a runtime app with a database",
+              "prompt": "Build a guestbook app that saves entries in a database and give me the link.",
+              "tools_triggered": "grid_get_template, grid_plug, grid_check_deploy",
+              "expected_behavior": "Plugs a runtime app with a database, checks the build until it is live, and returns the URL. A new entry is still there after reload."
+            },
+            {
+              "description": "List the user's grids",
+              "prompt": "Which grids do I have?",
+              "tools_triggered": "grid_list_grids",
+              "expected_behavior": "Lists the test account's grids with name and role."
+            }
+          ],
+          "negative": [
+            {
+              "description": "Native mobile app publishing is out of scope",
+              "prompt": "Publish my iPhone app to the App Store with CloudGrid."
+            },
+            {
+              "description": "VMs and Docker hosts are out of scope",
+              "prompt": "Give me a Linux VM where I can run Docker containers."
+            },
+            {
+              "description": "Unrelated request",
+              "prompt": "What's the weather in Tel Aviv today?"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

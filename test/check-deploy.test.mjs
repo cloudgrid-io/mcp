@@ -10,7 +10,9 @@
 //   2. runCheckDeploy — the direct-API status verb, both editions.
 //
 // Run: node test/check-deploy.test.mjs
+import { z } from "zod";
 import { runPlug, runCheckDeploy, pollDeployTrace, API_BASE } from "../src/tools.js";
+import { captureTools } from "./helpers/tool-text.mjs";
 
 let failures = 0;
 const check = (label, cond) => { console.log(`${cond ? "ok  " : "FAIL"} ${label}`); if (!cond) failures++; };
@@ -66,6 +68,11 @@ globalThis.fetch = async (url, opts = {}) => {
 
 const reset = () => { fetchCalls = []; plugReply = null; traceReplies = []; traceHits = 0; entityDeploysTrace = null; pickupBody = null; };
 const entityDeploysCalls = () => fetchCalls.filter((c) => isEntityDeploys(c.url));
+// #503: the advertised output schema (additionalProperties false on the
+// client) must accept the structured result, or the next step never arrives.
+const { configs: webTools } = captureTools("web");
+const fitsSchema = (tool, structured) => z.object(webTools[tool].outputSchema).strict().safeParse(structured).success;
+
 const BUILDING = { entity_id: "e1", slug: "app-1", grid: "acme", url: "https://app-1--acme.cloudgrid.io", status: "building", poll_url: "/deploys/d_app_abc123", trace_id: "d_app_abc123", detection: { kind: "app" } };
 
 try {
@@ -115,6 +122,23 @@ try {
   check("slow build: names the next call with entity_id and grid, every 15 s, then the URL",
     /call grid_check_deploy with entity_id e1, grid acme/.test(slow.text) && /about every 15 s until it reports success/.test(slow.text) && /then give the user the URL/.test(slow.text));
 
+  // #503: claude.ai shows the model only structuredContent, so the next step
+  // the text names is in the structured result too.
+  check("slow build: structured.next names grid_check_deploy with entity_id, grid and poll_url, every 15 s",
+    slow.structured.next?.tool === "grid_check_deploy" &&
+    slow.structured.next?.args?.entity_id === "e1" && slow.structured.next?.args?.grid === "acme" &&
+    slow.structured.next?.args?.poll_url === "/deploys/d_app_abc123" && slow.structured.next?.every_seconds === 15);
+  check("slow build: structured result fits the advertised grid_plug output schema", fitsSchema("grid_plug", slow.structured));
+  check("fast build: no structured.next once live", live.structured.next === undefined);
+
+  // Missing arguments are left out of next.args.
+  reset();
+  plugReply = { status: 202, body: { ...BUILDING, poll_url: null, trace_id: null } };
+  traceReplies = [{ body: { status: "building" } }];
+  const slowNoPoll = await runPlug(makeCtx({ edition: "web" }), { artifact_files: [{ path: "index.js", content: "x" }], confirm_new_app: true });
+  check("slow build, no poll_url: next.args has entity_id and grid only",
+    JSON.stringify(slowNoPoll.structured.next?.args) === JSON.stringify({ entity_id: "e1", grid: "acme" }));
+
   // local edition wording keeps grid_status as a secondary
   reset();
   plugReply = { status: 202, body: BUILDING };
@@ -153,6 +177,11 @@ try {
   traceReplies = [{ body: { status: "building" } }];
   const bld = await runCheckDeploy(makeCtx({ lastDrop: { poll_url: "/deploys/d_app_abc123" } }), {});
   check("check building: live false + do-not-claim wording", bld.structured.live === false && /Do not tell the user it is live/i.test(bld.text));
+  check("check building, no entity_id: next carries the poll_url that finds the build",
+    bld.structured.next?.tool === "grid_check_deploy" && bld.structured.next?.args?.poll_url === "/deploys/d_app_abc123" && bld.structured.next?.every_seconds === 15);
+  check("check building: structured result fits the advertised grid_check_deploy output schema", fitsSchema("grid_check_deploy", bld.structured));
+  check("check success: no structured.next once live", okr.structured.next === undefined);
+  check("check success: structured result fits the advertised output schema", fitsSchema("grid_check_deploy", okr.structured));
 
   reset();
   traceReplies = [{ body: { status: "failed", error: { message_user: "Out of memory during npm install." } } }];
@@ -187,6 +216,10 @@ try {
     fetchCalls.some((c) => c.url.endsWith("/entities/g1/pickup")) && entityDeploysCalls()[0]?.url.includes("/entities/e_byurl/deploys"));
   check("fresh session + url: still building says to call again with the entity_id",
     byUrl.structured.live === false && /call grid_check_deploy again with entity_id e_byurl/.test(byUrl.text));
+  check("fresh session + url: still building carries next with entity_id and grid, no poll_url",
+    byUrl.structured.entity_id === "e_byurl" && byUrl.structured.grid === "acme" &&
+    JSON.stringify(byUrl.structured.next) === JSON.stringify({ tool: "grid_check_deploy", args: { entity_id: "e_byurl", grid: "acme" }, every_seconds: 15 }));
+  check("fresh session + url: still building fits the advertised output schema", fitsSchema("grid_check_deploy", byUrl.structured));
 
   // An explicit entity_id for another app never borrows the session's poll_url.
   reset();

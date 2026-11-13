@@ -32,7 +32,7 @@ following it.
 5. **Reminders want a `type: cron` service — BLOCKED on platform issue #1543.**
    Ship the HTTP app now; add the cron service once #1543 lands (see AGENTS.md §5).
 
-Runtime app → **local edition** only (async build, poll to a live URL).
+Runtime app → every edition (hosted through `artifact_files`, locally also a folder `path` or the CLI), async build, poll to a live URL.
 
 ## cloudgrid.yaml
 

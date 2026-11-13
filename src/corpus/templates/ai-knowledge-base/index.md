@@ -35,7 +35,7 @@ collection and ranks by cosine similarity in the app; to use pgvector instead,
 uncomment the need and swap to a pgvector ORDER-BY-distance query (see
 `AGENTS.md` §7).
 
-Runtime app → **local edition** only (async build, poll to a live URL).
+Runtime app → every edition (hosted through `artifact_files`, locally also a folder `path` or the CLI), async build, poll to a live URL.
 
 ## cloudgrid.yaml
 

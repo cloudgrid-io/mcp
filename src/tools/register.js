@@ -145,6 +145,21 @@ export function withPreviewMeta(ctx, res) {
 // ── Registration ───────────────────────────────────────────────────────────────
 // Registers the tools onto `server`. ctx.edition decides whether the CLI-wrapping
 // tools are included (they need a local machine).
+// The structured next step on a result whose build is still running (#503).
+// Some hosts show the model only structuredContent, so the step the text names
+// is carried here too. Declared on every tool that can return it: the output
+// schema is advertised with additionalProperties false.
+const buildNextStep = () =>
+  z.object({
+    tool: z.string().describe("The tool that reports when the build finishes."),
+    args: z.object({
+      entity_id: z.string().optional().describe("The app's entity_id."),
+      grid: z.string().optional().describe("The app's grid slug."),
+      poll_url: z.string().optional().describe("The build's status path, when there is one."),
+    }).describe("The arguments for that tool."),
+    every_seconds: z.number().describe("Seconds between status checks."),
+  }).optional().describe("Present while the build is still running: the status tool, its arguments, and the interval between checks.");
+
 export function registerTools(server, ctx) {
   // ── Tool naming: grid_* only ───────────────────────────────────────────
   // Every tool is registered under its `grid_*` name only. The legacy
@@ -614,6 +629,7 @@ export function registerTools(server, ctx) {
         via: z.string().optional().describe("Recovery marker: 'cli-fallback' when a signed-in create was published through the bundled CloudGrid CLI."),
         needs_grid_create: z.boolean().optional().describe("Zero-grid ask: the account has no grid yet, and nothing was created. The text names the steps."),
         error: z.boolean().optional().describe("True when the grid listing failed (network/auth error). The text carries a human-readable message. This is a listing failure, not a missing grid."),
+        next: buildNextStep(),
       },
       // destructiveHint (M3): a re-plug with target_entity_id REPLACES what is
       // live at a public URL in place. Versions + grid rollback exist, but the
@@ -949,6 +965,9 @@ export function registerTools(server, ctx) {
         build_log_tail: z.string().optional().describe("Sanitized tail of the Cloud Build log (the real error), when the build failed."),
         suggested_fix: z.string().optional().describe("A suggested fix for the failure, when the platform provides one."),
         build_log_url: z.string().optional().describe("Cloud Build console URL for the full log, when available."),
+        entity_id: z.string().optional().describe("The app's entity_id, when known."),
+        grid: z.string().optional().describe("The app's grid slug, when known."),
+        next: buildNextStep(),
       },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
       // The live-result card's Check status button calls this back over the

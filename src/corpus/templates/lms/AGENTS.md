@@ -185,8 +185,10 @@ A runtime deploy is **asynchronous** and requires the **local edition** (§6).
 
 ## 6. Edition note
 
-An LMS is a built + deployed **runtime** container. It requires the **local
-edition** (Claude Desktop / Claude Code) or the CLI. On the **hosted** edition
-(Claude Web / hosted MCP) you cannot build a runtime app — hosted is inline-only
-and can only publish static pages. If you are on hosted, say so plainly and stop
-the runtime path (a static course *landing* page is the only thing hosted can ship).
+This is a runtime app (a built and deployed container), and every edition can
+build it. On the hosted edition (Claude Web / hosted MCP), plug it with
+`grid_plug`, passing every file and the `cloudgrid.yaml` inline as
+`artifact_files`. The local edition (Claude Desktop / Claude Code) can also pass
+a folder `path`, or use the CLI. Inline files are copied through the tool call,
+so a large app (big lockfiles, binary assets) is more reliable from the local
+edition or the CLI.

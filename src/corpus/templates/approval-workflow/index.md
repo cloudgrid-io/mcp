@@ -38,8 +38,9 @@ machine, and CloudGrid wiring, then build the app under `services/web/`.
    module top level, or `next build` fails.
 5. **Secrets via the `vault:` block** → env vars (e.g. `AUTH_PROVIDER_KEY`,
    `STRIPE_KEY`); store real values with `grid secrets set`, never hardcode.
-6. **Runtime app → local edition only.** Deploy with `grid plug` (async — poll
-   to a live URL). Hosted (Claude Web) can only publish static pages.
+6. **Runtime app → every edition.** Hosted (Claude Web): `grid_plug` with the
+   files inline as `artifact_files`. Local: also a folder `path` or `grid plug`.
+   The build is async: poll to a live URL.
 
 ## cloudgrid.yaml
 

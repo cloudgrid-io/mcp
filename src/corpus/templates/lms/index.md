@@ -28,7 +28,7 @@ an `AGENTS.md` structure guide. Read `AGENTS.md`, then build the app under
 5. **Role gates are the spine** — instructor vs. student is enforced on the
    server (page + API route), not just in the UI. Only instructors create
    courses/lessons and post grades; students submit work and read their own grades.
-6. **Runtime deploy is async, local edition only.** `grid plug` returns
+6. **Runtime deploy is async, on every edition** (hosted through `artifact_files`, locally also a folder `path` or the CLI). The plug returns
    `status: building`; poll to a live URL.
 
 ## Domain (Mongo collections)

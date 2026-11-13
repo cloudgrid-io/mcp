@@ -135,11 +135,13 @@ middleware. Not required for a basic store; add it only if the user wants logins
 
 ## 6. Edition note
 
-This is a **runtime app** (a built + deployed container), so it needs the **local
-edition** (Claude Desktop / Claude Code) or the CloudGrid CLI. The hosted edition
-(Claude Web / hosted MCP) is inline-only and can publish only static pages — it
-cannot build this store. If you are on hosted, offer a static storefront preview
-instead and stop the runtime path.
+This is a runtime app (a built and deployed container), and every edition can
+build it. On the hosted edition (Claude Web / hosted MCP), plug it with
+`grid_plug`, passing every file and the `cloudgrid.yaml` inline as
+`artifact_files`. The local edition (Claude Desktop / Claude Code) can also pass
+a folder `path`, or use the CLI. Inline files are copied through the tool call,
+so a large app (big lockfiles, binary assets) is more reliable from the local
+edition or the CLI.
 
 ## 7. Self-check before you call it done
 

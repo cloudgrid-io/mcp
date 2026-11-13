@@ -173,11 +173,13 @@ webhook signing secret as `STRIPE_WEBHOOK_SECRET`; read both lazily in
 
 ## 6. Edition note
 
-This is a built + deployed container (runtime app), so it requires the **local
-edition** (Claude Desktop / Claude Code) or the CLI. The **hosted edition**
-(Claude Web / hosted MCP) is inline/static-only and CANNOT build a runtime app —
-on hosted, the most you can ship is a static preview page, not the real booking
-backend.
+This is a runtime app (a built and deployed container), and every edition can
+build it. On the hosted edition (Claude Web / hosted MCP), plug it with
+`grid_plug`, passing every file and the `cloudgrid.yaml` inline as
+`artifact_files`. The local edition (Claude Desktop / Claude Code) can also pass
+a folder `path`, or use the CLI. Inline files are copied through the tool call,
+so a large app (big lockfiles, binary assets) is more reliable from the local
+edition or the CLI.
 
 ---
 

@@ -109,7 +109,10 @@ Add indexes as the data grows (e.g. `items.sku` unique, `orders.status`).
 
 ## 6. Edition note
 
-A runtime app is a built + deployed container, so it requires the **local
-edition** (Claude Code / Claude Desktop) or the CLI. The hosted edition (Claude
-Web / hosted MCP) is inline-only and can only publish static pages — it cannot
-build this ERP. Edition-gate before starting the runtime path.
+This is a runtime app (a built and deployed container), and every edition can
+build it. On the hosted edition (Claude Web / hosted MCP), plug it with
+`grid_plug`, passing every file and the `cloudgrid.yaml` inline as
+`artifact_files`. The local edition (Claude Desktop / Claude Code) can also pass
+a folder `path`, or use the CLI. Inline files are copied through the tool call,
+so a large app (big lockfiles, binary assets) is more reliable from the local
+edition or the CLI.

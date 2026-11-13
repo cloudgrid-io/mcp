@@ -39,13 +39,60 @@
           "description": "On success: a link to see and manage all the apps in the grid, in the console.",
           "type": "string"
         },
+        "entity_id": {
+          "description": "The app's entity_id, when known.",
+          "type": "string"
+        },
         "error": {
           "description": "User-language failure reason, when the build failed.",
+          "type": "string"
+        },
+        "grid": {
+          "description": "The app's grid slug, when known.",
           "type": "string"
         },
         "live": {
           "description": "True only when the build finished successfully and the URL serves.",
           "type": "boolean"
+        },
+        "next": {
+          "additionalProperties": false,
+          "description": "Present while the build is still running: the status tool, its arguments, and the interval between checks.",
+          "properties": {
+            "args": {
+              "additionalProperties": false,
+              "description": "The arguments for that tool.",
+              "properties": {
+                "entity_id": {
+                  "description": "The app's entity_id.",
+                  "type": "string"
+                },
+                "grid": {
+                  "description": "The app's grid slug.",
+                  "type": "string"
+                },
+                "poll_url": {
+                  "description": "The build's status path, when there is one.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "every_seconds": {
+              "description": "Seconds between status checks.",
+              "type": "number"
+            },
+            "tool": {
+              "description": "The tool that reports when the build finishes.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tool",
+            "args",
+            "every_seconds"
+          ],
+          "type": "object"
         },
         "status": {
           "description": "The build status: success | failed | building | queued | unknown.",
@@ -1120,6 +1167,45 @@
         "needs_org": {
           "description": "Alias of needs_grid (legacy picker alias).",
           "type": "boolean"
+        },
+        "next": {
+          "additionalProperties": false,
+          "description": "Present while the build is still running: the status tool, its arguments, and the interval between checks.",
+          "properties": {
+            "args": {
+              "additionalProperties": false,
+              "description": "The arguments for that tool.",
+              "properties": {
+                "entity_id": {
+                  "description": "The app's entity_id.",
+                  "type": "string"
+                },
+                "grid": {
+                  "description": "The app's grid slug.",
+                  "type": "string"
+                },
+                "poll_url": {
+                  "description": "The build's status path, when there is one.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "every_seconds": {
+              "description": "Seconds between status checks.",
+              "type": "number"
+            },
+            "tool": {
+              "description": "The tool that reports when the build finishes.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tool",
+            "args",
+            "every_seconds"
+          ],
+          "type": "object"
         },
         "orgs": {
           "description": "Alias of grids (legacy picker alias).",
