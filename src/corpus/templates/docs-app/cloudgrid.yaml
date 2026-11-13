@@ -2,9 +2,9 @@
 # client-side search, and agent-readable llms.txt / llms-full.txt.
 #
 # It is a static site WITH a build step, served at the entity ROOT. Multi-file +
-# build → deploy is async (like a runtime app) and needs the LOCAL edition
-# (Claude Desktop/Code or the CLI); the hosted MCP cannot build it. Deploy with
-# `grid plug` on the linked folder. `llms.txt` and `llms-full.txt` are generated
+# build → deploy is async (like a runtime app). The hosted MCP plugs it with the
+# files inline as `artifact_files`; the local edition (Claude Desktop/Code) or the
+# CLI can also plug the linked folder with `grid plug`. `llms.txt` and `llms-full.txt` are generated
 # automatically at the site root.
 #
 # For a quick single-page doc with no build, use the `docs-site` archetype instead.

@@ -43,7 +43,8 @@ services:
 ### Node.js app
 
 Code lives under `services/web/` (`src/index.js` + `package.json`). Runtime deploy
-(async, local edition only).
+(async, every edition: inline `artifact_files` on hosted, also a folder `path` or
+the CLI locally).
 
 ```yaml
 name: my-api
@@ -547,10 +548,11 @@ Bake these into any yaml you author:
 - **A single self-contained HTML page deploys as an inspiration** via `grid_plug`
   with the inline `html` param — instant, synchronous, works on the hosted edition
   and any client.
-- **A `cloudgrid.yaml` with `services:` makes it a runtime** — async build,
-  **local edition only** (Claude Desktop/Code or the CLI, not hosted). `plug`
-  returns `status: building`; poll status until live, then use the returned live
-  URL. Re-plug the same entity to update the same URL.
+- **A `cloudgrid.yaml` with `services:` makes it a runtime** — async build, on
+  **every edition**. Hosted: `grid_plug` with the files (and the `cloudgrid.yaml`)
+  inline as `artifact_files`. Local edition (Claude Desktop/Code) or the CLI:
+  also a folder `path` or `grid plug`. `plug` returns `status: building`; poll
+  status until live, then use the returned live URL. Re-plug the same entity to update the same URL.
 - **Read injected env vars lazily** (inside a getter/handler), never at module top
   level — a top-level read of `DATABASE_MONGODB_URL` fails `next build`, which
   imports the module for route analysis before the grid injects the var.

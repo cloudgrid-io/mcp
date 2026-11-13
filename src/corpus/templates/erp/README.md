@@ -15,4 +15,4 @@ app on solid rails instead of guessing at the platform wiring.
 > { database: true }` + a `vault:` block for auth/Stripe keys), then build the
 > app under `services/web/` following the guide. Deploy is runtime + async
 > (write the files → `grid plug` → poll to live; the first plug auto-creates the
-> entity from `cloudgrid.yaml`); local edition only.
+> entity from `cloudgrid.yaml`); hosted through `artifact_files`, locally also a folder `path` or the CLI.

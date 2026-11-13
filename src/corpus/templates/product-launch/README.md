@@ -38,8 +38,8 @@ Deploys as an **inspiration** — instant, and works on the **hosted** edition
 updates the same URL, so the user iterates on one link.
 
 The reference `cloudgrid.yaml` in this directory (`type: static`) is ONLY for
-plugging the page as an OWNED static runtime (async, local edition only); the
-fast path is `grid_plug`.
+plugging the page as an OWNED static runtime (async; hosted through `artifact_files`, locally also a folder `path` or the CLI);
+the fast path is `grid_plug`.
 
 The fillable HTML is the real template — fetch it with
 `grid_get_template("template", "product-launch")` and fill in the user's content.

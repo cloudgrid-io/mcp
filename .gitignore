@@ -4,3 +4,4 @@ node_modules/
 cloudgrid.mcpb
 .claude/
 WORKER-REPORT.md
+openai-plugin/dist/

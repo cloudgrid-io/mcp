@@ -14,8 +14,8 @@ there is **no `base`** in `astro.config.mjs`; (2) `cloudgrid.yaml` declares a
 single `static` service with **`source: { path: . }`** (the project is at the
 folder root, not under `services/site/`) plus a **`build:` block** — the platform
 runs `npm run build` for you; (3) it is a multi-file **build**, so it deploys
-**async** (poll to the live URL) and needs the **local edition** (the hosted MCP
-cannot build it); (4) `llms.txt` / `llms-full.txt` are generated automatically at
+**async** (poll to the live URL); the hosted MCP plugs it with the files inline
+as `artifact_files`, and the local edition or the CLI can also plug the folder; (4) `llms.txt` / `llms-full.txt` are generated automatically at
 the site root by the `starlight-llms-txt` plugin — no extra work.
 
 ## cloudgrid.yaml

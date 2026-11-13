@@ -2628,6 +2628,10 @@ export async function runPlug(ctx, input, deps = {}) {
       structured.grid ? `grid ${structured.grid}` : null,
       data.poll_url ? `poll_url ${data.poll_url}` : null,
     ].filter(Boolean);
+    // The same next step, structured (#503): some hosts (claude.ai) show the
+    // model only structuredContent, so a next step carried only in the text
+    // never reaches it.
+    structured.next = checkDeployNext({ entityId: data.entity_id, grid: structured.grid, pollUrl: data.poll_url });
     lines.push(
       `Next: call ${checkHint}${checkArgs.length ? ` with ${checkArgs.join(", ")}` : ""} about every 15 s until it reports success` +
         `${data.trace_id ? ` (trace ${data.trace_id})` : ""}, then give the user the URL. Do NOT tell the user it is live until then.`,
@@ -3273,8 +3277,27 @@ export async function runCheckDeploy(ctx, { poll_url, entity_id, url: appUrl, gr
   }
   return {
     text: `Still ${verdict.status === "unknown" ? "building (status unavailable)" : verdict.status} — NOT live yet. Do not tell the user it is live. Wait ~15s and call grid_check_deploy again${entityId ? ` with entity_id ${entityId}` : ""}.`,
-    structured: { status: verdict.status, live: false },
+    structured: {
+      status: verdict.status,
+      live: false,
+      ...(entityId ? { entity_id: entityId } : {}),
+      ...(gridSlug ? { grid: gridSlug } : {}),
+      // Without an entity_id the resolved poll_url is the handle that finds this build again.
+      next: checkDeployNext({ entityId, grid: gridSlug, pollUrl: entityId ? null : target }),
+    },
   };
+}
+
+// The structured next step for a build that is still running (#503): the tool
+// that reports when it finishes, the arguments to pass, and how often. Missing
+// arguments are left out.
+function checkDeployNext({ entityId, grid, pollUrl } = {}) {
+  const args = {
+    ...(entityId ? { entity_id: entityId } : {}),
+    ...(grid ? { grid } : {}),
+    ...(pollUrl ? { poll_url: pollUrl } : {}),
+  };
+  return { tool: "grid_check_deploy", args, every_seconds: 15 };
 }
 
 // Max HTML we'll return inline from runSource. Past this, we return the first

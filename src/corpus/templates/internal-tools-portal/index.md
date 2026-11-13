@@ -30,7 +30,7 @@ following it.
    hides cards as UX, but each tool page + API re-checks the role server-side —
    the hidden card is never the security boundary.
 
-Runtime app → **local edition only**, async deploy (poll to a live URL).
+Runtime app → every edition (hosted through `artifact_files`, locally also a folder `path` or the CLI), async deploy (poll to a live URL).
 
 ## Fetch bundle
 

@@ -72,7 +72,7 @@ The heart of this blueprint. Read it before building. It covers:
    `STRIPE_WEBHOOK_SECRET`.
 5. **Deploy steps** — write the files → `grid plug --no-deploy` →
    `grid secrets set` → `grid plug` → poll to live.
-6. **Edition note** — runtime app → local edition only (hosted is static-only).
+6. **Edition note** — runtime app → every edition (hosted through `artifact_files`, locally also a folder `path` or the CLI).
 7. **Trip-reminder cron** — intended shape + the platform-issue-#1543 PENDING note
    and stopgap.
 

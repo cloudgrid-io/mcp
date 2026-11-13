@@ -164,8 +164,10 @@ routes and the UI agree on what is legal.
 
 ## 7. Edition note
 
-This is a built + deployed container (a **runtime** app), so it requires the
-**local edition** (Claude Code / Claude Desktop) or the CLI. The **hosted**
-edition (Claude Web / hosted MCP) is inline-only and can publish only static
-pages — it CANNOT build this runtime app. On hosted, tell the user plainly and
-offer a static mock instead; do not attempt the runtime path there.
+This is a runtime app (a built and deployed container), and every edition can
+build it. On the hosted edition (Claude Web / hosted MCP), plug it with
+`grid_plug`, passing every file and the `cloudgrid.yaml` inline as
+`artifact_files`. The local edition (Claude Desktop / Claude Code) can also pass
+a folder `path`, or use the CLI. Inline files are copied through the tool call,
+so a large app (big lockfiles, binary assets) is more reliable from the local
+edition or the CLI.

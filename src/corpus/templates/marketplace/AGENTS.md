@@ -177,8 +177,9 @@ export function stripe() {
 
 ## 5. Deploy steps
 
-Runtime app → **local edition** only (Claude Desktop / Claude Code / CLI); the
-hosted edition cannot build a runtime container.
+Runtime app → every edition: hosted through `grid_plug` with the files inline as
+`artifact_files`; local (Claude Desktop / Claude Code / CLI) also through a
+folder `path` or `grid plug`. The steps below are the CLI path.
 
 1. Put the app under `services/web/` and set `cloudgrid.yaml` to this
    blueprint's active fields (`services.web` nextjs `/`, `needs:{database:true}`,
@@ -201,8 +202,10 @@ hosted edition cannot build a runtime container.
 
 ## 6. Edition note
 
-Because this is a built + deployed container (Next.js + Mongo + Stripe), it
-requires the **local edition** (Claude Desktop / Claude Code) or the CLI. The
-hosted edition (Claude Web / hosted MCP) is inline-only and can only publish
-static pages — offer a static storefront mockup there, but the real marketplace
-must be built and plugged from the local edition.
+This is a runtime app (a built and deployed container), and every edition can
+build it. On the hosted edition (Claude Web / hosted MCP), plug it with
+`grid_plug`, passing every file and the `cloudgrid.yaml` inline as
+`artifact_files`. The local edition (Claude Desktop / Claude Code) can also pass
+a folder `path`, or use the CLI. Inline files are copied through the tool call,
+so a large app (big lockfiles, binary assets) is more reliable from the local
+edition or the CLI.
