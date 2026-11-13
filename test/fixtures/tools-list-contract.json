@@ -530,7 +530,7 @@
           "type": "string"
         },
         "url": {
-          "description": "The public URL of the drop (e.g. https://<grid>.cloudgrid.io/<slug>). Defaults to this session's last drop URL.",
+          "description": "The public URL of the drop (e.g. https://<slug>--<grid>.cloudgrid.io/). Defaults to this session's last drop URL.",
           "type": "string"
         }
       },
@@ -1317,7 +1317,7 @@
           "type": "string"
         },
         "url": {
-          "description": "Alternative RE-PLUG handle: the entity's public CloudGrid URL (e.g. https://<grid>.cloudgrid.io/<slug>) for editing in place with the URL and no target_entity_id (the common \"change the color of this page\" flow). The grid is read from the host and the entity is resolved via the pickup contract, so no `grid` param is needed. target_entity_id and grid+slug take precedence. A non-CloudGrid host is ignored (it does not redirect the write); a URL that does not resolve is treated as a CREATE.",
+          "description": "Alternative RE-PLUG handle: the entity's public CloudGrid URL (e.g. https://<slug>--<grid>.cloudgrid.io/) for editing in place with the URL and no target_entity_id (the common \"change the color of this page\" flow). The grid is read from the host and the entity is resolved via the pickup contract, so no `grid` param is needed. target_entity_id and grid+slug take precedence. A non-CloudGrid host is ignored (it does not redirect the write); a URL that does not resolve is treated as a CREATE.",
           "type": "string"
         },
         "user_request": {
