@@ -1,5 +1,9 @@
 # Web edition (hosted MCP)
 
+To use the hosted server, add `https://mcp.cloudgrid.io/mcp` to your AI tool
+(see [README.md](README.md)); there is nothing to set up. This page describes
+how the web edition works and the settings for running it yourself.
+
 The MCP server ships in two editions from one codebase. The tool logic lives in
 `src/tools/register.js`; each edition is a thin entrypoint that injects an
 identity context.
@@ -7,7 +11,7 @@ identity context.
 | | Local (`src/index.js`) | Web (`src/web.js`) |
 |---|---|---|
 | Transport | stdio | MCP Streamable HTTP |
-| Runs | as a subprocess on the user's machine | hosted (e.g. GKE) |
+| Runs | as a subprocess on the user's machine | hosted |
 | Reaches | Claude Code, Cursor, Claude Desktop | claude.ai web, any HTTP MCP client |
 | Tools | full set (38), incl. CLI-wrapping | 17 direct-API tools (see README) |
 | Identity | `~/.cloudgrid/credentials` | per-session token in memory |
@@ -45,10 +49,10 @@ docker run -p 8080:8080 cloudgrid-mcp-web
 The image carries no `cloudgrid` CLI — the web edition never calls it. It serves on
 `PORT` (default 8080) and answers `GET /healthz`.
 
-## Deploying (platform)
+## Deploying
 
-Hosting is platform work (GKE): a Deployment + Service + Ingress at a stable host
-(e.g. `mcp.cloudgrid.io`), `PORT=8080`, `GET /healthz` as the probe. The container
+Run the container behind a stable HTTPS host (for example `mcp.cloudgrid.io`),
+with `PORT=8080` and `GET /healthz` as the health probe. The container
 is stateless; sessions live in memory, so a single replica is simplest first, or a
 sticky-session ingress for more.
 
@@ -60,7 +64,7 @@ against another environment (staging, for example):
   user's browser, such as sign-in (default `https://api.cloudgrid.io`).
 - `CLOUDGRID_CONSOLE_URL`: the Console root used in every Console link, such as
   the dashboard link after a plug (default `https://my.cloudgrid.io/`). A trailing
-  slash is optional. Staging sets `https://my.cgstage.io/`.
+  slash is optional.
 - `MCP_PUBLIC_URL`: this server's public origin (see below).
 
 ## Identity on the web
@@ -98,18 +102,18 @@ the conversation only when the user explicitly agrees). Both reach the CloudGrid
 team through the API, not through a webhook; a signed-out `grid_note` returns
 `needs_auth` and sends nothing. There is no automatic session-log post on the hosted edition — not on a
 plug, not on idle, not on close — and the hosted `grid_plug` schema carries no
-`user_request` or `session_note` fields, and the hosted servers carry no
-`CLOUDGRID_QA_SLACK_WEBHOOK`. The local (stdio) edition keeps its opt-in QA log
-(README, "QA session log").
+`user_request` or `session_note` fields, and the hosted servers carry no QA
+log webhook. The local (stdio) edition keeps its opt-in QA log
+(see "QA session log" in the README's privacy section).
 
 ## Trusted-server credential (per-user cap)
 
-Drops plugged outside a grid are capped per IP. A shared host sends them all from one cluster
+Drops plugged outside a grid are capped per IP. A shared host sends them all from one
 egress IP, so the cap is hit quickly. Provision this host as a trusted server and
 the platform keys the cap on the per-user id instead:
 
-- Set `MCP_TRUSTED_SERVER_SECRET` in the deployment env (the same cluster Secret the
-  API validates against). When set, the web edition sends, on such drops:
+- Set `MCP_TRUSTED_SERVER_SECRET` in the deployment env (the secret the CloudGrid
+  API validates against, issued by CloudGrid). When set, the web edition sends, on such drops:
   - `X-CloudGrid-Trusted-Server-Auth: <MCP_TRUSTED_SERVER_SECRET>`
   - `X-CloudGrid-Trusted-Server-End-User: <MCP session id>` (stable, opaque per session)
 - A missing or wrong secret falls back to the per-IP cap server-side (never an error),
@@ -132,8 +136,7 @@ CloudGrid API; it is never returned to the client or accepted from it.
 - `MCP_ALIAS_URLS` — other public origins served by the same server (comma
   separated). Each is answered for its own origin, and a token issued on any of
   them is accepted on all.
-- `MCP_TOKEN_SIGNING_KEYS` — the access-token signing keys, from a Kubernetes
-  Secret: base64url 32-byte Ed25519 seeds, comma separated. The first signs, all
+- `MCP_TOKEN_SIGNING_KEYS` — the access-token signing keys, from a secret store: base64url 32-byte Ed25519 seeds, comma separated. The first signs, all
   verify; each key's `kid` is its RFC 7638 thumbprint. Rotate by appending the new
   key, then moving it to the front, then (after the longest token lifetime)
   dropping the old one. Unset: a per-process key, and clients sign in again after
@@ -202,8 +205,8 @@ them to a restart just re-prompts sign-in, it never drops a registered connector
 Signing that `client_id` needs a stable server key. Set it or the fix for durable
 registration is not actually in effect.
 
-- Set `MCP_OAUTH_HMAC_SECRET` in the deployment env, sourced from a Kubernetes
-  **Secret** (NEVER a ConfigMap; the key must not be logged). It is a
+- Set `MCP_OAUTH_HMAC_SECRET` in the deployment env, from a secret store (never
+  plain configuration; the key must not be logged). It is a
   whitespace/comma-separated list: the first entry signs, all entries verify.
   Every host serves OAuth, so every deployment mounts it.
 - **Unlike `MCP_TRUSTED_SERVER_SECRET`, this is NOT safe to omit.** With no secret
@@ -276,6 +279,22 @@ one origin in `frameDomains`, and each plug result carries
 `<origin>/<entity_id>` in its `_meta` for the card to frame. Any other value is
 ignored.
 
-## Launch follow-ups
-- **CORS / DNS-rebinding / allowed hosts.** Configure at deploy time for the public
-  host.
+## Other settings
+
+Each has a default that fits the hosted server; set one only to change it.
+
+- `MCP_ALLOWED_ORIGINS`: browser origins allowed besides the defaults (the
+  Claude and ChatGPT web apps, this server's own origin, and loopback). Comma
+  separated; `https://*.example.com` matches subdomains; `*` turns the check off.
+- `MCP_SESSION_SECRET`: the key that signs session ids. Unset, the server uses
+  `MCP_TRUSTED_SERVER_SECRET`; with neither, a per-process key.
+- `MCP_TRUSTED_PROXY_HOPS`: proxies in front of the server that append to
+  `X-Forwarded-For` (default 1).
+- `MCP_MAX_SESSIONS` (default 300, 0 for no cap), `MCP_SESSION_IDLE_TTL_MS`
+  (default 30 minutes), `MCP_SESSION_SWEEP_MS` (default 1 minute): in-memory
+  session limits.
+- `MCP_RATE_OAUTH_REGISTER` (60), `MCP_RATE_OAUTH_AUTHORIZE` (30),
+  `MCP_RATE_OAUTH_TOKEN` (120), `MCP_RATE_MCP` (1200), `MCP_RATE_MCP_INITIALIZE`
+  (600): per-client-IP requests per minute; 0 turns one off.
+- `MCP_APPS_WIDGETS=1`: turns on the ChatGPT Apps SDK widgets (off by default).
+- `CLOUDGRID_PLUG_UPLOAD_TIMEOUT_MS`: the plug upload timeout (default 120000).
