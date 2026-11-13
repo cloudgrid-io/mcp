@@ -630,6 +630,15 @@ export function registerTools(server, ctx) {
         needs_grid_create: z.boolean().optional().describe("Zero-grid ask: the account has no grid yet, and nothing was created. The text names the steps."),
         error: z.boolean().optional().describe("True when the grid listing failed (network/auth error). The text carries a human-readable message. This is a listing failure, not a missing grid."),
         next: buildNextStep(),
+        // #503: the manifest confirm ask (a create whose source carries a
+        // cloudgrid.yaml). Undeclared, the client rejected it with -32602.
+        needs_confirmation: z.boolean().optional().describe("Manifest ask: the source carries a cloudgrid.yaml and this is a new app; nothing was created. confirm_new_app: true creates it."),
+        manifest_detected: z.boolean().optional().describe("Manifest ask: a cloudgrid.yaml was found in the source."),
+        manifest: z.object({
+          name: z.string().nullable().optional().describe("The name in the cloudgrid.yaml, when it has one."),
+          services: z.array(z.string()).optional().describe("The service names it declares."),
+          needs: z.array(z.string()).optional().describe("The needs it declares."),
+        }).optional().describe("Manifest ask: what the cloudgrid.yaml declares."),
       },
       // destructiveHint (M3): a re-plug with target_entity_id REPLACES what is
       // live at a public URL in place. Versions + grid rollback exist, but the
@@ -968,6 +977,13 @@ export function registerTools(server, ctx) {
         entity_id: z.string().optional().describe("The app's entity_id, when known."),
         grid: z.string().optional().describe("The app's grid slug, when known."),
         next: buildNextStep(),
+        // #503: failed-build keys that were returned but undeclared, so the
+        // client rejected the failed result with -32602.
+        reason: z.string().optional().describe("A failure class, when known: archive_corrupt means the uploaded source could not be read by the build."),
+        source_recovery: z.object({
+          entity_id: z.string().describe("The entity that holds the saved source."),
+          via: z.array(z.string()).describe("Where the saved source can be fetched from: a tool name or a CLI command."),
+        }).optional().describe("Hosted edition, failed build: the project files are saved on the entity and can be fetched from here."),
       },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
       // The live-result card's Check status button calls this back over the
@@ -1305,7 +1321,10 @@ export function registerTools(server, ctx) {
         name: z.string().optional()
           .describe("Who to greet. Defaults to 'world'."),
       },
+      // grid_hello returns a grid_plug result (or its sign-in and grid asks), so
+      // it advertises every key that result can carry (#503).
       outputSchema: {
+        ...plugConfig.outputSchema,
         url: z.string().optional().describe("The live URL, once plugged."),
         entity_id: z.string().optional().describe("Re-plug handle."),
         needs_auth: z.boolean().optional().describe("True when the user is not signed in; nothing was done."),

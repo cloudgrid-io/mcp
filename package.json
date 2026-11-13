@@ -60,6 +60,7 @@
     "test:tool-description-neutral": "node test/tool-description-neutral.test.mjs",
     "test:registry-server-json": "node test/registry-server-json.test.mjs",
     "test:openai-plugin": "node test/openai-plugin.test.mjs",
+    "test:result-output-schema": "node test/result-output-schema.test.mjs",
     "test:auth-strictness": "node test/auth-strictness.test.mjs",
     "test:win-cli": "node test/windows-cli-resolution.test.mjs",
     "test:electron-env": "node test/electron-spawn-env.test.mjs",
