@@ -201,7 +201,7 @@ try {
   apiHtml = "<html>fresh</html>";
   const fresh = await runSource(makeCtx({ lastDrop: null }), { entity_id: "e-fresh" });
   check("fresh session + entity_id only → resolves the URL and reads the source (#489)",
-    fresh.structured.url === "https://acme.cloudgrid.io/page" && fresh.structured.html === "<html>fresh</html>" &&
+    fresh.structured.url === "https://page--acme.cloudgrid.io/" && fresh.structured.html === "<html>fresh</html>" &&
     fresh.structured.entity_id === "e-fresh" && fresh.structured.kind === "inspiration");
 
   // ── 2. SSRF guard (rejected BEFORE any fetch — API read or public) ──────────
