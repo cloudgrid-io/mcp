@@ -112,7 +112,7 @@
     "@modelcontextprotocol/ext-apps": "^1.7.5",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "express": "^5.3.0",
-    "express-rate-limit": "8.7.1",
+    "express-rate-limit": "8.7.4",
     "fflate": "^0.8.3",
     "undici": "^8.12.3",
     "zod": "^4.6.7"
