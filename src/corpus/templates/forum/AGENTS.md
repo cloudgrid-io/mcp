@@ -190,8 +190,10 @@ A forum is a runtime (built + deployed container) app — **local edition**
 
 ## 6. Edition note
 
-This blueprint targets a **runtime** deploy, which requires the **local
-edition**. The hosted edition (Claude Web / hosted MCP) is inline-only and can
-only publish static pages — it CANNOT build this containerized Next.js + Mongo +
-auth forum. On hosted, either switch to a local edition or offer a static,
-read-only mock instead and stop the runtime path.
+This is a runtime app (a built and deployed container), and every edition can
+build it. On the hosted edition (Claude Web / hosted MCP), plug it with
+`grid_plug`, passing every file and the `cloudgrid.yaml` inline as
+`artifact_files`. The local edition (Claude Desktop / Claude Code) can also pass
+a folder `path`, or use the CLI. Inline files are copied through the tool call,
+so a large app (big lockfiles, binary assets) is more reliable from the local
+edition or the CLI.

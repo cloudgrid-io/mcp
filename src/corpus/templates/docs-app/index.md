@@ -25,8 +25,9 @@ src/content/docs/
 
 ## Build + deploy
 
-This is a **built** static site, so it needs the local edition (Claude
-Desktop/Code) or the CLI — the hosted MCP cannot build it.
+This is a **built** static site, so the plug is async. The hosted MCP plugs it
+with the files inline as `artifact_files`; the local edition (Claude Desktop/Code)
+or the CLI can also plug the folder, which is more reliable for a large project.
 
 ```sh
 npm install

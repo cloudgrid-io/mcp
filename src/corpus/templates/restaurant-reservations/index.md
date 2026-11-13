@@ -35,7 +35,7 @@ grid_get_template("template", "restaurant-reservations")   # cloudgrid.yaml + AG
 Then read `AGENTS.md` (file tree, `menu`/`reservations`/`tables` collections,
 CloudGrid env/vault/deploy wiring, Stripe + auth, cron shape) and build under
 `services/web/`. Deploy: `grid plug` (the first plug auto-creates the entity from
-`cloudgrid.yaml`; async — poll to a live URL). Local edition only.
+`cloudgrid.yaml`; async — poll to a live URL). Every edition: hosted through `artifact_files`, locally also a folder `path` or the CLI.
 
 ## cloudgrid.yaml (active fields)
 

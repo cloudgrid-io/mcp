@@ -29,7 +29,7 @@ code** — read the structure guide, then build the app following it.
    function** (`lib/commission.js`) so the platform-fee/seller-payout split is
    testable.
 
-Runtime app → **local edition** only (async build, poll to a live URL).
+Runtime app → every edition (hosted through `artifact_files`, locally also a folder `path` or the CLI), async build, poll to a live URL.
 
 ## cloudgrid.yaml
 

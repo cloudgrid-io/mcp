@@ -23,8 +23,9 @@ Deploy or share a creation and get a public URL. This is the one deploy/share ve
   **any edition**; publishing needs sign-in. See "Share a single HTML page" below.
 - **Anything more** — separate files/folders, a real `assets/` dir, separate
   `.css`/`.js`, multiple pages, a SPA build — **or** any data/server/LLM/cron need
-  → a **runtime app**: `grid plug` on a linked folder, **local edition only**,
-  async build. See "Deploy an app" below.
+  → a **runtime app**, async build, on **every edition**: hosted through
+  `grid_plug` with the files (and a `cloudgrid.yaml`) inline as `artifact_files`;
+  locally also `grid plug` on a linked folder or `grid_plug` with a `path`. See "Deploy an app" below.
 
 ## Share a single HTML page (the fast path)
 

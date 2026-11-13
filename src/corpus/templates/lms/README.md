@@ -24,4 +24,4 @@ Read `AGENTS.md`, then build the app following it — put the code under
 `services/web/`, read `DATABASE_MONGODB_URL` (legacy `MONGODB_URL` fallback) and
 the vault-injected `AUTH_PROVIDER_KEY` lazily inside getters, enforce the
 instructor/student role gates on the server, declare `needs: { database: true }`,
-and deploy with `grid plug` (async — poll to a live URL; local edition only).
+and deploy with `grid plug` (async — poll to a live URL; hosted through `artifact_files`, locally also a folder `path` or the CLI).

@@ -7,7 +7,7 @@ providers and bookable services, publishes availability, and clients book an ope
 slot, with auth so a provider owns their calendar, optional Stripe deposits, and
 grid-shared Mongo. Read `AGENTS.md`, build the app under `services/web/`, adapt
 the providers/services/slot rules, then deploy (async — poll to a live URL).
-Local edition only.
+Every edition: hosted through `artifact_files`, locally also a folder `path` or the CLI.
 
 **Fetch the bundle:**
 - `grid_get_template("template", "appointment-booking")` — this blueprint (`cloudgrid.yaml` + `AGENTS.md`).

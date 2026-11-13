@@ -23,7 +23,7 @@ an `AGENTS.md` structure guide. Read `AGENTS.md`, then build the app under
 4. **Secrets via the `vault:` block** — set each vault item once with
    `grid secrets set <item>`; the platform injects it as the named env var. The
    auth publishable (non-secret) key is a `grid env` var, not a vault item.
-5. **Runtime deploy is async, local edition only.** `grid plug` returns
+5. **Runtime deploy is async, on every edition** (hosted through `artifact_files`, locally also a folder `path` or the CLI). The plug returns
    `status: building`; poll to a live URL. Register the Stripe webhook to the live
    URL after the first deploy.
 

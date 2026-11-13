@@ -196,9 +196,10 @@ manager index-report and in `grid logs` as a `cron refresh: status=… files=…
 
 ## 9. Deploy + edition note
 
-This is a built + deployed multi-service app → the **local edition** (Claude
-Desktop / Claude Code) or the CLI; the hosted edition cannot build a runtime
-container.
+This is a built + deployed multi-service app. Every edition can build it: hosted
+through `grid_plug` with the files inline as `artifact_files`; local (Claude
+Desktop / Claude Code) also through a folder `path`, or the CLI. The steps below
+are the CLI path.
 
 1. Put the code under `services/web/` and `services/backend/`; set `cloudgrid.yaml`
    to the active fields (web static+build, backend python, `needs:{database:true}`).

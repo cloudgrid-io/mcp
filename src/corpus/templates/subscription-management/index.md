@@ -7,7 +7,7 @@ their current plan, changes/upgrades/downgrades or cancels it, and manages
 billing through the Stripe Billing Portal, with a Stripe webhook syncing local
 state and grid-shared Mongo. Read `AGENTS.md`, build the app under
 `services/web/`, adapt plans/fields, then deploy (async — poll to a live URL).
-Local edition only.
+Every edition: hosted through `artifact_files`, locally also a folder `path` or the CLI.
 
 This is the **manage-what-you-already-have** surface (view / switch plan, update
 payment method, cancel). For the sign-up + paywall + gated-content acquisition
