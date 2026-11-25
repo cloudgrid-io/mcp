@@ -76,7 +76,7 @@ try {
   );
   check(
     "resolvePlugUrl falls back to client composition when url is empty",
-    resolvePlugUrl({ url: "", slug: "s1", grid: null }) === "https://guest.cloudgrid.io/s1",
+    resolvePlugUrl({ url: "", slug: "s1", grid: null }) === "https://s1--guest.cloudgrid.io/",
   );
   // Runtime (app/agent) fallback composes the FLAT platform host, never the
   // retired nested `<slug>.<grid>.cloudgrid.io` shape (the nested host has no
@@ -227,7 +227,7 @@ try {
     { status: 202, body: { entity_id: "ent-3", slug: "s3", grid: "atomic", url: "", status: "live", detection: { kind: "inspiration" } } },
   ];
   const a3 = await runPlug(authedCtx, { html: "<h1>v3</h1>" });
-  check("empty server url falls back to client composition", a3.structured.url === "https://atomic.cloudgrid.io/s3");
+  check("empty server url falls back to client composition", a3.structured.url === "https://s3--atomic.cloudgrid.io/");
 
   // ── new deploy → the MCP surfaces visibility for the agent to ASK the user;
   //    it never sets visibility silently (no auto-PATCH). Applies to every new

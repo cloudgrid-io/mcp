@@ -517,7 +517,7 @@ export function registerTools(server, ctx) {
       "entity is treated as a CREATE (not a false-positive re-plug).",
     ),
     url: z.string().optional().describe(
-      "Alternative RE-PLUG handle: the entity's public CloudGrid URL (e.g. https://<grid>.cloudgrid.io/<slug>) " +
+      "Alternative RE-PLUG handle: the entity's public CloudGrid URL (e.g. https://<slug>--<grid>.cloudgrid.io/) " +
       "for editing in place with the URL and no target_entity_id (the common \"change the color of " +
       "this page\" flow). The grid is read from the host and the entity is resolved via " +
       "the pickup contract, so no `grid` param is needed. target_entity_id and grid+slug take precedence. A " +
@@ -765,7 +765,7 @@ export function registerTools(server, ctx) {
         "Reads the HTML from the API server-side; read-only, creates nothing.",
       inputSchema: {
         entity_id: z.string().optional().describe("The drop's durable id, from its plug result. Enough on its own: its URL is looked up. Falls back to this session's last drop."),
-        url: z.string().optional().describe("The public URL of the drop (e.g. https://<grid>.cloudgrid.io/<slug>). Defaults to this session's last drop URL."),
+        url: z.string().optional().describe("The public URL of the drop (e.g. https://<slug>--<grid>.cloudgrid.io/). Defaults to this session's last drop URL."),
         grid: z.string().optional().describe("Grid slug, used only to construct the URL when neither url nor session state is available."),
         slug: z.string().optional().describe("Entity slug, used with grid to construct the URL when neither url nor session state is available."),
       },
