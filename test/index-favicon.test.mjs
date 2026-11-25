@@ -66,7 +66,7 @@ try {
     check(`${name} / has a title`, /<title>[^<]+<\/title>/.test(html));
     check(`${name} / declares a PNG icon`, /<link rel="icon" type="image\/png" href="\/favicon\.png">/.test(html));
     check(`${name} / shows the MCP URL to paste`, html.includes(`${base}/mcp`));
-    check(`${name} / links the docs`, hrefHosts(html).includes("docs.cloudgrid.io"));
+    check(`${name} / links the docs`, hrefHosts(html).some((h) => h === "docs.cloudgrid.io"));
     check(`${name} / carries og:title`, /<meta property="og:title"/.test(html));
     check(`${name} / carries og:description`, /<meta property="og:description"/.test(html));
     check(`${name} / carries an absolute og:url`, html.includes(`<meta property="og:url" content="${base}/">`));

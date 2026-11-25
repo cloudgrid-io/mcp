@@ -1522,7 +1522,9 @@ const OPEN_READ_FLAGS = fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK ?? 0);
 function openForRead(absPath) {
   let fd;
   try {
-    fd = openSync(absPath, OPEN_READ_FLAGS);
+    // Read-only (no O_CREAT), so the mode is never applied; it is passed so the
+    // call can never be read as creating a world-readable file.
+    fd = openSync(absPath, OPEN_READ_FLAGS, 0o600);
   } catch (err) {
     if (err.code === "ENOENT" || err.code === "ENOTDIR" || err.code === "ELOOP") return null;
     if (err.code === "EISDIR") return { fd: null, st: { isFile: () => false, isDirectory: () => true } };

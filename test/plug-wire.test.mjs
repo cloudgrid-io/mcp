@@ -494,7 +494,7 @@ try {
     check("issue#48: building response surfaces the poll_url", rt.structured.poll_url === "https://api.cloudgrid.io/api/v2/runtimes/ent-rt/status");
     check("issue#48: building result does NOT claim Live", !/^Live:/m.test(rt.text) && !/Live:/.test(rt.text));
     check("issue#48: building result says Plugging + points at poll", /Plugging \(async\)/.test(rt.text) && rt.text.includes("grid_check_deploy"));
-    check("issue#48: building result uses the server (flat-arch) url", urlHostsIn(rt.text).includes("af-probe2--cg.cloudgrid.io"));
+    check("issue#48: building result uses the server (flat-arch) url", urlHostsIn(rt.text).some((h) => h === "af-probe2--cg.cloudgrid.io"));
 
     const { rmSync } = await import("node:fs");
     rmSync(dir, { recursive: true, force: true });
