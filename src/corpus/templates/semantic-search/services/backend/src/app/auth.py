@@ -1,26 +1,29 @@
 """Server-side manager session auth.
 
 Admin functions are enforced on the server, not just hidden in the UI. Sessions
-are opaque tokens stored in Mongo. The password is compared against
-MANAGER_PASSWORD_HASH (sha256 hex). If no hash is configured, admin login is
-refused (never open by default) — but the app still starts and search stays
+are opaque tokens stored in Mongo. The password is verified against
+MANAGER_PASSWORD_HASH, an scrypt hash produced by `passwords.py` (see that file
+for the format and how to generate one). If no hash is configured, admin login
+is refused (never open by default) — but the app still starts and search stays
 public.
 """
 from __future__ import annotations
 
 import datetime as dt
-import hashlib
 import secrets
 
 from fastapi import Header, HTTPException
 
-from . import config, db
+from . import config, db, passwords
 
 SESSION_TTL_HOURS = 12
 
 
-def _hash(password: str) -> str:
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+_UNSUPPORTED_HASH = (
+    "MANAGER_PASSWORD_HASH is not an scrypt hash (older versions of this template "
+    "used plain sha256). Regenerate it with "
+    "`python3 services/backend/src/app/passwords.py` and store it again."
+)
 
 
 def login(password: str) -> str:
@@ -30,7 +33,9 @@ def login(password: str) -> str:
             status_code=503,
             detail="Manager auth is not configured (MANAGER_PASSWORD_HASH unset).",
         )
-    if not secrets.compare_digest(_hash(password), configured):
+    if not passwords.is_supported(configured):
+        raise HTTPException(status_code=503, detail=_UNSUPPORTED_HASH)
+    if not passwords.verify_password(password, configured):
         raise HTTPException(status_code=401, detail="Invalid password.")
     token = secrets.token_urlsafe(32)
     db.get_db().sessions.insert_one({
@@ -60,6 +65,8 @@ def change_password(current: str, new: str) -> str:
     store as the MANAGER_PASSWORD_HASH secret (we never persist the plaintext or
     the secret ourselves)."""
     configured = config.manager_password_hash()
-    if configured and not secrets.compare_digest(_hash(current), configured):
+    if configured and not passwords.verify_password(current, configured):
         raise HTTPException(status_code=401, detail="Current password is incorrect.")
-    return _hash(new)
+    if not new:
+        raise HTTPException(status_code=400, detail="New password must not be empty.")
+    return passwords.hash_password(new)

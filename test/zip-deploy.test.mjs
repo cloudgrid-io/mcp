@@ -47,11 +47,11 @@ function makeCtx() {
 // Capture BOTH wires: the multipart form (inspiration path) and the CLI leg
 // (zip projects: `grid init --here` + `grid plug` in the extracted dir). For
 // the CLI leg the stub records the args + snapshots the project dir contents.
-import { readdirSync, statSync } from "node:fs";
+import { readdirSync } from "node:fs";
 function snapshotDir(dir, base = dir, out = {}) {
-  for (const nm of readdirSync(dir)) {
-    const p = join(dir, nm);
-    if (statSync(p).isDirectory()) snapshotDir(p, base, out);
+  for (const ent of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, ent.name);
+    if (ent.isDirectory()) snapshotDir(p, base, out);
     else out[p.slice(base.length + 1).replaceAll("\\", "/")] = readFileSync(p);
   }
   return out;

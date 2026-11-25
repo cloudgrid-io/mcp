@@ -92,9 +92,8 @@ for (const file of files) {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (!line.includes("cloudgrid.io")) continue;
 
-    // Extract all hostname-shaped tokens ending in .cloudgrid.io.
+    // Extract all hostname-shaped tokens ending in .cloudgrid.io (none → skip).
     const hostMatches = line.match(/[a-z0-9*.<>-]+\.cloudgrid\.io/gi);
     if (!hostMatches) continue;
 

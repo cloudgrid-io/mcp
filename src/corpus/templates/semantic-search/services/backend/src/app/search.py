@@ -15,12 +15,15 @@ Everything degrades gracefully:
 """
 from __future__ import annotations
 
+import logging
 import re
 
 import numpy as np
 from pymongo.errors import OperationFailure
 
 from . import config, db, embeddings
+
+log = logging.getLogger(__name__)
 
 
 def _synonyms() -> dict[str, list[str]]:
@@ -141,8 +144,10 @@ def search(query: str,
                     sims = _cosine(qvec, np.array(mat, dtype=np.float32))
                     for cid, content, did, s in zip(ids, contents, dids, sims):
                         semantic[cid] = (float(s), content, did)
-            except Exception as exc:  # noqa: BLE001
-                semantic_note = f"Semantic search degraded: {exc}"
+            except Exception:  # noqa: BLE001
+                # Public response: keep the provider error in the service log.
+                log.exception("semantic search failed; falling back to lexical")
+                semantic_note = "Semantic search degraded (see service logs)."
 
     # ── normalize + blend at the chunk level ─────────────────────────────────
     def _normalize(d: dict) -> dict:

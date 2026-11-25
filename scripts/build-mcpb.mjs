@@ -10,7 +10,7 @@
 
 import {
   cpSync,
-  mkdirSync,
+  mkdtempSync,
   readFileSync,
   rmSync,
   statSync,
@@ -34,9 +34,11 @@ if (manifest.version !== pkg.version) {
 }
 
 // ── Stage ───────────────────────────────────────────────────────────────
-const stage = join(tmpdir(), `cloudgrid-mcpb-${Date.now()}`);
+// mkdtemp: a fresh, randomly named, owner-only (0700) directory. A predictable
+// name created with `recursive: true` would silently reuse a directory someone
+// else planted in the shared temp dir, and its contents would ship in the bundle.
+const stage = mkdtempSync(join(tmpdir(), "cloudgrid-mcpb-"));
 console.log(`\n— stage → ${stage}`);
-mkdirSync(stage, { recursive: true });
 
 const copy = (rel) => cpSync(join(root, rel), join(stage, rel), { recursive: true });
 
@@ -72,7 +74,8 @@ writeFileSync(
   join(stage, ".mcpbignore"),
   ["package-lock.json", "node_modules/.package-lock.json", ".mcpbignore"].join(
     "\n"
-  ) + "\n"
+  ) + "\n",
+  { mode: 0o600 }
 );
 
 const npx = process.platform === "win32" ? "npx.cmd" : "npx";

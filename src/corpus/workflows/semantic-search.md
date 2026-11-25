@@ -116,7 +116,9 @@ the cron **vendors** the backend `app/` modules it needs into
   - url: `URL_SOURCE_MANIFEST` (newline/comma-separated URLs).
 - **Embeddings** — `EMBEDDINGS_API_KEY` (OpenAI by default;
   `EMBEDDINGS_BASE_URL` / `EMBEDDINGS_MODEL` to point elsewhere).
-- **Manager** — `MANAGER_PASSWORD_HASH` = sha256 hex of the manager password.
+- **Manager** — `MANAGER_PASSWORD_HASH` = scrypt hash of the manager password,
+  from `python3 services/backend/src/app/passwords.py` (prompts; never pass the
+  password as an argument).
 
 Store all of these with `grid secrets set KEY=VALUE` (never commit them; the app
 reads them lazily inside functions, never at import). Non-secret public config →

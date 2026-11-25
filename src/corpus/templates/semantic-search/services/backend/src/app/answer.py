@@ -7,9 +7,13 @@ themselves), still grounded and cited — never crashes.
 """
 from __future__ import annotations
 
+import logging
+
 import httpx
 
 from . import config, search
+
+log = logging.getLogger(__name__)
 
 
 def _answer_enabled_from_db() -> bool:
@@ -78,7 +82,9 @@ def compose_answer(question: str) -> dict:
         resp.raise_for_status()
         text = resp.json()["choices"][0]["message"]["content"]
         return {"answer": text, "citations": citations, "mode": "generated", "note": None}
-    except Exception as exc:  # noqa: BLE001 - degrade to extractive, never crash
+    except Exception:  # noqa: BLE001 - degrade to extractive, never crash
+        # Public response: the provider error stays in the service log.
+        log.exception("answer generation failed; returning extractive answer")
         extractive = "\n\n".join(
             f"- {p['title']}: {p['best_passage']}" for p in passages[:3]
         )
@@ -86,5 +92,5 @@ def compose_answer(question: str) -> dict:
             "answer": extractive,
             "citations": citations,
             "mode": "extractive",
-            "note": f"Generation failed ({exc}); showing source passages.",
+            "note": "Generation failed (see service logs); showing source passages.",
         }

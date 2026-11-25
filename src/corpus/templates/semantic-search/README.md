@@ -47,7 +47,8 @@ to point at any OpenAI-compatible provider.
 `EMBEDDINGS_API_KEY`, `SOURCE_TYPE`, and the source's own secrets
 (`DROPBOX_APP_KEY` / `DROPBOX_APP_SECRET` / `DROPBOX_REFRESH_TOKEN` /
 `DROPBOX_FOLDER_PATH`, or `LOCAL_SOURCE_PATH`, or `URL_SOURCE_MANIFEST`), and
-`MANAGER_PASSWORD_HASH` (sha256 hex of the manager password).
+`MANAGER_PASSWORD_HASH` (an scrypt hash of the manager password; generate it
+with `python3 services/backend/src/app/passwords.py`).
 
 The app starts and passes `GET /backend/health` with **none** of these set —
 search / indexing degrade to a clear "not indexed / missing secret" state.

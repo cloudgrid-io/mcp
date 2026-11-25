@@ -26,6 +26,21 @@ export function finish(passMessage) {
 
 export const textOf = (r) => r?.content?.[0]?.text ?? "";
 
+// Hostnames of every http(s) URL in free text, parsed rather than substring-
+// matched, so an assertion about a host cannot pass on a lookalike.
+function urlHostsIn(text) {
+  const hosts = [];
+  for (const [raw] of String(text ?? "").matchAll(/https?:\/\/[^\s"'<>)\]]+/g)) {
+    try {
+      hosts.push(new URL(raw).hostname);
+    } catch {
+      /* not a URL */
+    }
+  }
+  return hosts;
+}
+
+
 // Read a non-empty env var, or null.
 export function env(name) {
   const v = process.env[name];
@@ -81,6 +96,6 @@ export function assertSignedOutCreateRefused(prefix, res) {
   check(`${prefix} signed-out create is not a tool error`, res?.isError !== true);
   check(`${prefix} signed-out create returned no entity_id`, !s.entity_id);
   check(`${prefix} signed-out create returned no owner_token`, !s.owner_token);
-  check(`${prefix} signed-out create returned no live URL`, !/https?:\/\/\S*cloudgrid\.io/.test(text) && !s.url);
+  check(`${prefix} signed-out create returned no live URL`, !urlHostsIn(text).some((h) => h === "cloudgrid.io" || h.endsWith(".cloudgrid.io")) && !s.url);
   check(`${prefix} signed-out create points at grid_login`, /grid_login/.test(text));
 }

@@ -92,7 +92,7 @@ def source_configured() -> bool:
 # ── Manager auth (gated) ──────────────────────────────────────────────────────
 
 def manager_password_hash() -> str | None:
-    """A sha256 hex digest of the manager password. Compared server-side."""
+    """An scrypt hash of the manager password (see backend passwords.py)."""
     return os.environ.get("MANAGER_PASSWORD_HASH")
 
 

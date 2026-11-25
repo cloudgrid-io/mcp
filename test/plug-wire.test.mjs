@@ -21,6 +21,20 @@ function check(label, cond) {
   if (!cond) failures++;
 }
 
+// Hostnames of every http(s) URL in free text, parsed rather than substring-
+// matched, so an assertion about a host cannot pass on a lookalike.
+function urlHostsIn(text) {
+  const hosts = [];
+  for (const [raw] of String(text ?? "").matchAll(/https?:\/\/[^\s"'<>)\]]+/g)) {
+    try {
+      hosts.push(new URL(raw).hostname);
+    } catch {
+      /* not a URL */
+    }
+  }
+  return hosts;
+}
+
 function makeCtx({ token = null, edition = "web" } = {}) {
   return {
     edition,
@@ -95,7 +109,7 @@ try {
     );
     check(
       "resolvePlugUrl never emits the retired nested runtime host",
-      !runtimeUrl.includes("web.atomic.cloudgrid.io"),
+      new URL(runtimeUrl).hostname !== "web.atomic.cloudgrid.io",
     );
   }
 
@@ -480,7 +494,7 @@ try {
     check("issue#48: building response surfaces the poll_url", rt.structured.poll_url === "https://api.cloudgrid.io/api/v2/runtimes/ent-rt/status");
     check("issue#48: building result does NOT claim Live", !/^Live:/m.test(rt.text) && !/Live:/.test(rt.text));
     check("issue#48: building result says Plugging + points at poll", /Plugging \(async\)/.test(rt.text) && rt.text.includes("grid_check_deploy"));
-    check("issue#48: building result uses the server (flat-arch) url", rt.text.includes("https://af-probe2--cg.cloudgrid.io"));
+    check("issue#48: building result uses the server (flat-arch) url", urlHostsIn(rt.text).some((h) => h === "af-probe2--cg.cloudgrid.io"));
 
     const { rmSync } = await import("node:fs");
     rmSync(dir, { recursive: true, force: true });

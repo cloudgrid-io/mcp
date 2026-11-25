@@ -9,10 +9,13 @@ returns. Only new/changed files (by rev / content-hash) are reprocessed.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import os
 import re
 
 from . import config, db, embeddings, source
+
+log = logging.getLogger(__name__)
 
 CHUNK_CHARS = 1200
 CHUNK_OVERLAP = 150
@@ -101,9 +104,12 @@ def run_sync(triggered_by: str = "manual") -> dict:
     try:
         src = source.get_source()
         files = src.list_files()
-    except Exception as exc:  # noqa: BLE001 - resilient by design
+    except Exception:  # noqa: BLE001 - resilient by design
+        # The report is returned to the caller and stored; exception text (which
+        # can carry source URLs or credentials in error bodies) stays in the log.
+        log.exception("source listing failed")
         report["status"] = "error"
-        report["note"] = f"Source listing failed: {exc}"
+        report["note"] = "Source listing failed (see service logs)."
         _save_report(report)
         return report
 
@@ -152,8 +158,10 @@ def _process_file(src: source.Source, f: source.SourceFile, embeddings_ok: bool)
     try:
         raw = src.download(f.path)
         text = source.extract_text(f.name, raw)
-    except Exception as exc:  # noqa: BLE001
-        return {"file": f.name, "result": "error", "detail": str(exc)}
+    except Exception:  # noqa: BLE001
+        log.exception("download/extract failed for %s", f.name)
+        return {"file": f.name, "result": "error",
+                "detail": "download or text extraction failed (see service logs)"}
 
     meta = _parse_metadata(f.name, text)
     doc = {
@@ -175,11 +183,12 @@ def _process_file(src: source.Source, f: source.SourceFile, embeddings_ok: bool)
     if embeddings_ok and parts:
         try:
             vectors = embeddings.embed(parts)  # type: ignore[assignment]
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
+            log.exception("embedding failed for %s", f.name)
             return {
                 "file": f.name,
                 "result": "indexed_no_embeddings",
-                "detail": f"embedding failed: {exc}",
+                "detail": "embedding failed (see service logs)",
                 "chunks": len(parts),
             }
 

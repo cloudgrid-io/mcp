@@ -16,6 +16,8 @@
 // (Authorization carries the bearer), never a body-parser error's message (it can
 // quote the raw body it failed on).
 
+import { logSafe } from "./web-observability.js";
+
 function defaultEmit(...args) {
   // eslint-disable-next-line no-console
   console.error(...args);
@@ -42,7 +44,8 @@ export function createErrorHandler({ emit = defaultEmit } = {}) {
   // eslint-disable-next-line no-unused-vars
   return function terminalErrorHandler(err, req, res, next) {
     const status = statusOf(err);
-    const where = `${req.method} ${req.path}`;
+    // The path is client-supplied: bounded and flattened so it cannot forge a line.
+    const where = `${req.method} ${logSafe(req.path, 256)}`;
     if (status >= 500) {
       emit(`[web] unhandled error on ${where} -> ${status}`, err?.stack || String(err));
     } else {
