@@ -25,7 +25,7 @@ services/backend/                       # FastAPI, mounted at /backend
   src/main.py                           # uvicorn app.main:app (reads PORT)
   src/app/
     main.py       config.py   db.py      search.py   indexing.py
-    source.py     embeddings.py  answer.py  auth.py
+    source.py     embeddings.py  answer.py  auth.py  passwords.py
 services/refresh/                       # type: cron, run: job — scheduled reindex (§8)
   requirements.txt  README.md
   src/main.py                           # calls app.indexing.run_sync(triggered_by="cron")
@@ -130,11 +130,14 @@ Store secrets with the CLI; never commit them, never read them at import time:
 grid secrets set EMBEDDINGS_API_KEY=sk-...
 grid secrets set SOURCE_TYPE=dropbox
 grid secrets set DROPBOX_APP_KEY=... DROPBOX_APP_SECRET=... DROPBOX_REFRESH_TOKEN=...
-grid secrets set MANAGER_PASSWORD_HASH=$(printf '%s' 'your-password' | shasum -a 256 | cut -d' ' -f1)
+grid secrets set MANAGER_PASSWORD_HASH="$(python3 services/backend/src/app/passwords.py)"
 ```
 
-`MANAGER_PASSWORD_HASH` is the sha256 hex of the manager password, compared
-server-side in `auth.py`. The in-app "Change password" screen returns a new hash
+`MANAGER_PASSWORD_HASH` is an scrypt hash of the manager password
+(`scrypt:<n>:<r>:<p>:<salt>:<hash>`), produced by `passwords.py` (stdlib only;
+it prompts for the password, so it never lands in shell history) and verified
+server-side in `auth.py`. A plain sha256 hex from older versions of this
+template is refused with a message to regenerate. The in-app "Change password" screen returns a new hash
 to store the same way. Non-secret public config can also go via `grid env`.
 
 ---

@@ -148,7 +148,7 @@ test("a successful connect logs authorize arrival, redirect handback and token s
   const arrivalLine = log.split("\n").find((l) => l.includes("authorize request"));
   assert.match(arrivalLine, /state=present/, "arrival should report state presence");
   assert.match(arrivalLine, /S256/, "arrival should report the PKCE method");
-  assert.match(arrivalLine, /chatgpt\.com/, "arrival should report the redirect host");
+  assert.match(arrivalLine, / redirect_host=chatgpt\.com( |$)/, "arrival should report the redirect host");
 });
 
 // THE test. A full flow with a known code, verifier, challenge, secret and JWT;

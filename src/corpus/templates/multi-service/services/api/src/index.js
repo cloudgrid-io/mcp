@@ -1,8 +1,22 @@
 const express = require("express");
+const { rateLimit } = require("express-rate-limit");
 const { MongoClient, ObjectId } = require("mongodb");
 
 const app = express();
+// The grid's ingress sits in front of this service, so the client address is
+// the one that proxy appends to X-Forwarded-For. Trusting exactly one hop keys
+// the rate limit on the real client without letting a caller spoof the header.
+app.set("trust proxy", 1);
 app.use(express.json());
+
+// Every /api route reads or writes the database, so cap requests per client.
+// Generous for a real user; tune `limit` to your app's traffic.
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+});
 
 // Lazy Mongo connection — read the connection string inside the getter, never
 // at module top level. The grid injects DATABASE_MONGODB_URL (plus the legacy
@@ -37,13 +51,13 @@ async function items() {
 // forwards requests WITH the /api prefix intact, so routes here must include
 // the /api prefix. A browser fetch to /api/items arrives as req.path=/api/items.
 
-app.get("/api/items", async (_req, res) => {
+app.get("/api/items", apiLimiter, async (_req, res) => {
   const col = await items();
   const docs = await col.find({}).sort({ createdAt: -1 }).toArray();
   res.json(docs.map((d) => ({ id: d._id.toString(), text: d.text })));
 });
 
-app.post("/api/items", async (req, res) => {
+app.post("/api/items", apiLimiter, async (req, res) => {
   const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
   if (!text) return res.status(400).json({ error: "text is required" });
   const col = await items();
@@ -51,7 +65,7 @@ app.post("/api/items", async (req, res) => {
   res.status(201).json({ id: result.insertedId.toString(), text });
 });
 
-app.delete("/api/items/:id", async (req, res) => {
+app.delete("/api/items/:id", apiLimiter, async (req, res) => {
   const { id } = req.params;
   if (!ObjectId.isValid(id)) {
     return res.status(400).json({ error: "invalid id" });

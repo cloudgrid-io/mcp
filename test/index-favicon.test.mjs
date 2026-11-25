@@ -14,6 +14,20 @@ const ANON_BASE = `http://localhost:${ANON_PORT}`;
 const AUTH_BASE = `http://localhost:${AUTH_PORT}`;
 
 let failures = 0;
+// Hostnames of the absolute https links in a page (parsed, not substring-matched).
+function hrefHosts(html) {
+  const hosts = [];
+  for (const [, href] of html.matchAll(/href="([^"]+)"/g)) {
+    try {
+      const u = new URL(href);
+      if (u.protocol === "https:") hosts.push(u.hostname);
+    } catch {
+      /* relative link */
+    }
+  }
+  return hosts;
+}
+
 function check(label, cond) {
   console.log(`${cond ? "ok  " : "FAIL"} ${label}`);
   if (!cond) failures++;
@@ -52,7 +66,7 @@ try {
     check(`${name} / has a title`, /<title>[^<]+<\/title>/.test(html));
     check(`${name} / declares a PNG icon`, /<link rel="icon" type="image\/png" href="\/favicon\.png">/.test(html));
     check(`${name} / shows the MCP URL to paste`, html.includes(`${base}/mcp`));
-    check(`${name} / links the docs`, html.includes("https://docs.cloudgrid.io"));
+    check(`${name} / links the docs`, hrefHosts(html).includes("docs.cloudgrid.io"));
     check(`${name} / carries og:title`, /<meta property="og:title"/.test(html));
     check(`${name} / carries og:description`, /<meta property="og:description"/.test(html));
     check(`${name} / carries an absolute og:url`, html.includes(`<meta property="og:url" content="${base}/">`));

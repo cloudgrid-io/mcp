@@ -54,6 +54,7 @@ services/backend/                              # FastAPI backend, mounted at /ba
     embeddings.py                               # one config point (OpenAI-compatible)
     answer.py                                   # grounded answer + citations (extractive fallback)
     auth.py                                     # manager session auth (MANAGER_PASSWORD_HASH)
+    passwords.py                                # scrypt hash/verify; run it to generate MANAGER_PASSWORD_HASH
 services/refresh/                              # type: cron, run: job — scheduled reindex (daily 03:00 UTC)
   requirements.txt  README.md
   src/main.py                                  # calls app.indexing.run_sync(triggered_by="cron")
@@ -98,7 +99,7 @@ needs:
    its `name:`) and writes `.cloudgrid/link.json`, without building yet.
 2. `grid secrets set EMBEDDINGS_API_KEY=sk-…` plus the source secrets
    (`SOURCE_TYPE` + Dropbox/local/url config) and `MANAGER_PASSWORD_HASH`
-   (sha256 hex of the manager password). See `AGENTS.md`.
+   (scrypt hash from `services/backend/src/app/passwords.py`). See `AGENTS.md`.
 3. (Optional) `grid dev` to run locally against the injected dev Mongo.
 4. `grid plug` to deploy — a runtime deploy is **async**: poll status until live,
    then sign in as manager and hit "Refresh now" to index the source.

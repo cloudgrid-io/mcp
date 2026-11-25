@@ -89,6 +89,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
   var data = window.openai && window.openai.toolOutput;
   if (data) render(data);
   window.addEventListener("message", function (e) {
+    // Only the host that embeds this widget may drive it. Its origin differs
+    // per host (and per sandbox), so check the sender is our parent frame
+    // rather than pinning an origin string.
+    if (e.source !== window.parent) return;
     if (e.data && e.data.method === "ui/notifications/tool-result" &&
         e.data.params && e.data.params.structuredContent) {
       render(e.data.params.structuredContent);

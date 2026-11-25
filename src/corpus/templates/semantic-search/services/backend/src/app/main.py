@@ -9,12 +9,15 @@ source or the embeddings key. No secret is read at import time.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from . import answer, auth, config, db, indexing, search
+
+log = logging.getLogger(__name__)
 
 app = FastAPI(title="Semantic Search API")
 
@@ -46,8 +49,11 @@ def health():
     try:
         db.ping()
         return {"status": "ok"}
-    except Exception as exc:  # noqa: BLE001
-        return {"status": "degraded", "detail": str(exc)}
+    except Exception:  # noqa: BLE001
+        # Public endpoint: the driver error can carry hosts and internals, so it
+        # goes to the service log, not the response.
+        log.exception("health: mongo ping failed")
+        return {"status": "degraded", "detail": "database unreachable (see service logs)"}
 
 
 @app.get("/backend/status")

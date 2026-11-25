@@ -22,6 +22,7 @@
 import { randomUUID, createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { newLoginCode, buildLoginUrl, pollStatusOnce, decodeJwt } from "./auth.js";
 import { AUTH_SCOPE } from "./web-auth.js";
+import { logSafe } from "./web-observability.js";
 
 const CODE_TTL_MS = 5 * 60 * 1000; // authorize sessions + auth codes live 5 minutes
 
@@ -52,7 +53,8 @@ function b64url(buf) {
 // A ~12-char prefix correlates lines without printing the signed client_id,
 // which embeds the redirect set.
 function clientIdPrefix(clientId) {
-  return clientId ? `${String(clientId).slice(0, 12)}…` : "absent";
+  // Client-supplied: flattened so a crafted client_id cannot forge a log line.
+  return clientId ? `${logSafe(String(clientId).slice(0, 12))}…` : "absent";
 }
 
 // The HOST is the diagnostic value; the path can carry a per-install identifier,
@@ -626,9 +628,9 @@ export function mountOAuth(app, opts) {
     // signal that distinguishes ChatGPT (sends it) from Claude (does not).
     console.error(
       `[oauth] authorize request: client_id=${clientIdPrefix(client_id)} ` +
-        `response_type=${response_type ? String(response_type) : "absent"} ` +
+        `response_type=${response_type ? logSafe(response_type, 32) : "absent"} ` +
         `state=${state ? "present" : "absent"} ` +
-        `pkce=${code_challenge ? (code_challenge_method ? String(code_challenge_method) : "present(no-method)") : "absent"} ` +
+        `pkce=${code_challenge ? (code_challenge_method ? logSafe(code_challenge_method, 32) : "present(no-method)") : "absent"} ` +
         `redirect_host=${hostOf(redirect_uri)} ` +
         `resource_host=${hostOf(resource)}`,
     );

@@ -64,8 +64,7 @@ test("scrubText redacts a PEM private key block", () => {
 test("scrubText redacts basic-auth URL creds but keeps scheme and host", () => {
   const out = scrubText("clone https://user:hunter2@example.com/x now");
   assert.equal(out.includes("user:hunter2"), false);
-  assert.equal(out.includes("example.com"), true);
-  assert.equal(out.includes("https://"), true);
+  assert.equal(out, "clone https://[REDACTED]@example.com/x now", "only the userinfo is replaced");
 });
 
 test("deriveFilename hosted ChatGPT", () => {

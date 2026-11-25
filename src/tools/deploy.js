@@ -3,7 +3,7 @@
 // Extracted verbatim from src/tools.js (refactor: split tools.js into modules).
 
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
-import { readFileSync, existsSync, statSync, readdirSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync, openSync, fstatSync, readSync, closeSync, constants as fsConstants } from "node:fs";
 import { basename, dirname, resolve, join, sep } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -1323,14 +1323,22 @@ function loadIgnoreMatchers(rootDir) {
 
 function isZipPath(srcPath) {
   const abs = resolve(srcPath);
-  if (!existsSync(abs) || !statSync(abs).isFile()) return false;
-  if (/\.zip$/i.test(abs)) return true;
-  // Magic sniff so "photos.ZIP.download"-style names still work.
+  // Check the type and sniff the header through ONE descriptor, so the file we
+  // classified is the file we read (no check-then-read window on the path).
+  const h = openForRead(abs);
+  if (!h) return false;
   try {
-    const fd = readFileSync(abs);
-    return fd.length >= 4 && fd[0] === 0x50 && fd[1] === 0x4b && fd[2] === 0x03 && fd[3] === 0x04;
+    if (!h.st.isFile()) return false;
+    if (/\.zip$/i.test(abs)) return true;
+    // Magic sniff so "photos.ZIP.download"-style names still work. Only the
+    // first four bytes are needed, not the whole archive.
+    const head = Buffer.alloc(4);
+    const n = readSync(h.fd, head, 0, 4, 0);
+    return n === 4 && head[0] === 0x50 && head[1] === 0x4b && head[2] === 0x03 && head[3] === 0x04;
   } catch {
     return false;
+  } finally {
+    closeHandle(h);
   }
 }
 
@@ -1502,46 +1510,93 @@ async function plugZipProjectViaCli(ctx, { projectDir, name }, input, deps = {})
   };
 }
 
+// Open `absPath` for reading and describe it from the OPEN descriptor, so the
+// type and size we check belong to the bytes we then read: there is no window
+// between a stat of the path and a later read in which the path could be
+// swapped (e.g. for a symlink to another file, or a file past the size limit).
+// Returns null when nothing is there (missing path or dangling symlink).
+// Some platforms refuse to open a directory (EISDIR); that is still a directory.
+// O_NONBLOCK so a FIFO path is classified (and refused) instead of blocking the
+// open; it has no effect on regular files, and is absent (0) on Windows.
+const OPEN_READ_FLAGS = fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK ?? 0);
+function openForRead(absPath) {
+  let fd;
+  try {
+    fd = openSync(absPath, OPEN_READ_FLAGS);
+  } catch (err) {
+    if (err.code === "ENOENT" || err.code === "ENOTDIR" || err.code === "ELOOP") return null;
+    if (err.code === "EISDIR") return { fd: null, st: { isFile: () => false, isDirectory: () => true } };
+    throw err;
+  }
+  try {
+    return { fd, st: fstatSync(fd) };
+  } catch (err) {
+    closeSync(fd);
+    throw err;
+  }
+}
+
+function closeHandle(h) {
+  if (h && h.fd !== null) closeSync(h.fd);
+}
+
 // Walk a local folder into `[{path, buffer}]` artifacts (repo-relative paths),
 // honoring .gitignore/.cloudgridignore at the root plus the always-skip set.
 // A single file becomes one artifact named by its basename.
 function collectPathArtifacts(srcPath) {
   const abs = resolve(srcPath);
-  if (!existsSync(abs)) throw new Error(`Path does not exist: ${abs}`);
-  const st = statSync(abs);
-  if (st.isFile()) {
-    return [{ path: basename(abs), buffer: readFileSync(abs) }];
+  const top = openForRead(abs);
+  if (!top) throw new Error(`Path does not exist: ${abs}`);
+  try {
+    if (top.st.isFile()) {
+      return [{ path: basename(abs), buffer: readFileSync(top.fd) }];
+    }
+  } finally {
+    closeHandle(top);
   }
-  if (!st.isDirectory()) throw new Error(`Not a file or directory: ${abs}`);
+  if (!top.st.isDirectory()) throw new Error(`Not a file or directory: ${abs}`);
   const isIgnored = loadIgnoreMatchers(abs);
   const out = [];
   let total = 0;
   const walk = (dir, rel) => {
-    for (const nm of readdirSync(dir)) {
+    for (const ent of readdirSync(dir, { withFileTypes: true })) {
+      const nm = ent.name;
       if (PLUG_ALWAYS_SKIP.has(nm)) continue;
+      // FIFOs, sockets and devices are never uploaded (and opening a FIFO blocks).
+      const isLink = ent.isSymbolicLink();
+      if (!isLink && !ent.isFile() && !ent.isDirectory()) continue;
       const childAbs = join(dir, nm);
       const childRel = rel ? `${rel}/${nm}` : nm;
-      let cst;
+      if (ent.isDirectory()) {
+        if (!isIgnored(childRel, true)) walk(childAbs, childRel);
+        continue;
+      }
+      // A plain ignored file is skipped without being opened. A symlink is
+      // followed (as before) and classified by what it points at.
+      if (!isLink && isIgnored(childRel, false)) continue;
+      const h = openForRead(childAbs);
+      if (!h) continue; // broken symlink etc.
+      let linkedDir = false;
       try {
-        cst = statSync(childAbs);
-      } catch {
-        continue; // broken symlink etc.
-      }
-      if (isIgnored(childRel, cst.isDirectory())) continue;
-      if (cst.isDirectory()) {
-        walk(childAbs, childRel);
-      } else if (cst.isFile()) {
-        if (out.length >= PLUG_MAX_FILES) {
-          throw new Error(
-            `The folder has more than ${PLUG_MAX_FILES} files after ignores — too large to plug inline. Trim it or add a .cloudgridignore.`,
-          );
+        if (isLink && isIgnored(childRel, h.st.isDirectory())) continue;
+        if (h.st.isDirectory()) {
+          linkedDir = true;
+        } else if (h.st.isFile()) {
+          if (out.length >= PLUG_MAX_FILES) {
+            throw new Error(
+              `The folder has more than ${PLUG_MAX_FILES} files after ignores — too large to plug inline. Trim it or add a .cloudgridignore.`,
+            );
+          }
+          total += h.st.size;
+          if (total > PLUG_MAX_TOTAL_BYTES) {
+            throw new Error("The upload exceeds the 100MB plug limit. Trim the folder or add a .cloudgridignore.");
+          }
+          out.push({ path: childRel, buffer: readFileSync(h.fd) });
         }
-        total += cst.size;
-        if (total > PLUG_MAX_TOTAL_BYTES) {
-          throw new Error("The upload exceeds the 100MB plug limit. Trim the folder or add a .cloudgridignore.");
-        }
-        out.push({ path: childRel, buffer: readFileSync(childAbs) });
+      } finally {
+        closeHandle(h);
       }
+      if (linkedDir) walk(childAbs, childRel);
     }
   };
   walk(abs, "");
@@ -1756,7 +1811,8 @@ export async function plugViaCliFallback(ctx, artifacts, deps = {}) {
         throw new Error(`Refusing to write artifact outside the temp dir: ${a.path}`);
       }
       await mkdir(dirname(dest), { recursive: true });
-      await writeFile(dest, a.buffer);
+      // Owner-only: these are the user's app files sitting under the OS temp dir.
+      await writeFile(dest, a.buffer, { mode: 0o600 });
     }
     const stdout = await run(["plug", dir, "--no-clipboard", "--no-notify"]);
     const url = parseCliPlugUrl(stdout);

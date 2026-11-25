@@ -19,6 +19,20 @@ const MOCK_PORT = 8793;
 const BASE = `http://localhost:${MCP_PORT}`;
 
 let failures = 0;
+// Every http(s) URL in free text, parsed rather than substring-matched, so an
+// assertion about a host cannot pass on a lookalike.
+function urlsIn(text) {
+  const urls = [];
+  for (const [raw] of String(text ?? "").matchAll(/https?:\/\/[^\s"'<>)\]]+/g)) {
+    try {
+      urls.push(new URL(raw));
+    } catch {
+      /* not a URL */
+    }
+  }
+  return urls;
+}
+
 function check(label, cond) {
   console.log(`${cond ? "ok  " : "FAIL"} ${label}`);
   if (!cond) failures++;
@@ -167,7 +181,9 @@ try {
   );
   const drop = await client.callTool({ name: "grid_plug", arguments: { html: "<h1>authed</h1>" } });
   check("authed plug reports Your app is live (web edition)", (drop.content?.[0]?.text ?? "").includes("Your app is live"));
-  check("authed plug composed the live URL from slug + grid", (drop.content?.[0]?.text ?? "").includes("https://e2e-bot.cloudgrid.io/mock-1"));
+  check("authed plug composed the live URL from slug + grid", urlsIn(drop.content?.[0]?.text).some(
+    (u) => u.protocol === "https:" && u.hostname === "e2e-bot.cloudgrid.io" && u.pathname.startsWith("/mock-1"),
+  ));
   check("upstream plug received the CloudGrid session, not the MCP token", dropAuthHeader === `Bearer ${FAKE_JWT}`);
 
   // Each `/plug` create is a fresh create (no in-place redrop / `previous_id` on

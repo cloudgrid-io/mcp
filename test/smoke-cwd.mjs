@@ -16,12 +16,26 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 const SUFFIX = Date.now().toString(36);
-const TEST_DIR = `/tmp/mcp-cwd-${SUFFIX}`;
+// mkdtemp: a fresh, owner-only directory, never a predictable shared /tmp path.
+const TEST_DIR = mkdtempSync(join(tmpdir(), `mcp-cwd-${SUFFIX}-`));
 const ORG = "atomic";
 const DEPLOY_TIMEOUT = 10 * 60 * 1000;
+
+// True when `u` parses as a URL whose host is cloudgrid.io or a subdomain of it
+// (a substring test would also accept e.g. https://cloudgrid.io.example.com).
+function isCloudgridUrl(u) {
+  try {
+    const { hostname } = new URL(String(u));
+    return hostname === "cloudgrid.io" || hostname.endsWith(".cloudgrid.io");
+  } catch {
+    return false;
+  }
+}
 
 let failures = 0;
 function check(label, cond) {
@@ -29,12 +43,11 @@ function check(label, cond) {
   if (!cond) failures++;
 }
 
-rmSync(TEST_DIR, { recursive: true, force: true });
-mkdirSync(TEST_DIR, { recursive: true });
 writeFileSync(
   `${TEST_DIR}/index.html`,
   `<!doctype html><html><head><title>MCP cwd test</title></head>` +
     `<body><h1>MCP cwd test</h1><p>Deployed via MCP with path param</p></body></html>\n`,
+  { mode: 0o600 },
 );
 
 // Spawn the MCP server from the REPO ROOT (not TEST_DIR) to prove threading works.
@@ -69,7 +82,7 @@ try {
   } else {
     check("plug from path succeeded", plugRes.isError !== true);
     const s = plugRes.structuredContent ?? {};
-    check("plug returned a URL", typeof s.url === "string" && s.url.includes("cloudgrid.io"));
+    check("plug returned a cloudgrid.io URL", isCloudgridUrl(s.url));
     check("plug returned the entity_id re-plug handle", typeof s.entity_id === "string");
     createdEntityId = s.entity_id ?? null;
     createdSlug = s.slug ?? null;

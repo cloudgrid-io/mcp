@@ -60,6 +60,18 @@ function readEntryDir(dirUrl) {
   }
 }
 
+// Read a corpus file in one call (no exists/stat check first, so nothing can
+// change between the check and the read). null when it is absent or not a
+// regular file.
+function readCorpusFile(url) {
+  try {
+    return readFileSync(url, "utf-8");
+  } catch (err) {
+    if (err.code === "ENOENT" || err.code === "EISDIR" || err.code === "ENOTDIR") return null;
+    throw err;
+  }
+}
+
 // Deterministic corpus retrieval for grid_get_template. Resolves {kind, name} to a
 // single content string, or null when nothing matches. Name is sanitized to a
 // safe slug so it can never escape the corpus directory.
@@ -73,10 +85,8 @@ export function fetchCorpus(kind, name) {
 
   // 1. Direct file: <base>/<slug>.md or <base>/<slug>.html
   for (const ext of [".md", ".html"]) {
-    const fileUrl = new URL(`${slug}${ext}`, base);
-    if (existsSync(fileUrl) && statSync(fileUrl).isFile()) {
-      return readFileSync(fileUrl, "utf-8");
-    }
+    const text = readCorpusFile(new URL(`${slug}${ext}`, base));
+    if (text !== null) return text;
   }
   // 2. Entry directory: <base>/<slug>/ (index.html or single file)
   const dirUrl = new URL(`${slug}/`, base);
